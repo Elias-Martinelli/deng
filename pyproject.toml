@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "deng"
+version = "0.1.0"
+description = "Champions League Match Intelligence Data Platform – HSLU DENG HS26 batch data pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Elias Martinelli" },
+]
+dependencies = [
+  "requests>=2.32",
+  "pydantic-settings>=2.5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.6",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deng"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+# E/F: pyflakes + pycodestyle, I: import order, B: bugbear, UP: modern syntax, D: docstrings
+select = ["E", "F", "I", "B", "UP", "D"]
+ignore = ["D203", "D213"]  # keep the "Google style" docstring conventions
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
