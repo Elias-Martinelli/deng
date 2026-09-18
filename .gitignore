@@ -216,3 +216,55 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ------------------------------------------------------------------
+# Project-specific (DENG HS26 – Champions League Match Intelligence)
+# ------------------------------------------------------------------
+
+# Local environment files – never commit real credentials
+.env
+.env.*
+!.env.example
+
+# Google Cloud credentials / service-account keys
+*-sa.json
+*service-account*.json
+*credentials*.json
+gcp-key*.json
+.gcloud/
+
+# Terraform state, plans and provider caches
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# Local data – raw API payloads, caches, exports (keep only small samples)
+data/raw/
+data/cache/
+data/processed/
+data/tmp/
+!data/sample/
+!data/reference/
+
+# Orchestrator local state
+.dagster/
+.prefect/
+dagster_home/
+airflow_home/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# IDE
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db
