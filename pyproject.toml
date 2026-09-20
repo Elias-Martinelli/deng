@@ -7,7 +7,7 @@ name = "deng"
 version = "0.1.0"
 description = "Champions League Match Intelligence Data Platform – HSLU DENG HS26 batch data pipeline"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
   { name = "Elias Martinelli" },
@@ -32,7 +32,7 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py310"
 src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]

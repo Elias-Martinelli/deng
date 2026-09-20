@@ -14,15 +14,15 @@ setup:  ## Create a virtualenv and install the package with dev dependencies
 	@echo "Done. Activate with: source .venv/bin/activate  – then fill in .env"
 
 test:  ## Run the unit tests (no network, no database required)
-	pytest
+	.venv/bin/python -m pytest
 
 lint:  ## Static checks (ruff)
-	ruff check .
-	ruff format --check .
+	.venv/bin/python -m ruff check .
+	.venv/bin/python -m ruff format --check .
 
 format:  ## Auto-format code
-	ruff format .
-	ruff check --fix .
+	.venv/bin/python -m ruff format .
+	.venv/bin/python -m ruff check --fix .
 
 explore:  ## Phase-12 API exploration: fetch small samples from football-data.org (needs FOOTBALL_DATA_API_KEY)
-	python scripts/explore_football_api.py
+	.venv/bin/python scripts/explore_football_api.py
