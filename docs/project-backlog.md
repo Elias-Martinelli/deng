@@ -44,33 +44,33 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
 | 2.1 | API client with auth, error classification, rate-limit headers | MUST | M1 | [x] `src/deng/ingestion/football_data_client.py`, tests |
-| 2.2 | Throttling on `X-Requests-Available-Minute`; retry with back-off on 429/5xx | MUST | MIDTERM | [ ] |
-| 2.3 | Extract jobs: competition, teams, matches, standings | MUST | MIDTERM | [ ] |
+| 2.2 | Throttling on `X-Requests-Available-Minute`; retry with back-off on 429/5xx | MUST | MIDTERM | [x] `extract.py` |
+| 2.3 | Extract jobs: competition, teams, matches, standings | MUST | MIDTERM | [x] `DAILY_ENDPOINTS` |
 | 2.4 | Extract job: team matches (form across competitions) | SHOULD | MIDTERM | [ ] |
 | 2.5 | Extract job: head2head for upcoming matches – first retest with a pairing known to have met | COULD | FINAL | [ ] |
 | 2.6 | Weather extract: forecast for matches ≤ 16 days ahead | MUST | MIDTERM | [ ] |
 | 2.7 | Weather extract: archive actuals for finished matches | SHOULD | FINAL | [ ] |
 | 2.8 | Minimal raw validation (top-level keys, non-empty lists, required ids) – fail fast | MUST | MIDTERM | [ ] |
-| 2.9 | Full vs. incremental decision per endpoint, documented in README | MUST | MIDTERM | [ ] |
-| 2.10 | Structured run logging (run_id, rows, duration, status) into `meta.pipeline_runs` | SHOULD | MIDTERM | [ ] |
+| 2.9 | Full vs. incremental decision per endpoint, documented in README | MUST | MIDTERM | [x] table in README, rationale in code |
+| 2.10 | Structured run logging (run_id, rows, duration, status) into `meta.pipeline_runs` | SHOULD | MIDTERM | [x] `run_log.py`, evidence §4 |
 
 ## EPIC 3 – PostgreSQL
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 3.1 | Schemas `raw`, `staging`, `curated`, `meta`; DDL under `sql/` | MUST | MIDTERM | [ ] |
-| 3.2 | Raw tables (JSONB + metadata, unique key per source/endpoint/params/date) | MUST | MIDTERM | [ ] |
-| 3.3 | Idempotent raw loader (`ON CONFLICT`) | MUST | MIDTERM | [ ] |
-| 3.4 | Verification queries (`sql/verify/*.sql`) | MUST | MIDTERM | [ ] |
+| 3.1 | Schemas `raw`, `staging`, `curated`, `meta`; DDL under `sql/` | MUST | MIDTERM | [x] `sql/raw/001..003` |
+| 3.2 | Raw tables (JSONB + metadata, unique key per source/endpoint/params/date) | MUST | MIDTERM | [x] `raw.football_data` |
+| 3.3 | Idempotent raw loader (`ON CONFLICT`) | MUST | MIDTERM | [x] `raw_loader.py`, evidence §2 |
+| 3.4 | Verification queries (`sql/verify/*.sql`) | MUST | MIDTERM | [x] 8 checks, `make verify` |
 | 3.5 | Grain documentation for every curated table | MUST | MIDTERM | [ ] |
 
 ## EPIC 4 – Docker
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 4.1 | `docker-compose.yml`: postgres (healthcheck, volume), orchestrator, pipeline image, one network | MUST | MIDTERM | [ ] |
-| 4.2 | `Dockerfile` for pipeline code (pinned base image, non-root) | MUST | MIDTERM | [ ] |
-| 4.3 | `docker compose up -d` starts everything; `make up/down/logs` | MUST | MIDTERM | [ ] |
+| 4.1 | `docker-compose.yml`: postgres (healthcheck, volume), orchestrator, pipeline image, one network | MUST | MIDTERM | [~] postgres + pipeline done; orchestrator service open |
+| 4.2 | `Dockerfile` for pipeline code (pinned base image, non-root) | MUST | MIDTERM | [x] python:3.12-slim-bookworm, uid 1000 |
+| 4.3 | `docker compose up -d` starts everything; `make up/down/logs` | MUST | MIDTERM | [~] targets exist; need verification on a machine with Docker |
 | 4.4 | Clean-environment test on a second machine, documented | MUST | MIDTERM | [ ] |
 
 ## EPIC 5 – Workflow orchestration
@@ -80,8 +80,8 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 5.1 | Spike Dagster in Compose (schedule, partition, backfill); decide ADR-002 | MUST | MIDTERM | [ ] |
 | 5.2 | Daily job with dependencies extract → validate → load → transform → dq | MUST | MIDTERM | [ ] |
 | 5.3 | Retry policies (transient only) | MUST | MIDTERM | [ ] |
-| 5.4 | Daily partitions; backfill for a date range tested and documented | MUST | MIDTERM | [ ] |
-| 5.5 | Rerun test: run twice, compare counts (evidence) | MUST | MIDTERM | [ ] |
+| 5.4 | Daily partitions; backfill for a date range tested and documented | MUST | MIDTERM | [~] CLI backfill works (evidence §3); orchestrator partitions open |
+| 5.5 | Rerun test: run twice, compare counts (evidence) | MUST | MIDTERM | [x] evidence §2 + integration test |
 | 5.6 | Failure-behaviour matrix implemented (API down, 429, invalid JSON, DB down, missing weather) | MUST | MIDTERM | [ ] |
 
 ## EPIC 6 – Transformations
@@ -102,7 +102,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 |---|---|---|---|---|
 | 7.1 | SQL checks: not null, unique keys, home ≠ away, valid status, referential integrity, row count > 0 | MUST | MIDTERM | [ ] |
 | 7.2 | Plausibility: temperature range, goals ≥ 0, match date within season | SHOULD | MIDTERM | [ ] |
-| 7.3 | Results persisted in `meta.dq_results`; critical failures fail the run | MUST | MIDTERM | [ ] |
+| 7.3 | Results persisted in `meta.dq_results`; critical failures fail the run | MUST | MIDTERM | [~] table exists, `make verify` exits non-zero; writing results into the table open |
 | 7.4 | Schema-drift handling: required-field validation with clear error, optional fields tolerant | MUST | MIDTERM | [ ] |
 | 7.5 | Same checks against BigQuery | MUST | FINAL | [ ] |
 
@@ -113,7 +113,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 8.1 | Unit tests: config, API client | MUST | M1 | [x] 15 tests, CI |
 | 8.1b | Contract tests against the real samples (schema, keys, referential integrity) | SHOULD | M1 | [x] 13 tests in `tests/test_sample_payloads.py` |
 | 8.2 | Unit tests: parsing of sample payloads, transformations (pure SQL tested against Postgres in CI service) | MUST | MIDTERM | [ ] |
-| 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [ ] |
+| 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
 | 8.4 | Data-quality check tests | SHOULD | MIDTERM | [ ] |
 | 8.5 | GitHub Actions: lint + tests on every push | SHOULD | M1 | [x] `.github/workflows/ci.yml` |
 

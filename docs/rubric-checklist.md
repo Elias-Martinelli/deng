@@ -12,13 +12,13 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 |---|---|---|---|---|---|
 | Use case with problem, end user and data product; transformations linked to it | M1 | DONE | `docs/use-case.md` | document present, transformations listed per table | refine after API exploration |
 | Documented data source: provenance, access, format, schema, update frequency, volume, DQ risks | M1 | DONE | `docs/data-sources.md`, `docs/evidence/api-exploration.md` | 8 real payloads committed; 13 contract tests pass; measured volumes and rate limits | how far back seasons go (backlog 1.8) |
-| Modular batch ingestion; full vs. incremental, frequency and failure behaviour justified | MIDTERM | IN PROGRESS | `src/deng/ingestion/football_data_client.py` | 28 tests pass (`pytest`), incl. 13 contract tests on real payloads | extract jobs, loader, decision table |
-| PostgreSQL locally | MIDTERM | TODO | – | – | schemas, DDL, Compose service |
+| Modular batch ingestion; full vs. incremental, frequency and failure behaviour justified | MIDTERM | DONE | `src/deng/ingestion/{football_data_client,extract}.py`, `src/deng/pipeline.py` | 40 tests pass; `docs/evidence/local-pipeline-run.md` §1–§6 | weather ingestion |
+| PostgreSQL locally | MIDTERM | DONE | `sql/raw/001..003`, `src/deng/database/` | 16 raw rows loaded and queried, evidence §1–§5 | staging + curated schemas |
 | Cloud storage + warehouse (GCS, BigQuery) in the final solution | FINAL | TODO | – | – | EPIC 9, 10 |
 | Transformations justified in README | MIDTERM | TODO | – | – | EPIC 6 |
-| Orchestration: schedule, dependencies, reruns, retries, backfills | MIDTERM | TODO | ADR-002 (PROPOSED) | – | EPIC 5 |
+| Orchestration: schedule, dependencies, reruns, retries, backfills | MIDTERM | IN PROGRESS | retries + reruns + backfills implemented and evidenced | evidence §2, §3, §6 | scheduling via Dagster (ADR-002) |
 | Terraform for GCP resources; no hard-coded secrets | FINAL | TODO | `.env.example`, `.gitignore` rules for tfstate/keys | secrets scan of repo clean | EPIC 11 |
-| Reproducibility: clone → README → run assessed stages | MIDTERM / FINAL | TODO | `Makefile` (`setup`, `test`, `lint`, `explore`) | `make test` passes in CI | Docker Compose, verification steps |
+| Reproducibility: clone → README → run assessed stages | MIDTERM / FINAL | IN PROGRESS | `setup.sh`, `Makefile` (20 targets), `--from-samples` lets a reviewer run without an API key | `make test` in CI; evidence reproducible | clean-environment test on a second machine |
 | Repository: code, config, diagrams, setup, verification, known limitations | all | IN PROGRESS | `README.md`, `docs/architecture/`, `docs/use-case.md` §Limitations | – | keep current |
 
 ## Milestone 1 – initial pitch (§1.5, §2.2 – 10 points)
@@ -39,10 +39,10 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 
 | Requirement | Milestone | Status | Implementation | Evidence | Open Tasks |
 |---|---|---|---|---|---|
-| Modular batch-ingestion script loading source data into storage (4 pts) | MIDTERM | IN PROGRESS | client done; extract/load TODO | unit tests | EPIC 2, 3 |
-| Local PostgreSQL with loaded, queryable data (2 pts) | MIDTERM | TODO | – | – | EPIC 3, verification queries |
-| Docker Compose with required services on a common network (3 pts) | MIDTERM | TODO | – | – | EPIC 4 |
-| Orchestrator runs and schedules ingestion, supports reruns/backfills (3 pts) | MIDTERM | TODO | – | – | EPIC 5 |
+| Modular batch-ingestion script loading source data into storage (4 pts) | MIDTERM | DONE | client + extract + raw loader + CLI | evidence §1, 40 tests | weather source |
+| Local PostgreSQL with loaded, queryable data (2 pts) | MIDTERM | DONE | `raw.football_data`, `meta.pipeline_runs` | `make verify` 2/2 passed, evidence §5 | curated tables |
+| Docker Compose with required services on a common network (3 pts) | MIDTERM | IN PROGRESS | `docker-compose.yml`, `Dockerfile` | written with healthcheck, volume, non-root image | must be run on a machine with Docker; add orchestrator service |
+| Orchestrator runs and schedules ingestion, supports reruns/backfills (3 pts) | MIDTERM | IN PROGRESS | CLI parameterised by logical date; reruns and backfills proven | evidence §2, §3 | scheduler itself (ADR-002 spike) |
 | ≥ 1 justified transformation supporting the use case | MIDTERM | TODO | – | – | 6.2, 6.3 |
 | Architecture v0.2 reflecting implementation experience | MIDTERM | TODO | – | – | 14.4 |
 | Complete setup, execution, verification instructions | MIDTERM | TODO | – | – | 14.5 |

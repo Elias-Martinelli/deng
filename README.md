@@ -103,10 +103,30 @@ qualified clubs. Handling strategy: [`docs/data-sources.md` §5](docs/data-sourc
 ## Batch Ingestion Strategy
 
 One scheduled run per day (data changes a few times per day at most; forecast
-models update every 1–6 h). Each run: extract → validate → store raw (immutable,
-per ingestion date) → transform → data-quality checks → snapshot append.
-Full vs. incremental per endpoint is decided in the midterm sprint based on the
-real payloads (`docs/rubric-checklist.md`, backlog 2.9).
+models update every 1–6 h). Each run: extract → store raw (immutable, per
+ingestion date) → transform → data-quality checks.
+
+Load strategy per endpoint — all **FULL** at this stage, justified in code next
+to the endpoint definitions ([`src/deng/ingestion/extract.py`](src/deng/ingestion/extract.py)):
+
+| Endpoint | Rows | Strategy | Why |
+|---|---|---|---|
+| `competitions/CL` | 47 seasons | FULL | 9 KB, changes rarely |
+| `competitions/CL/teams` | 36 | FULL | feeds `dim_team`, stable within a season |
+| `competitions/CL/standings` | 36 | FULL | changes every matchday, one request |
+| `competitions/CL/matches` | 144 | FULL | 212 KB in one request |
+
+Incremental loading via `lastUpdated` would need an extra request to discover
+what changed and would still miss matches the API *adds* mid-season (the
+knockout draw in December). A full reload of a small bounded payload is simpler,
+self-heals after a missed day, and costs one request. That reasoning stops
+holding once we ingest many seasons at once — then incremental *by season* is
+the plan (backlog 1.9).
+
+Requests are paced to stay under the free tier's 10/minute and react to the
+`X-Requests-Available-Minute` header. Transient failures (429, 5xx, network)
+retry with exponential back-off; 400/403/404 fail immediately, because repeating
+them cannot help and would spend the request budget.
 
 ## Local Development
 
@@ -125,19 +145,49 @@ Requirements: Python ≥ 3.11, `make`. Docker is required from the midterm on.
 
 ## PostgreSQL
 
-Planned schemas: `raw` (JSONB payloads + ingestion metadata), `staging` (typed,
-flattened), `curated` (facts and dimensions), `meta` (pipeline runs,
-data-quality results). DDL will live in `sql/`. *(midterm)*
+Four schemas, separated by how much the data can be trusted:
+
+| Schema | Content | Status |
+|---|---|---|
+| `raw` | API payloads as received (JSONB) plus ingestion metadata | implemented |
+| `staging` | typed, flattened tables derived from raw | next sprint |
+| `curated` | facts and dimensions served to analytics and the app | next sprint |
+| `meta` | `pipeline_runs`, `dq_results` | implemented |
+
+`raw.football_data` holds **one row per (source, endpoint, request parameters,
+ingestion date)** — one API answer on one day. A `UNIQUE` constraint on exactly
+that key plus `INSERT ... ON CONFLICT DO UPDATE` is what makes reruns safe. The
+payload is stored unchanged; a `payload_hash` (sha256 over the canonical JSON)
+shows whether the source actually changed. DDL: [`sql/raw/`](sql/raw/).
 
 ## Docker
 
-`docker compose up -d` will start PostgreSQL, the orchestrator and the pipeline
-image on one network with health checks and a named volume. *(midterm)*
+```bash
+make up              # PostgreSQL with a health check and a named volume
+make init            # create schemas and tables (idempotent)
+make ingest-samples  # ingest the committed payloads - no API key needed
+make verify          # verification queries; non-zero exit when a check fails
+make down            # stop (keeps the data); make reset also deletes the volume
+```
+
+Two services on one network: `postgres`, and the `pipeline` image itself. The
+pipeline is a batch job, not a daemon, so it is started per run
+(`make docker-ingest` → `docker compose run --rm pipeline ...`) instead of being
+kept alive. The dependent service waits for the database's *health check*, not
+merely for the container to exist, so a cold start cannot fail with "connection
+refused".
 
 ## Workflow Orchestration
 
 Candidate: Dagster (daily partitions ⇒ backfills and reruns per ingestion date).
-Evaluation and decision: [ADR-002](docs/adr/ADR-002-workflow-orchestrator.md). *(midterm)*
+Evaluation and decision: [ADR-002](docs/adr/ADR-002-workflow-orchestrator.md).
+*(next sprint)* — the CLI it will call already exists and is parameterised by
+logical date, so scheduling is the only piece still missing:
+
+```bash
+python -m deng.pipeline ingest --date 2026-09-18
+python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
+```
 
 ## Transformation
 
@@ -174,9 +224,14 @@ facts, dimensions and keys follows once the real schema is known.
 
 ## Data Quality
 
-SQL checks after each stage (not null, unique business keys, home ≠ away, valid
-status, referential integrity, row counts, plausibility). Critical violations
-fail the run; results are persisted. *(midterm)*
+Verification queries in [`sql/verify/`](sql/verify/) run via `make verify` and
+exit non-zero when a check fails, so the orchestrator can fail the run instead
+of reporting success on bad data. Implemented today: raw payloads present, all
+four endpoints ingested, no duplicate business keys, match payload non-empty,
+every raw row belongs to a recorded run, latest run succeeded, no run stuck in
+RUNNING. Row-level checks on the curated tables follow with the transformations.
+
+Evidence: [`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
 
 ## Reproducibility
 
@@ -187,7 +242,7 @@ clean environment by the other team member before submission.
 
 ## Verification
 
-Currently: `make test` (28 tests) and `make lint`. `make verify` with
+Currently: `make test` (40 tests) and `make lint`. `make verify` with
 database checks follows with the midterm.
 
 ## Analytics / Machine Learning
@@ -227,7 +282,7 @@ intelligence). It never calls external APIs.
 | Milestone | Deadline | Status |
 |---|---|---|
 | Milestone 1 – initial pitch | week 3 (pitch) | **complete** – use case, verified data sources, Architecture v0.1, ADRs, backlog |
-| Midterm – local pipeline | 22 Oct 2026 15:30 | not started |
+| Midterm – local pipeline | 22 Oct 2026 15:30 | in progress – ingestion, raw zone, Docker, reruns and backfills work; orchestrator and transformations open |
 | Final – cloud pipeline | 10 Dec 2026 20:00 | not started |
 
 Rubric coverage: [`docs/rubric-checklist.md`](docs/rubric-checklist.md).
@@ -246,14 +301,25 @@ priorities, milestones, timeline and division of responsibilities.
 ├── Makefile                  # setup · test · lint · format · explore
 ├── pyproject.toml            # package metadata, dependencies, ruff/pytest config
 ├── .github/workflows/ci.yml  # lint + tests on every push
+├── docker-compose.yml        # PostgreSQL + pipeline image on one network
+├── Dockerfile                # pinned, non-root pipeline image
 ├── src/deng/
 │   ├── config.py             # validated settings from environment
-│   └── ingestion/
-│       └── football_data_client.py
+│   ├── pipeline.py           # CLI: init · ingest · backfill · verify
+│   ├── ingestion/
+│   │   ├── football_data_client.py
+│   │   └── extract.py        # which endpoints, which load strategy, and why
+│   └── database/
+│       ├── connection.py     # connections + DDL application
+│       ├── raw_loader.py     # idempotent upsert into the raw zone
+│       └── run_log.py        # meta.pipeline_runs context manager
 ├── scripts/
 │   └── explore_football_api.py   # Phase-12 API exploration (writes data/sample/)
 ├── tests/
-├── data/sample/              # small committed API samples (test fixtures)
+├── sql/
+│   ├── raw/                  # schemas, meta tables, raw tables
+│   └── verify/               # verification queries (make verify)
+├── data/sample/              # small committed API samples (fixtures + offline source)
 └── docs/
     ├── use-case.md
     ├── data-sources.md
@@ -263,8 +329,8 @@ priorities, milestones, timeline and division of responsibilities.
     └── adr/
 ```
 
-Folders for `sql/`, `orchestration/`, `terraform/` and `app/` are created when
-the corresponding code arrives.
+Folders for `orchestration/`, `terraform/` and `app/` are created when the
+corresponding code arrives.
 
 ## Authors
 
