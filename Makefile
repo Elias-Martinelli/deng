@@ -13,9 +13,15 @@
 
 VENV := .venv
 MIN_PYTHON := 3.10
+# The candidate must satisfy the version floor AND be able to build a venv.
+# Checking `import venv` alone is not enough: on Debian/Ubuntu `python3.12`
+# without the python3.12-venv package imports venv happily and then fails at
+# creation time with "ensurepip is not available". Importing ensurepip is the
+# check that matches what we actually do with the interpreter.
 PYTHON ?= $(shell for c in python3.13 python3.12 python3.11 python3.10 python3; do \
 	command -v $$c >/dev/null 2>&1 && \
-	$$c -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null && \
+	$$c -c 'import sys, venv, ensurepip; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
+	  2>/dev/null && \
 	{ echo $$c; break; }; done)
 PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 
@@ -27,15 +33,17 @@ help:  ## Show available targets
 
 setup:  ## Create a virtualenv and install the package with dev dependencies
 	@if [ -z "$(PYTHON)" ]; then \
-		echo "ERROR: no Python >= $(MIN_PYTHON) found on PATH."; \
-		echo "  Debian/Ubuntu/WSL: sudo apt install python3.12 python3.12-venv"; \
-		echo "  pyenv:             pyenv install 3.12 && pyenv local 3.12"; \
+		echo "ERROR: no Python >= $(MIN_PYTHON) that can create a virtualenv was found."; \
+		echo "  Interpreters on PATH:"; \
+		for c in python3.13 python3.12 python3.11 python3.10 python3; do \
+			command -v $$c >/dev/null 2>&1 && \
+			echo "    $$c $$($$c --version 2>&1 | cut -d' ' -f2)$$( \
+				$$c -c 'import venv, ensurepip' 2>/dev/null || echo '  <- venv/ensurepip missing')"; \
+		done; \
+		echo "  Debian/Ubuntu/WSL: sudo apt install python3-venv   (or python3.12-venv)"; \
 		echo "  Already have one?  make setup PYTHON=/path/to/python3.12"; \
 		exit 1; \
 	fi
-	@$(PYTHON) -c "import venv" 2>/dev/null || { \
-		echo "ERROR: the venv module is missing for $(PYTHON)."; \
-		echo "  Debian/Ubuntu/WSL: sudo apt install python3-venv"; exit 1; }
 	@if [ -x $(VENV)/bin/python ] && ! $(VENV)/bin/python -c \
 		'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then \
 		echo "Existing $(VENV) uses an unsupported Python – recreating it."; rm -rf $(VENV); \

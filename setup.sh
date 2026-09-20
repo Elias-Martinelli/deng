@@ -16,9 +16,14 @@ echo
 # --- 1. Find a suitable interpreter ----------------------------------------
 PYTHON="${PYTHON:-}"
 if [ -z "$PYTHON" ]; then
+    # The candidate must satisfy the version floor AND be able to build a venv.
+    # `import venv` alone is not enough: Debian/Ubuntu ship python3.12 without
+    # the python3.12-venv package, where venv imports fine and creation then
+    # fails with "ensurepip is not available".
     for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
         if command -v "$candidate" >/dev/null 2>&1 &&
-            "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
+            "$candidate" -c \
+                'import sys, venv, ensurepip; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
                 2>/dev/null; then
             PYTHON="$candidate"
             break
@@ -27,19 +32,20 @@ if [ -z "$PYTHON" ]; then
 fi
 
 if [ -z "$PYTHON" ]; then
-    echo "ERROR: no Python >= $MIN_VERSION found on PATH."
-    echo "  Debian/Ubuntu/WSL: sudo apt install python3.12 python3.12-venv"
-    echo "  pyenv:             pyenv install 3.12"
+    echo "ERROR: no Python >= $MIN_VERSION that can create a virtualenv was found."
+    echo "  Interpreters on PATH:"
+    for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            note=$("$candidate" -c 'import venv, ensurepip' 2>/dev/null \
+                   || echo "  <- venv/ensurepip missing")
+            echo "    $candidate $("$candidate" --version 2>&1 | cut -d' ' -f2)$note"
+        fi
+    done
+    echo "  Debian/Ubuntu/WSL: sudo apt install python3-venv   (or python3.12-venv)"
     echo "  Have one already?  PYTHON=/path/to/python3.12 ./setup.sh"
     exit 1
 fi
 echo "Interpreter: $PYTHON ($("$PYTHON" --version 2>&1))"
-
-if ! "$PYTHON" -c "import venv" 2>/dev/null; then
-    echo "ERROR: the venv module is missing for $PYTHON."
-    echo "  Debian/Ubuntu/WSL: sudo apt install python3-venv"
-    exit 1
-fi
 
 # --- 2. Virtualenv ----------------------------------------------------------
 if [ -x .venv/bin/python ] &&
