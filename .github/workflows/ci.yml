@@ -14,17 +14,58 @@ jobs:
         # Lowest supported version (Ubuntu 22.04 LTS default) and a current one.
         # Peer reviewers run whatever their distribution ships, so both must pass.
         python-version: ["3.10", "3.12"]
+
+    services:
+      # A real PostgreSQL so the integration tests actually run in CI instead of
+      # skipping. Same major version as docker-compose.yml.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cl_intelligence
+          POSTGRES_USER: deng
+          POSTGRES_PASSWORD: ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U deng -d cl_intelligence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: cl_intelligence
+      POSTGRES_USER: deng
+      POSTGRES_PASSWORD: ci-password
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+
       - name: Install
         run: pip install -e ".[dev]"
+
       - name: Lint
         run: |
-          ruff check .
-          ruff format --check .
+          python -m ruff check .
+          python -m ruff format --check .
+
+      - name: Apply schema
+        run: python -m deng.pipeline init
+
       - name: Test
-        run: pytest
+        # `python -m pytest` rather than bare `pytest`: identical to what the
+        # Makefile runs, so a green local run means a green CI run.
+        run: python -m pytest -v
+
+      - name: Pipeline smoke test (ingest twice, must stay idempotent)
+        run: |
+          python -m deng.pipeline ingest --date 2026-09-20 --from-samples
+          python -m deng.pipeline ingest --date 2026-09-20 --from-samples
+          python -m deng.pipeline transform --date 2026-09-20
+          python -m deng.pipeline verify
