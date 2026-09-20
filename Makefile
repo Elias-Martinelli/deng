@@ -25,8 +25,9 @@ PYTHON ?= $(shell for c in python3.13 python3.12 python3.11 python3.10 python3; 
 	{ echo $$c; break; }; done)
 PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 
-.PHONY: help setup test test-integration lint format explore doctor clean \
-        up down logs ps psql init ingest ingest-samples backfill verify docker-ingest reset
+.PHONY: help setup setup-app test test-integration lint format explore doctor clean \
+        up down logs ps psql init ingest ingest-samples transform dq run run-samples \
+        backfill verify docker-ingest docker-app reset app notebook
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -113,6 +114,18 @@ ingest:  ## Ingest today from the API (needs FOOTBALL_DATA_API_KEY)
 ingest-samples:  ## Ingest from the committed sample payloads (no API key needed)
 	$(PY) -m deng.pipeline ingest --from-samples
 
+transform:  ## raw -> staging -> curated for today
+	$(PY) -m deng.pipeline transform
+
+dq:  ## Run the data-quality checks and persist the results
+	$(PY) -m deng.pipeline dq
+
+run:  ## Full daily sequence from the API: ingest -> transform -> data quality
+	$(PY) -m deng.pipeline run
+
+run-samples:  ## Full daily sequence from the committed payloads (no API key needed)
+	$(PY) -m deng.pipeline run --from-samples
+
 backfill:  ## Re-run a date range: make backfill FROM=2026-09-01 TO=2026-09-10
 	$(PY) -m deng.pipeline backfill --from $(FROM) --to $(TO)
 
@@ -122,8 +135,22 @@ verify:  ## Run the verification queries; non-zero exit when a check fails
 docker-ingest:  ## Run the ingestion inside the container image (proves the image works)
 	docker compose run --rm pipeline ingest --from-samples
 
-test-integration:  ## Run the tests including the ones that need PostgreSQL
-	$(PY) -m pytest -v -k "integration or Integration"
+docker-app:  ## Start the Streamlit viewer in a container on http://localhost:8501
+	docker compose --profile app up -d --build app
+
+test-integration:  ## Run only the tests that need PostgreSQL
+	$(PY) -m pytest -v -m postgres
+
+# --- Consumers of the data product -------------------------------------------
+
+setup-app:  ## Install the extras for Streamlit and Jupyter
+	$(VENV)/bin/pip install -e ".[dev,app,notebook]"
+
+app:  ## Start the Streamlit viewer (reads curated tables only)
+	$(PY) -m streamlit run app/streamlit_app.py
+
+notebook:  ## Start JupyterLab with the project environment
+	$(PY) -m jupyterlab --notebook-dir=notebooks
 
 clean:  ## Remove the virtualenv and caches (keeps .env and data/)
 	rm -rf $(VENV) .pytest_cache .ruff_cache
