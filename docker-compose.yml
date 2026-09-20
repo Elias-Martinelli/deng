@@ -1,0 +1,76 @@
+# Local development environment.
+#
+#   docker compose up -d          start PostgreSQL
+#   docker compose run --rm pipeline python -m deng.pipeline ingest
+#   docker compose down           stop (keeps the data volume)
+#   docker compose down -v        stop and delete the data
+#
+# Two services on one network: the database that holds the pipeline's data, and
+# the pipeline image itself. The pipeline is not a long-running service - it is
+# a batch job, so it is started per run with `docker compose run` instead of
+# being kept alive. The orchestrator added in the next sprint takes over that
+# invocation; the image stays the same.
+
+name: deng
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: deng-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cl_intelligence}
+      POSTGRES_USER: ${POSTGRES_USER:-deng}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      # Exposed so the host venv, psql and a GUI client can reach the same
+      # database the container pipeline writes to.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` alone returns true while the server is still initialising,
+      # so the dependent service would start too early. -d/-U make it check the
+      # actual database we use.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-deng} -d ${POSTGRES_DB:-cl_intelligence}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [deng]
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: deng-pipeline:local
+    depends_on:
+      postgres:
+        # Wait for the health check, not merely for the container to exist -
+        # otherwise the first run fails with "connection refused" on a cold start.
+        condition: service_healthy
+    environment:
+      # Inside the network the database is reachable under its service name,
+      # which overrides whatever .env says for host-side use.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-cl_intelligence}
+      POSTGRES_USER: ${POSTGRES_USER:-deng}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY:-}
+      FOOTBALL_DATA_COMPETITION: ${FOOTBALL_DATA_COMPETITION:-CL}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Read-only mount of the SQL files so a DDL change takes effect without
+      # rebuilding the image. Application code stays baked in on purpose - the
+      # image is what we ship, not a shell around the working copy.
+      - ./sql:/app/sql:ro
+    networks: [deng]
+    profiles: ["tools"]   # not started by `up`; invoked with `run`
+
+volumes:
+  pgdata:
+
+networks:
+  deng:
+    driver: bridge
