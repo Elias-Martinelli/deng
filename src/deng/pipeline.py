@@ -3,6 +3,9 @@
     python -m deng.pipeline init                      prepare the schemas
     python -m deng.pipeline ingest                    ingest for today
     python -m deng.pipeline ingest --date 2026-09-18  ingest for one logical date
+    python -m deng.pipeline transform                 raw -> staging -> curated
+    python -m deng.pipeline dq                        data-quality checks
+    python -m deng.pipeline run                       ingest + transform + dq in one go
     python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
     python -m deng.pipeline verify                    run the verification queries
 
@@ -22,6 +25,8 @@ from deng.config import get_settings
 from deng.database import PipelineRun, RawLoader, apply_sql_files, connect
 from deng.ingestion.extract import fetch_endpoints, read_sample_endpoints
 from deng.ingestion.football_data_client import ApiError, FootballDataClient
+from deng.quality import run_checks
+from deng.transformation import run_transformations
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +49,12 @@ def main(argv: list[str] | None = None) -> int:
         return command_ingest(args.date or date.today(), from_samples=args.from_samples)
     if args.command == "backfill":
         return command_backfill(args.date_from, args.date_to, from_samples=args.from_samples)
+    if args.command == "transform":
+        return command_transform(args.date or date.today())
+    if args.command == "dq":
+        return command_dq()
+    if args.command == "run":
+        return command_run(args.date or date.today(), from_samples=args.from_samples)
     if args.command == "verify":
         return command_verify()
     parser.print_help()
@@ -69,6 +80,15 @@ def build_parser() -> argparse.ArgumentParser:
     backfill.add_argument("--from", dest="date_from", type=date.fromisoformat, required=True)
     backfill.add_argument("--to", dest="date_to", type=date.fromisoformat, required=True)
     backfill.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
+
+    transform = sub.add_parser("transform", help="raw -> staging -> curated for one logical date")
+    transform.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+
+    sub.add_parser("dq", help="run the data-quality checks and persist the results")
+
+    run = sub.add_parser("run", help="ingest, transform and check in one go")
+    run.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+    run.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
 
     sub.add_parser("verify", help="run the verification queries and print the results")
     return parser
@@ -138,6 +158,66 @@ def command_ingest(logical_date: date, from_samples: bool = False) -> int:
                 raise
 
     print(f"ingest for {logical_date}: OK")
+    return 0
+
+
+def command_transform(logical_date: date) -> int:
+    """Run the SQL transformations for one logical date."""
+    with connect() as connection:
+        with PipelineRun(connection, "transform_curated", logical_date) as run:
+            result = run_transformations(connection, logical_date)
+            run.add_counts(loaded=result.total_rows_written)
+    for name, affected in result.statements:
+        print(f"  {name:<44} {affected:>6} rows")
+    print()
+    for table, count in result.row_counts.items():
+        print(f"  {table:<32} {count:>6} rows")
+    print(f"transform for {logical_date}: OK")
+    return 0
+
+
+def command_dq(run_id=None) -> int:
+    """Run the data-quality checks; non-zero exit when a CRITICAL check fails."""
+    with connect() as connection:
+        results = run_checks(connection, run_id=run_id)
+
+    width = max(len(r.check.name) for r in results)
+    blocking = 0
+    for result in results:
+        status = "PASS" if result.passed else "FAIL"
+        if result.is_blocking:
+            blocking += 1
+        print(
+            f"  [{status}] {result.check.name:<{width}}  {result.check.severity:<8} "
+            f"{result.observed}"
+        )
+    passed = sum(1 for r in results if r.passed)
+    print(f"\ndata quality: {passed}/{len(results)} checks passed", end="")
+    print(f", {blocking} CRITICAL failure(s)" if blocking else "")
+    return 1 if blocking else 0
+
+
+def command_run(logical_date: date, from_samples: bool = False) -> int:
+    """Ingest, transform and check - the sequence the orchestrator schedules daily."""
+    print(f"=== ingest {logical_date} ===")
+    code = command_ingest(logical_date, from_samples=from_samples)
+    if code != 0:
+        return code
+
+    print(f"\n=== transform {logical_date} ===")
+    code = command_transform(logical_date)
+    if code != 0:
+        return code
+
+    print("\n=== data quality ===")
+    code = command_dq()
+    if code != 0:
+        # The transformation itself was consistent; the data it produced is not.
+        # Failing here is the point: a scheduled run must not report success.
+        print("\nrun FAILED: a CRITICAL data-quality check did not pass", file=sys.stderr)
+        return code
+
+    print(f"\nrun for {logical_date}: OK")
     return 0
 
 
