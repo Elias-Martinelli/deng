@@ -11,8 +11,8 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 | Requirement | Milestone | Status | Implementation | Evidence | Open Tasks |
 |---|---|---|---|---|---|
 | Use case with problem, end user and data product; transformations linked to it | M1 | DONE | `docs/use-case.md` | document present, transformations listed per table | refine after API exploration |
-| Documented data source: provenance, access, format, schema, update frequency, volume, DQ risks | M1 | IN PROGRESS | `docs/data-sources.md` | comparison tables incl. limits and volume | real payload schema (backlog 1.3–1.5) |
-| Modular batch ingestion; full vs. incremental, frequency and failure behaviour justified | MIDTERM | IN PROGRESS | `src/deng/ingestion/football_data_client.py` | 15 unit tests pass (`pytest`) | extract jobs, loader, decision table |
+| Documented data source: provenance, access, format, schema, update frequency, volume, DQ risks | M1 | DONE | `docs/data-sources.md`, `docs/evidence/api-exploration.md` | 8 real payloads committed; 13 contract tests pass; measured volumes and rate limits | how far back seasons go (backlog 1.8) |
+| Modular batch ingestion; full vs. incremental, frequency and failure behaviour justified | MIDTERM | IN PROGRESS | `src/deng/ingestion/football_data_client.py` | 28 tests pass (`pytest`), incl. 13 contract tests on real payloads | extract jobs, loader, decision table |
 | PostgreSQL locally | MIDTERM | TODO | – | – | schemas, DDL, Compose service |
 | Cloud storage + warehouse (GCS, BigQuery) in the final solution | FINAL | TODO | – | – | EPIC 9, 10 |
 | Transformations justified in README | MIDTERM | TODO | – | – | EPIC 6 |
@@ -25,10 +25,10 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 
 | Requirement | Milestone | Status | Implementation | Evidence | Open Tasks |
 |---|---|---|---|---|---|
-| Selected dataset and source system | M1 | DONE | `docs/data-sources.md`, ADR-001 | comparison of 3 football + 3 weather sources | ACCEPT ADR-001 after exploration |
+| Selected dataset and source system | M1 | DONE | `docs/data-sources.md`, ADR-001 (ACCEPTED) | comparison of 3 football + 3 weather sources; verified against the live API | – |
 | User / stakeholder and analytics or ML use case | M1 | DONE | `docs/use-case.md` | – | – |
 | Expected output / data product | M1 | DONE | `docs/use-case.md` §Data product | table list with grain | – |
-| Data characteristics, risks, challenges | M1 | DONE | `docs/data-sources.md` (risks, limits), `docs/use-case.md` §Limitations | – | add real volume numbers from samples |
+| Data characteristics, risks, challenges | M1 | DONE | `docs/data-sources.md`, `docs/use-case.md` §Limitations, evidence §5–§11 | measured: 144 matches, 11 of 36 clubs without domestic data, inconsistent API aggregates | – |
 | Initial ingestion and storage strategy | M1 | DONE | `docs/architecture/architecture-v0.1.md` §2, ADR-003 | – | – |
 | Architecture v0.1 incl. division of responsibilities | M1 | DONE | `docs/architecture/architecture-v0.1.md` (Mermaid, §6) | – | fill in second student's name |
 | Initial README | M1 | DONE | `README.md` | – | – |

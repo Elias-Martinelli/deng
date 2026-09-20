@@ -1,7 +1,8 @@
 # ADR-001 – Football and weather data sources
 
-Status: **PROPOSED** (2026-09-18). Becomes ACCEPTED after the first real
-exploration run (`make explore`) confirms the schema and the season restriction.
+Status: **ACCEPTED** (2026-09-20). Confirmed by a real exploration run; the
+findings, including two corrections to earlier assumptions, are recorded in
+[`docs/evidence/api-exploration.md`](../evidence/api-exploration.md).
 
 ## Context
 
@@ -40,17 +41,25 @@ account. Detailed comparison: [`docs/data-sources.md`](../data-sources.md).
   backfills are always possible, just slower.
 * Full season schedule available upfront → the "future match" part of the use
   case works from day one.
+* **Historical seasons are accessible** despite the documentation suggesting
+  otherwise: `?season=2023` returns the complete 2023/24 season (125 matches,
+  HTTP 200), and 47 seasons back to 1980 are listed. Multi-season form,
+  head-to-head and a realistic ML training set therefore become possible.
+* Referees are included in match payloads and are usable as a match attribute.
 * `X-Requests-Available-Minute` header allows precise client-side throttling.
 * Open-Meteo returns forecast *and* archive from one provider under CC BY 4.0.
 
 ## Disadvantages
 
-* **Current season only** on the free tier – no multi-season history for form or
-  model training. Mitigation: raw payloads are kept from the first run; the
-  `head2head` sub-resource still yields historical encounters; ClubElo is a
-  possible cross-season strength signal (COULD).
 * No line-ups, injuries, player or match statistics → those attribute groups are
   `NOT_AVAILABLE` in the snapshot table.
+* **Asymmetric domestic coverage:** `/teams/{id}/matches` is silently restricted
+  to competitions in our tier. 25 of the 36 league-phase clubs have their
+  domestic league covered, 11 do not, so their form rests on Champions League
+  matches alone. Every form feature must carry the number of matches behind it.
+* The API's own aggregates (`resultSet.wins/draws/losses`, `standings.form`) are
+  inconsistent or empty and must not be used – see evidence §8.
+* `odds` is a stub object containing a marketing message, not data.
 * No venue coordinates → manual reference file must be maintained when new clubs
   qualify (data-quality check alerts on missing venues).
 * Scores are "delayed" on the free tier – irrelevant for a daily batch, but the
@@ -60,8 +69,10 @@ account. Detailed comparison: [`docs/data-sources.md`](../data-sources.md).
 
 * Ingestion budget ≈ 60 calls/day → ~6 minutes. The client throttles on the
   rate-limit headers and retries on 429/5xx.
-* Raw zone becomes the archive of record; a backfill for a past date can only
-  replay what was stored on that date (the API does not serve past seasons).
+* Raw zone remains the archive of record for *point-in-time* questions (what was
+  known on a given day); past **seasons** can additionally be re-fetched from the
+  API, which makes a seasonal backfill genuinely useful rather than a
+  demonstration.
 * The data model must carry explicit availability states instead of NULL-only.
 * If the free tier changes, the client abstraction allows swapping the provider
   behind the same extraction interface; the raw zone remains valid.
@@ -72,4 +83,6 @@ account. Detailed comparison: [`docs/data-sources.md`](../data-sources.md).
   yesterday's curated data stays intact because loads are transactional.
 * *100× data:* still trivially within Open-Meteo limits; football data would
   require a paid tier (more competitions) but no architectural change – the raw
-  zone is partitioned by source/endpoint/date and BigQuery scales linearly.
+  zone is partitioned by source/endpoint/date and BigQuery scales linearly. The
+  binding constraint stays the 10 requests/minute limit, i.e. wall-clock time per
+  run, not storage.

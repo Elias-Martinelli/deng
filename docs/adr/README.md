@@ -9,7 +9,7 @@ Disadvantages → Consequences. Status is one of **PROPOSED**, **ACCEPTED**,
 
 | ADR | Title | Status | Date |
 |---|---|---|---|
-| [ADR-001](ADR-001-football-data-source.md) | Football and weather data sources | PROPOSED | 2026-09-18 |
+| [ADR-001](ADR-001-football-data-source.md) | Football and weather data sources | ACCEPTED | 2026-09-20 |
 | [ADR-002](ADR-002-workflow-orchestrator.md) | Workflow orchestrator | PROPOSED | 2026-09-18 |
 | [ADR-003](ADR-003-raw-data-storage.md) | Raw data storage strategy | PROPOSED | 2026-09-18 |
 
