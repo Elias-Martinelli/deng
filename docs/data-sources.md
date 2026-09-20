@@ -1,9 +1,10 @@
 # Data Sources
 
-Status: **evaluated 18 Sep 2026 – football-data.org and Open-Meteo recommended,
-final confirmation after the first real API exploration (see
-[`scripts/explore_football_api.py`](../scripts/explore_football_api.py)).**
-Decision record: [ADR-001](adr/ADR-001-football-data-source.md).
+Status: **confirmed 20 Sep 2026 by a real exploration run** – football-data.org
+and Open-Meteo are the chosen sources. Measured findings, including two
+corrections to the assumptions below, are in
+[`docs/evidence/api-exploration.md`](evidence/api-exploration.md); the decision
+is recorded in [ADR-001](adr/ADR-001-football-data-source.md) (ACCEPTED).
 
 Guiding principle: as few sources as possible, each one free, documented,
 reachable without scraping and usable for an academic project.
@@ -17,15 +18,15 @@ reachable without scraping and usable for an academic project.
 | Free tier | 12 competitions incl. **UEFA Champions League**, fixtures, results, standings, teams, head-to-head; scores/schedules "delayed" (irrelevant for a daily batch) | 100 requests/day, all endpoints (fixtures, standings, injuries, line-ups, statistics, predictions) | 30 requests/min; many endpoints capped (`eventsseason` limited to 15 events, team search limited to Arsenal) |
 | Rate limit | **10 requests/minute**; headers `X-Requests-Available-Minute`, `X-RequestCounter-Reset`; HTTP 429 when exceeded | 100/day, ~10/min | 30/min, 429 on excess |
 | Data format | JSON, flat v4 structures | JSON, deeply nested `response[]` | JSON, all values as strings |
-| Historical coverage (free) | **current season only** (older seasons return HTTP 403 "restricted resource"); head-to-head sub-resource returns previous encounters | "recent-season limits" – documentation is vague; the free plan has historically excluded the current season | multi-season, but result caps make bulk extraction impractical |
+| Historical coverage (free) | **verified: historical seasons ARE served** – `?season=2023` returns the complete 2023/24 season (125 matches, HTTP 200); 47 seasons listed back to 1980 | "recent-season limits" – documentation is vague; the free plan has historically excluded the current season | multi-season, but result caps make bulk extraction impractical |
 | Future fixtures | yes – whole season's schedule with `status=SCHEDULED`/`TIMED`, `utcDate`, `matchday`, `stage` | yes | yes (limited) |
 | Update frequency | source updates within minutes after matches; we poll daily | near real time | irregular, community-maintained |
-| Expected volume | CL season ≈ 189 matches, 36 teams, 1 standings table; ~150 KB per full fixture list; **< 2 MB raw per day, < 1 GB per season** | comparable, but 100/day budget is consumed by ~3 endpoint × team loops | small |
+| Expected volume | measured: 144 league-phase matches (knockout drawn in December), 36 teams, 1 standings table; 212 KB per full fixture list; **< 2 MB raw per day, < 1 GB per season**; all 47 seasons ≈ 5 000–6 500 matches | comparable, but 100/day budget is consumed by ~3 endpoint × team loops | small |
 | Documentation quality | good (`docs.football-data.org`), Postman collection | good, but marketing-heavy | mediocre, undocumented caps |
 | Reliability | stable since 2015, single maintainer | commercial, stable | best effort |
 | Licence / academic use | free tier explicitly aimed at non-commercial/learning use | free tier for evaluation | free tier for hobby use |
-| Known limitations | no line-ups, injuries, player stats, match statistics or odds on the free tier; no venue coordinates | 100 requests/day is a hard ceiling for a daily multi-endpoint batch; current-season access on the free plan uncertain | data quality and caps |
-| Data-quality risks | kick-off time `TBD` early in the season (`utcDate` at 00:00, `status=SCHEDULED` vs `TIMED`); postponed/rescheduled matches change `utcDate`; neutral-venue final; scores corrected after the fact | schema churn between versions; nested nulls | strings instead of typed values |
+| Known limitations | no line-ups, injuries, player or match statistics; `odds` is a stub message object; no venue coordinates; `/teams/{id}/matches` silently limited to tier competitions – 11 of 36 clubs have no domestic data (referees, by contrast, ARE included) | 100 requests/day is a hard ceiling for a daily multi-endpoint batch; current-season access on the free plan uncertain | data quality and caps |
+| Data-quality risks | measured: `?status=SCHEDULED` returns rows whose stored status is `TIMED`; `resultSet` aggregates do not add up and `standings.form` is null; `group` null since the 2024/25 format change; postponed matches change `utcDate`; neutral-venue final; scores corrected after the fact | schema churn between versions; nested nulls | strings instead of typed values |
 | Fallback strategy | keep every raw payload → we own the history; if the API disappears, API-Football fixtures can be mapped by (date, home team, away team) | – | – |
 | Verdict | **RECOMMENDED** – covers fixtures, results, standings, teams and H2H for CL within a generous minute-based limit | **REJECTED for the core** – daily budget too small for a repeatable batch; possible later add-on for injuries/line-ups if the plan question is clarified | **REJECTED** – free tier too capped |
 

@@ -92,10 +92,17 @@ external APIs itself.
 
 ## Limitations (known up front)
 
-* **Historical depth:** football-data.org's free tier exposes the current season
-  only. Team form is therefore built from the *current* season (Champions League
-  plus domestic matches for clubs from the 11 other free-tier competitions).
-  Multi-season history accumulates only from the day our ingestion starts.
+* **Historical depth:** verified as *better* than assumed – past seasons are
+  served (2023/24 fetched in full), 47 seasons are listed. Multi-season form,
+  head-to-head and an ML training set of several thousand matches are therefore
+  feasible. Note that the competition format changed in 2024/25 (groups → single
+  league phase), so cross-season comparisons must account for it.
+* **Asymmetric domestic coverage:** for 11 of the 36 league-phase clubs the free
+  tier carries no domestic league, so their form rests on Champions League
+  matches alone. Form features carry the number of matches behind them.
+* **The API's own aggregates are unreliable** (`resultSet.wins/draws/losses` do
+  not sum to the match count; `standings.form` is null), so all form figures are
+  computed from individual match rows.
 * **No line-ups, injuries or match statistics** on the free tier. The snapshot
   table records these as `NOT_AVAILABLE`; the schema leaves room for them if a
   paid tier or another source is added later.

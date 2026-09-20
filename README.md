@@ -64,23 +64,27 @@ available, and train a baseline outcome model on snapshot features.
 
 | Source | Content | Access | Limits (free) |
 |---|---|---|---|
-| football-data.org v4 | CL fixtures, results, standings, teams, head-to-head | REST/JSON, `X-Auth-Token`, free registration | 10 requests/min; **current season only**; no line-ups/injuries/statistics |
+| football-data.org v4 | CL fixtures, results, standings, teams, referees, head-to-head | REST/JSON, `X-Auth-Token`, free registration | 10 requests/min; no line-ups/injuries/statistics; 11 of 36 clubs without domestic-league data |
 | Open-Meteo | 16-day forecast, historical archive | REST/JSON, no key | 10 000 calls/day; CC BY 4.0 |
 | `data/reference/venues.csv` (planned) | stadium coordinates and time zones | versioned in repo | maintained manually |
 
 Full evaluation incl. rejected alternatives: [`docs/data-sources.md`](docs/data-sources.md),
-decision: [ADR-001](docs/adr/ADR-001-football-data-source.md).
+decision: [ADR-001](docs/adr/ADR-001-football-data-source.md) (ACCEPTED), measured
+findings from the live API: [`docs/evidence/api-exploration.md`](docs/evidence/api-exploration.md).
 
 ## Data Characteristics
 
-* Volume: ~189 matches, 36 teams, 1 standings table per season; ≈ 60 API calls
-  and < 2 MB raw per daily run; < 1 GB raw per season.
+* Volume (measured 20 Sep 2026): 144 league-phase matches, 36 teams, 1 standings
+  table; knockout fixtures are added after the December draw. ≈ 60 API calls and
+  < 2 MB raw per daily run; < 1 GB raw per season. All 47 listed seasons together
+  are roughly 5 000–6 500 matches.
 * Format: nested JSON (football), columnar JSON time series (weather).
 * Keys: `match.id`, `team.id` (stable integers from football-data.org);
   weather keyed by `(match_id, forecast_date)`.
-* Change behaviour: fixtures change kick-off time/status in place; scores are
-  appended once; forecasts are overwritten daily → raw payloads are kept per
-  ingestion date.
+* Change behaviour: fixtures change kick-off time/status in place, and **new
+  fixtures appear mid-season** (knockout draw in December); scores are appended
+  once; forecasts are overwritten daily → raw payloads are kept per ingestion
+  date, and `lastUpdated` is a candidate incremental watermark.
 
 ## Data Quality Risks
 
@@ -183,7 +187,7 @@ clean environment by the other team member before submission.
 
 ## Verification
 
-Currently: `make test` (15 unit tests) and `make lint`. `make verify` with
+Currently: `make test` (28 tests) and `make lint`. `make verify` with
 database checks follows with the midterm.
 
 ## Analytics / Machine Learning
@@ -204,8 +208,14 @@ intelligence). It never calls external APIs.
 
 ## Known Limitations
 
-* Free tier of football-data.org exposes the **current season only** → limited
-  historical depth; our raw zone is the archive from the first run onwards.
+* For **11 of the 36** league-phase clubs the free tier carries no domestic
+  league, so their form rests on Champions League matches alone. Form features
+  carry the number of matches behind them.
+* The API's own aggregates are inconsistent (`resultSet` win/draw/loss counts do
+  not sum to the match count; `standings.form` is null) → all form figures are
+  computed from individual match rows.
+* The competition format changed in 2024/25 (groups → single league phase), so
+  `group` is null for current seasons and populated for older ones.
 * No line-ups, injuries, player or match statistics → recorded as `NOT_AVAILABLE`.
 * Weather forecasts only ≤ 16 days ahead (reliable ≤ 7) → `NOT_YET_AVAILABLE`.
 * Venue coordinates come from a hand-maintained reference file.
@@ -216,7 +226,7 @@ intelligence). It never calls external APIs.
 
 | Milestone | Deadline | Status |
 |---|---|---|
-| Milestone 1 – initial pitch | week 3 (pitch) | foundation done, API exploration pending |
+| Milestone 1 – initial pitch | week 3 (pitch) | **complete** – use case, verified data sources, Architecture v0.1, ADRs, backlog |
 | Midterm – local pipeline | 22 Oct 2026 15:30 | not started |
 | Final – cloud pipeline | 10 Dec 2026 20:00 | not started |
 

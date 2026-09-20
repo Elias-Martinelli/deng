@@ -31,11 +31,13 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 |---|---|---|---|---|
 | 1.1 | Evaluate football and weather APIs, document per-source facts | MUST | M1 | [x] `docs/data-sources.md` |
 | 1.2 | Availability timeline per attribute group | MUST | M1 | [x] `docs/data-sources.md` §5 |
-| 1.3 | Register free key, run `scripts/explore_football_api.py`, commit small samples to `data/sample/` | MUST | M1 | [ ] |
-| 1.4 | Document schema, business keys, null behaviour from real payloads (`docs/evidence/api-exploration.md`) | MUST | M1 | [ ] |
-| 1.5 | Confirm/refute "current season only" and head2head behaviour; set ADR-001 to ACCEPTED | MUST | M1 | [ ] |
+| 1.3 | Register free key, run `scripts/explore_football_api.py`, commit small samples to `data/sample/` | MUST | M1 | [x] `data/sample/football-data/` (8 payloads) |
+| 1.4 | Document schema, business keys, null behaviour from real payloads (`docs/evidence/api-exploration.md`) | MUST | M1 | [x] evidence doc + 13 contract tests |
+| 1.5 | Confirm/refute "current season only" and head2head behaviour; set ADR-001 to ACCEPTED | MUST | M1 | [x] refuted – history IS served; ADR-001 ACCEPTED |
 | 1.6 | Create `data/reference/venues.csv` for the 36 league-phase clubs (lat, lon, tz) | MUST | MIDTERM | [ ] |
-| 1.7 | ClubElo as cross-season strength signal | COULD | FINAL | [ ] |
+| 1.7 | ClubElo as cross-season strength signal | COULD | FINAL | [ ] (lower value now that the API serves history) |
+| 1.8 | Probe how far back seasons are actually served (2023/24 verified; test 2015, 2005, 1995) | SHOULD | MIDTERM | [ ] |
+| 1.9 | Decide how many past seasons to ingest, and document the reason | MUST | MIDTERM | [ ] |
 
 ## EPIC 2 – Local batch ingestion
 
@@ -45,7 +47,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 2.2 | Throttling on `X-Requests-Available-Minute`; retry with back-off on 429/5xx | MUST | MIDTERM | [ ] |
 | 2.3 | Extract jobs: competition, teams, matches, standings | MUST | MIDTERM | [ ] |
 | 2.4 | Extract job: team matches (form across competitions) | SHOULD | MIDTERM | [ ] |
-| 2.5 | Extract job: head2head for upcoming matches | COULD | FINAL | [ ] |
+| 2.5 | Extract job: head2head for upcoming matches – first retest with a pairing known to have met | COULD | FINAL | [ ] |
 | 2.6 | Weather extract: forecast for matches ≤ 16 days ahead | MUST | MIDTERM | [ ] |
 | 2.7 | Weather extract: archive actuals for finished matches | SHOULD | FINAL | [ ] |
 | 2.8 | Minimal raw validation (top-level keys, non-empty lists, required ids) – fail fast | MUST | MIDTERM | [ ] |
@@ -88,7 +90,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 |---|---|---|---|---|
 | 6.1 | staging: typed `matches`, `teams`, `standings`, `weather_forecast` from raw JSONB | MUST | MIDTERM | [ ] |
 | 6.2 | curated `fact_match` (grain: one CL match) | MUST | MIDTERM | [ ] |
-| 6.3 | curated `fact_team_match_form` – last-5 form, home/away form, days since last match (point-in-time correct) | MUST | MIDTERM | [ ] |
+| 6.3 | curated `fact_team_match_form` – last-5 form, home/away form, days since last match (point-in-time correct); must carry `matches_considered` because 11 of 36 clubs have no domestic data | MUST | MIDTERM | [ ] |
 | 6.4 | curated `dim_team`, `dim_venue` | MUST | MIDTERM | [ ] |
 | 6.5 | curated `fact_match_snapshot` (grain: one upcoming match per snapshot date) with availability states | SHOULD | MIDTERM (basic) / FINAL (full) | [ ] |
 | 6.6 | `dim_date` | SHOULD | FINAL | [ ] |
@@ -109,6 +111,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
 | 8.1 | Unit tests: config, API client | MUST | M1 | [x] 15 tests, CI |
+| 8.1b | Contract tests against the real samples (schema, keys, referential integrity) | SHOULD | M1 | [x] 13 tests in `tests/test_sample_payloads.py` |
 | 8.2 | Unit tests: parsing of sample payloads, transformations (pure SQL tested against Postgres in CI service) | MUST | MIDTERM | [ ] |
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [ ] |
 | 8.4 | Data-quality check tests | SHOULD | MIDTERM | [ ] |
