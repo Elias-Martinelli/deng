@@ -15,7 +15,7 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 | Modular batch ingestion; full vs. incremental, frequency and failure behaviour justified | MIDTERM | DONE | `src/deng/ingestion/{football_data_client,extract}.py`, `src/deng/pipeline.py` | 40 tests pass; `docs/evidence/local-pipeline-run.md` §1–§6 | weather ingestion |
 | PostgreSQL locally | MIDTERM | DONE | `sql/raw/001..003`, `src/deng/database/` | 16 raw rows loaded and queried, evidence §1–§5 | staging + curated schemas |
 | Cloud storage + warehouse (GCS, BigQuery) in the final solution | FINAL | TODO | – | – | EPIC 9, 10 |
-| Transformations justified in README | MIDTERM | TODO | – | – | EPIC 6 |
+| Transformations justified in README | MIDTERM | DONE | `sql/transform/`, README §Transformation | 6 steps, per-step justification; 16 tests | weather transformations |
 | Orchestration: schedule, dependencies, reruns, retries, backfills | MIDTERM | IN PROGRESS | retries + reruns + backfills implemented and evidenced | evidence §2, §3, §6 | scheduling via Dagster (ADR-002) |
 | Terraform for GCP resources; no hard-coded secrets | FINAL | TODO | `.env.example`, `.gitignore` rules for tfstate/keys | secrets scan of repo clean | EPIC 11 |
 | Reproducibility: clone → README → run assessed stages | MIDTERM / FINAL | IN PROGRESS | `setup.sh`, `Makefile` (20 targets), `--from-samples` lets a reviewer run without an API key | `make test` in CI; evidence reproducible | clean-environment test on a second machine |
@@ -43,7 +43,7 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 | Local PostgreSQL with loaded, queryable data (2 pts) | MIDTERM | DONE | `raw.football_data`, `meta.pipeline_runs` | `make verify` 2/2 passed, evidence §5 | curated tables |
 | Docker Compose with required services on a common network (3 pts) | MIDTERM | IN PROGRESS | `docker-compose.yml`, `Dockerfile` | written with healthcheck, volume, non-root image | must be run on a machine with Docker; add orchestrator service |
 | Orchestrator runs and schedules ingestion, supports reruns/backfills (3 pts) | MIDTERM | IN PROGRESS | CLI parameterised by logical date; reruns and backfills proven | evidence §2, §3 | scheduler itself (ADR-002 spike) |
-| ≥ 1 justified transformation supporting the use case | MIDTERM | TODO | – | – | 6.2, 6.3 |
+| ≥ 1 justified transformation supporting the use case | MIDTERM | DONE | `fact_match`, `fact_team_match_form` | point-in-time form; leakage guard tested | – |
 | Architecture v0.2 reflecting implementation experience | MIDTERM | TODO | – | – | 14.4 |
 | Complete setup, execution, verification instructions | MIDTERM | TODO | – | – | 14.5 |
 | Peer reproducibility (5 pts): independent execution by peers | MIDTERM | TODO | – | – | 4.4 clean-environment test |
@@ -57,9 +57,9 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 | Terraform provisions GCS bucket + BigQuery dataset (3 pts) | FINAL | TODO | – | – | EPIC 11 |
 | Orchestrated, schedulable pipeline source → cloud data lake; production path must not depend on local storage (3 pts) | FINAL | TODO | – | – | EPIC 9 |
 | Transformation pipeline data lake → curated BigQuery tables (3 pts, with warehouse design) | FINAL | TODO | – | – | EPIC 10 |
-| Analytical data model; grain stated per final table; facts/dimensions identified | FINAL | TODO | `docs/use-case.md` lists planned grains | – | ADR data model |
+| Analytical data model; grain stated per final table; facts/dimensions identified | FINAL | IN PROGRESS | `docs/data-model.md`; grains also as COMMENT ON TABLE | 3 curated tables live | BigQuery version, dim_date/dim_venue |
 | Partitioning and clustering justified by query patterns | FINAL | TODO | initial idea in architecture v0.1 §3 | – | ADR |
-| Data-quality checks, failure handling, safe reruns (2 pts) | FINAL | TODO | – | – | EPIC 7, 41 |
+| Data-quality checks, failure handling, safe reruns (2 pts) | FINAL | IN PROGRESS | 12 checks persisted to `meta.dq_results`; transactional transform | evidence; CI smoke test | same checks against BigQuery |
 | Documentation, configuration examples, verification queries, known limitations (2 pts) | FINAL | TODO | `.env.example` | – | – |
 | Final architecture + evolution from v0.1 | FINAL | TODO | v0.1 exists | – | 14.7 |
 | Peer reproducibility (5 pts) | FINAL | TODO | – | – | clean-environment test |

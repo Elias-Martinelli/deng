@@ -166,3 +166,112 @@ integration tests skip rather than fail:
 $ POSTGRES_PORT=59999 pytest -q
 ...............ssssssssssss.............   28 passed, 12 skipped
 ```
+
+
+---
+
+## 8. Transformations and the curated layer (21 September 2026)
+
+```console
+$ make run-samples
+=== ingest 2026-09-20 ===
+  competition  INSERTED  records=47 hash=ccad28e735b0
+  teams        INSERTED  records=36 hash=fccb2862341b
+  standings    INSERTED  records=1 hash=e60484a8d440
+  matches      INSERTED  records=144 hash=1e5a13475e9d
+
+=== transform 2026-09-20 ===
+  transform/110_staging_matches.sql               144 rows
+  transform/111_staging_teams.sql                  36 rows
+  transform/112_staging_standings.sql              36 rows
+  transform/210_dim_team.sql                       36 rows
+  transform/220_fact_match.sql                    144 rows
+  transform/230_fact_team_match_form.sql          288 rows
+
+  staging.matches                     144 rows
+  curated.dim_team                     36 rows
+  curated.fact_match                  144 rows
+  curated.fact_team_match_form        288 rows
+
+=== data quality ===
+  [PASS] fact_match_not_empty              CRITICAL 144
+  [PASS] match_id_unique                   CRITICAL 0
+  [PASS] no_match_lost_in_transformation   CRITICAL 144 staged / 144 curated
+  [PASS] teams_differ                      CRITICAL 0
+  [PASS] finished_matches_have_an_outcome  CRITICAL 0
+  [PASS] outcome_matches_the_goals         CRITICAL 0
+  [PASS] every_match_has_two_form_rows     CRITICAL 0
+  [PASS] form_counts_add_up                CRITICAL 0
+  [PASS] form_uses_no_future_matches       CRITICAL 0
+  [PASS] dim_team_complete                 CRITICAL 0
+  [PASS] goals_are_plausible               WARNING  0
+  [FAIL] form_window_is_well_populated     WARNING  0.0% with >= 3 matches
+
+data quality: 11/12 checks passed
+
+run for 2026-09-20: OK
+```
+
+Exit code 0. **288 = 2 × 144** confirms the form table's grain: one row per
+team per match.
+
+The single failure is a WARNING and is correct: on 20 September exactly one
+matchday had been played, so no team had three completed Champions League
+matches yet. Treating that as a pipeline failure would have taught us to ignore
+the check; recording it keeps the limitation visible to anyone reading the data.
+
+### Computed form, spot check
+
+```console
+$ psql -c "SELECT d.short_name, f.is_home, f.matches_considered n, f.wins_last_5 w,
+           f.goals_scored_last_5 gf, f.goals_conceded_last_5 ga, f.points_last_5 pts,
+           f.days_since_last_match days
+           FROM curated.fact_team_match_form f
+           JOIN curated.dim_team d USING (team_id)
+           JOIN curated.fact_match m USING (match_id)
+           WHERE m.matchday = 2 ORDER BY d.short_name LIMIT 6;"
+    team     | is_home | n | w | gf | ga | pts | days
+-------------+---------+---+---+----+----+-----+------
+ Arsenal     | t       | 1 | 1 |  1 |  0 |   3 |   34
+ Aston Villa | t       | 1 | 1 |  3 |  2 |   3 |   36
+ Atleti      | t       | 1 | 0 |  1 |  2 |   0 |   34
+ Barça       | f       | 1 | 1 |  5 |  1 |   3 |   34
+ Bayern      | f       | 1 | 1 |  5 |  0 |   3 |   33
+ Bodø/Glimt  | t       | 1 | 0 |  0 |  5 |   0 |   34
+```
+
+`n = 1` for every team on matchday 2, which is exactly right: one prior match
+existed. The leakage guard is doing its job — had the window silently included
+the match being described, `n` would read 2.
+
+## 9. Test suite after the transformations
+
+```console
+$ make test
+56 passed
+
+$ POSTGRES_PORT=59999 pytest -q      # no database
+28 passed, 28 skipped
+```
+
+15 unit tests, 13 contract tests against the real payloads, 12 loader
+integration tests, 16 transformation and data-quality tests. Among them:
+
+* `test_first_matchday_has_no_prior_form` — nobody has history before the
+  competition starts.
+* `test_form_never_uses_a_match_at_or_after_kickoff` — recomputes the available
+  match count independently and compares it with what we stored.
+* `test_rerun_for_an_older_date_does_not_overwrite_newer_data` — a late
+  backfill must not stamp stale values over fresher ones.
+* `test_a_critical_violation_is_detected` — corrupts a row on purpose and
+  asserts that the check notices.
+
+## 10. Streamlit viewer
+
+![Streamlit viewer showing RC Lens vs Sporting CP](streamlit-app.png)
+
+Reads `curated.fact_match`, `curated.dim_team` and
+`curated.fact_team_match_form`, plus `meta.pipeline_runs` and `meta.dq_results`
+for the sidebar. No HTTP request leaves the app. The screenshot shows the
+one-match form window and the honest "no previous meeting in our data" notice
+rather than an invented head-to-head.
