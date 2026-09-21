@@ -219,9 +219,7 @@ detail = query(
     """
     SELECT m.utc_kickoff, m.matchday,
            h.team_id AS home_id, h.name AS home_name, h.tla AS home_tla, h.venue,
-           h.has_domestic_coverage AS home_cov,
            a.team_id AS away_id, a.name AS away_name, a.tla AS away_tla,
-           a.has_domestic_coverage AS away_cov,
            fh.matches_considered AS home_n, fh.goals_scored_last_5 AS home_gf,
            fh.goals_conceded_last_5 AS home_ga, fh.points_last_5 AS home_pts,
            fh.days_since_last_match AS home_rest,
@@ -268,7 +266,6 @@ def team_form(prefix: str) -> TeamForm:
         goals_for=int(detail[f"{prefix}_gf"]),
         goals_against=int(detail[f"{prefix}_ga"]),
         days_rest=int(rest) if pd.notna(rest) else None,
-        has_domestic_coverage=bool(detail[f"{prefix}_cov"]),
     )
 
 
@@ -276,8 +273,9 @@ def team_form(prefix: str) -> TeamForm:
 st.markdown(
     section(
         "Form going into this match",
-        "Only matches finished before kick-off count, most recent first. A form built on one "
-        "match is not comparable to one built on five - the window size is always shown.",
+        "Champions League matches only, finished before kick-off, most recent first. A form "
+        "built on one match is not comparable to one built on five - the window size is always "
+        "shown.",
     )
     + form_grid(team_form("home"), team_form("away")),
     unsafe_allow_html=True,
@@ -335,6 +333,6 @@ for tab, team_id, name in zip(
 st.divider()
 st.caption(
     f"Times in {DISPLAY_TZ.split('/')[1]} local time. Data: football-data.org (free tier). "
-    "No line-ups, injuries or match statistics, and no domestic-league data for 11 of the "
-    "36 clubs - see the README's known limitations."
+    "Scope: UEFA Champions League matches only. No line-ups, injuries or match statistics - "
+    "see the README's known limitations."
 )

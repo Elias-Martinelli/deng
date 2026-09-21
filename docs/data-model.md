@@ -71,14 +71,12 @@ window in [`230_fact_team_match_form.sql`](../sql/transform/230_fact_team_match_
 and by the `form_uses_no_future_matches` data-quality check.
 
 **Why `matches_considered` is a column and not a footnote:** early in a season
-it is 0 or 1, and for 11 of the 36 clubs the free tier carries no domestic
-league, so their window stays thin all season (evidence §9). A five-match form
+it is 0 or 1, and the league phase has at most 8 matches per club. A five-match form
 and a one-match form are not comparable, and a consumer that cannot see the
 difference will compare them anyway.
 
-*Current scope:* the window draws on Champions League matches only, because the
-pipeline ingests the competition endpoints and not yet each team's matches
-across competitions (backlog 2.4).
+*Scope:* Champions League matches only, for every club
+([ADR-004](adr/ADR-004-champions-league-scope.md)).
 
 ### `curated.dim_team` — dimension
 
@@ -86,8 +84,7 @@ across competitions (backlog 2.4).
 
 Descriptive attributes only: name, short name, TLA, country, venue, crest.
 Plus `has_domestic_coverage`, a boolean that records whether the club's
-domestic league exists in our API tier — the flag that explains why some form
-windows stay small.
+domestic league exists in our API tier. Descriptive only since ADR-004.
 
 ## Staging tables
 

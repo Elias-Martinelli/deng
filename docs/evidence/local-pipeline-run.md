@@ -275,8 +275,7 @@ integration tests, 16 transformation and data-quality tests. Among them:
 Reads `curated.fact_match`, `curated.dim_team` and
 `curated.fact_team_match_form`, plus `meta.pipeline_runs` and `meta.dq_results`
 for the sidebar. No HTTP request leaves the app. The screenshot shows the
-one-match form window, the coverage warning for a club without domestic data,
-and the honest "no previous meeting in our data" notice rather than an invented
+one-match form window and the honest "no previous meeting in our data" notice rather than an invented
 head-to-head.
 
 ## 11. Docker Compose, executed (21 September 2026)

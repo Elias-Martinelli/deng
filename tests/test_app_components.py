@@ -28,7 +28,6 @@ def team(**overrides) -> TeamForm:
         goals_for=1,
         goals_against=3,
         days_rest=5,
-        has_domestic_coverage=False,
     )
     values.update(overrides)
     return TeamForm(**values)
@@ -56,14 +55,15 @@ def test_empty_form_says_so_instead_of_showing_nothing():
 
 
 def test_window_size_is_always_shown():
-    assert "last 1 match" in form_card(team())
-    assert "last 5 matches" in form_card(team(matches_considered=5, sequence=list("WWDLW")))
-    assert "no matches yet" in form_card(team(matches_considered=0, sequence=[]))
+    assert "last 1 CL match" in form_card(team())
+    assert "last 5 CL matches" in form_card(team(matches_considered=5, sequence=list("WWDLW")))
+    assert "no CL match yet" in form_card(team(matches_considered=0, sequence=[]))
 
 
-def test_missing_domestic_coverage_is_flagged():
-    assert "Domestic league not in the free API tier" in form_card(team())
-    assert "Domestic league" not in form_card(team(has_domestic_coverage=True))
+def test_no_per_club_coverage_caveat():
+    # ADR-004: form is Champions League only for every club, so a caveat on
+    # some clubs would wrongly imply the others include domestic matches.
+    assert "Domestic" not in form_card(team())
 
 
 def test_badge_falls_back_to_initials_without_a_tla():

@@ -38,7 +38,7 @@ Endpoints planned for the daily batch (football-data.org):
 | `GET /competitions/CL/teams` | teams (id, name, short name, crest, venue name, address) | 1 |
 | `GET /competitions/CL/matches` | all matches of the season (scheduled + finished) | 1–2 |
 | `GET /competitions/CL/standings` | league-phase table | 1 |
-| `GET /teams/{id}/matches?status=FINISHED` | team form across all free-tier competitions (36 teams) | 36 |
+| ~~`GET /teams/{id}/matches?status=FINISHED`~~ | dropped by [ADR-004](adr/ADR-004-champions-league-scope.md): form is Champions League only | – |
 | `GET /matches/{id}/head2head` | historical encounters for upcoming matches (only within 14 days of kick-off) | ≤ 18 |
 
 ≈ 60 calls per day ⇒ ~6 minutes at 10 calls/minute. Well within limits, and the
@@ -93,7 +93,7 @@ state per attribute group.
 | Venue name | with the fixture (home stadium); neutral final venue known in advance | football-data.org teams / reference file | `NOT_AVAILABLE` |
 | Venue coordinates | always (reference file) | `venues.csv` | `NOT_AVAILABLE` (new club not yet in file – data-quality alert) |
 | Standings / league position | after matchday 1; changes after every matchday | football-data.org | `NOT_YET_AVAILABLE` before matchday 1 |
-| Team form (last 5 matches) | as soon as ≥ 1 match is finished; domestic matches only for clubs from free-tier leagues | football-data.org team matches | `PARTIAL` (fewer than 5 matches) |
+| Team form (last 5 matches) | as soon as ≥ 1 Champions League match is finished (ADR-004) | football-data.org team matches | `PARTIAL` (fewer than 5 matches) |
 | Head-to-head | if the teams met before (any season) | football-data.org head2head | `NO_PREVIOUS_MEETINGS` |
 | Weather forecast | ≤ 16 days before kick-off (reliable ≤ 7 days) | Open-Meteo forecast | `NOT_YET_AVAILABLE` |
 | Weather actuals | ≥ 5 days after the match | Open-Meteo archive | `NOT_YET_AVAILABLE` |

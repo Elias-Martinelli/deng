@@ -1,9 +1,8 @@
 -- dim_team from staging.teams.
 --
--- The free tier of football-data.org covers 12 competitions. A club whose
--- domestic league is not among them yields no domestic matches, so its form
--- can only come from Champions League games - recorded here as a flag rather
--- than discovered later by surprise.
+-- has_domestic_coverage records whether the club's domestic league is among
+-- the free tier's 12 competitions. Descriptive only: form is built from
+-- Champions League matches for every club (ADR-004).
 
 INSERT INTO curated.dim_team AS d (
     team_id, name, short_name, tla, country, venue, crest_url,

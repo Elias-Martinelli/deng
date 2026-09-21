@@ -46,7 +46,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 2.1 | API client with auth, error classification, rate-limit headers | MUST | M1 | [x] `src/deng/ingestion/football_data_client.py`, tests |
 | 2.2 | Throttling on `X-Requests-Available-Minute`; retry with back-off on 429/5xx | MUST | MIDTERM | [x] `extract.py` |
 | 2.3 | Extract jobs: competition, teams, matches, standings | MUST | MIDTERM | [x] `DAILY_ENDPOINTS` |
-| 2.4 | Extract job: team matches (form across competitions) | SHOULD | MIDTERM | [ ] |
+| 2.4 | ~~Extract job: team matches (form across competitions)~~ | SHOULD | MIDTERM | dropped – ADR-004 (Champions League only) |
 | 2.5 | Extract job: head2head for upcoming matches – first retest with a pairing known to have met | COULD | FINAL | [ ] |
 | 2.6 | Weather extract: forecast for matches ≤ 16 days ahead | MUST | MIDTERM | [ ] |
 | 2.7 | Weather extract: archive actuals for finished matches | SHOULD | FINAL | [ ] |
@@ -90,7 +90,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 |---|---|---|---|---|
 | 6.1 | staging: typed `matches`, `teams`, `standings` from raw JSONB | MUST | MIDTERM | [x] `sql/transform/11x` (weather open) |
 | 6.2 | curated `fact_match` (grain: one CL match) | MUST | MIDTERM | [x] 144 rows, derived outcome |
-| 6.3 | curated `fact_team_match_form` – last-5 form, home/away form, days since last match (point-in-time correct); must carry `matches_considered` because 11 of 36 clubs have no domestic data | MUST | MIDTERM | [~] implemented on CL matches incl. leakage check; cross-competition form waits for 2.4 |
+| 6.3 | curated `fact_team_match_form` – last-5 form, home/away form, days since last match (point-in-time correct); must carry `matches_considered` because 11 of 36 clubs have no domestic data | MUST | MIDTERM | [x] CL-only by ADR-004, leakage check + `matches_considered` |
 | 6.4 | curated `dim_team` (+ `dim_venue` with the weather work) | MUST | MIDTERM | [x] `dim_team` incl. coverage flag |
 | 6.5 | curated `fact_match_snapshot` (grain: one upcoming match per snapshot date) with availability states | SHOULD | MIDTERM (basic) / FINAL (full) | [ ] |
 | 6.6 | `dim_date` | SHOULD | FINAL | [ ] |

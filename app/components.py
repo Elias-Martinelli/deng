@@ -78,8 +78,6 @@ CSS = """
   .cl-stat .cl-val { font-size: 1.35rem; font-weight: 700; line-height: 1.1; }
   .cl-stat .cl-lbl { font-size: .72rem; opacity: .7; text-transform: uppercase;
     letter-spacing: .04em; }
-  .cl-note { margin-top: .7rem; font-size: .78rem; padding: .45rem .6rem;
-    border-radius: 8px; background: rgba(242,153,0,.14); }
   .cl-rest { margin-top: .6rem; font-size: .8rem; opacity: .75; }
 
   .cl-list { border: 1px solid rgba(127,127,127,.25); border-radius: 14px;
@@ -121,7 +119,6 @@ class TeamForm:
     goals_for: int
     goals_against: int
     days_rest: int | None
-    has_domestic_coverage: bool
 
 
 @dataclass(frozen=True)
@@ -197,19 +194,13 @@ def form_pills(sequence: Iterable[str]) -> str:
 
 
 def form_card(team: TeamForm) -> str:
-    """One team's form: sequence, window size, points, goals, rest, coverage note."""
+    """One team's form: sequence, window size, points, goals, days of rest."""
     n = team.matches_considered
-    window = f"last {n} match{'es' if n != 1 else ''}" if n else "no matches yet"
+    window = f"last {n} CL match{'es' if n != 1 else ''}" if n else "no CL match yet"
     rest = (
         f'<div class="cl-rest">{team.days_rest} days since last match</div>'
         if team.days_rest is not None
         else '<div class="cl-rest">No previous match this season</div>'
-    )
-    note = (
-        ""
-        if team.has_domestic_coverage
-        else '<div class="cl-note">⚠️ Domestic league not in the free API tier - '
-        "form rests on Champions League matches only.</div>"
     )
     stats = "".join(
         f'<div class="cl-stat"><div class="cl-val">{value}</div>'
@@ -226,7 +217,7 @@ def form_card(team: TeamForm) -> str:
         f'<div class="cl-sub">Form · {window}</div>'
         f"{form_pills(team.sequence)}"
         f'<div class="cl-stats">{stats}</div>'
-        f"{rest}{note}"
+        f"{rest}"
         "</div>"
     )
 

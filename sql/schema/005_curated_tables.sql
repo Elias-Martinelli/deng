@@ -12,9 +12,8 @@ CREATE TABLE IF NOT EXISTS curated.dim_team (
     venue               TEXT,
     crest_url           TEXT,
     competitions        TEXT[] NOT NULL DEFAULT '{}',
-    -- True when the club's domestic league is covered by our API tier. For the
-    -- 11 of 36 clubs where this is false, form can only be built from
-    -- Champions League matches (docs/evidence/api-exploration.md §9).
+    -- True when the club's domestic league is covered by our API tier (false for
+    -- 11 of 36, evidence §9). Descriptive only - form is CL-only (ADR-004).
     has_domestic_coverage BOOLEAN NOT NULL,
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -22,7 +21,7 @@ CREATE TABLE IF NOT EXISTS curated.dim_team (
 COMMENT ON TABLE curated.dim_team IS
     'Grain: one row per team. Dimension - descriptive attributes, no measures.';
 COMMENT ON COLUMN curated.dim_team.has_domestic_coverage IS
-    'False for clubs whose domestic league the free tier does not cover; their form rests on CL matches alone.';
+    'False for clubs whose domestic league the free tier does not cover. Descriptive only: form uses Champions League matches for every club (ADR-004).';
 
 CREATE TABLE IF NOT EXISTS curated.fact_match (
     match_id        BIGINT      PRIMARY KEY,

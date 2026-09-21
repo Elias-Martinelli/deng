@@ -126,7 +126,7 @@ Identified by measurement, not assumption ([evidence](docs/evidence/api-explorat
 | The API's own aggregates do not add up (`wins+draws+losses ≠ count`) | all form figures computed from individual match rows; a constraint and a check enforce that ours add up |
 | `standings.form` is always null | not used |
 | `odds` is a stub object with a marketing message | not parsed; validation checks for expected keys, not field presence |
-| 11 of 36 clubs have no domestic-league data | `dim_team.has_domestic_coverage`, and `matches_considered` on every form row |
+| 11 of 36 clubs have no domestic-league data in the free tier | scope is Champions League only for every club ([ADR-004](docs/adr/ADR-004-champions-league-scope.md)), so form is comparable across all 36 |
 | `group` null since the 2024/25 format change | no group dimension modelled |
 | Matches rescheduled or postponed | full reload per day; the raw zone keeps each day's version |
 
@@ -293,7 +293,7 @@ previous data product is still there.
 | 1 | `110_staging_matches.sql` | `staging.matches` from raw JSONB |
 | 2 | `111_staging_teams.sql` | `staging.teams` |
 | 3 | `112_staging_standings.sql` | `staging.standings` (one snapshot per day) |
-| 4 | `210_dim_team.sql` | `curated.dim_team` incl. domestic-coverage flag |
+| 4 | `210_dim_team.sql` | `curated.dim_team` |
 | 5 | `220_fact_match.sql` | `curated.fact_match` incl. derived outcome |
 | 6 | `230_fact_team_match_form.sql` | `curated.fact_team_match_form` |
 
@@ -432,10 +432,10 @@ abstraction for exactly that swap.
 Documented honestly, because hidden failures cost more than known ones:
 
 * **No line-ups, injuries, player or match statistics** on the free tier.
-* **11 of the 36 clubs** have no domestic-league coverage, so their form rests
-  on Champions League matches alone. Visible in the app and in the data.
-* **Form currently uses Champions League matches only** — team-level ingestion
-  across competitions is not implemented yet (backlog 2.4).
+* **Champions League only, by decision** ([ADR-004](docs/adr/ADR-004-champions-league-scope.md)):
+  form, rest days and results ignore domestic matches for every club. Windows
+  are therefore small (at most 8 league-phase matches), which
+  `matches_considered` makes visible.
 * **Historical seasons are available but not ingested yet.** The API serves
   them (verified); how many to load is an open decision (backlog 1.9).
 * **Backfill re-labels, it does not reconstruct.** The API always answers with
