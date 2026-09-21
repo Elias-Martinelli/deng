@@ -63,9 +63,15 @@ def connection():
 
     conn = psycopg.connect(get_settings().postgres_dsn)
     apply_sql_files(conn)
-    # Each test starts from an empty raw zone and run log; the DDL itself stays.
+    # Each test starts from empty pipeline tables; the DDL itself stays. Staging
+    # and curated too: a `make run-samples` before `make test` stamps them with
+    # today's date, which a test about "newer data wins" must not inherit.
     with conn.cursor() as cursor:
-        cursor.execute("TRUNCATE raw.football_data, meta.dq_results, meta.pipeline_runs CASCADE")
+        cursor.execute(
+            "TRUNCATE raw.football_data, meta.dq_results, meta.pipeline_runs, "
+            "staging.matches, staging.teams, staging.standings, "
+            "curated.dim_team, curated.fact_match, curated.fact_team_match_form CASCADE"
+        )
     conn.commit()
     yield conn
     conn.close()
