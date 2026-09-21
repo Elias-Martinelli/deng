@@ -1,0 +1,7 @@
+# Where Dagster finds our definitions. working_directory is the image's /app so
+# that sql/ and data/sample/ resolve exactly as they do for the CLI.
+load_from:
+  - python_module:
+      module_name: deng.orchestration.definitions
+      attribute: defs
+      working_directory: /app

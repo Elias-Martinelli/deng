@@ -47,3 +47,19 @@ ENTRYPOINT ["streamlit", "run", "app/streamlit_app.py", \
             "--server.address=0.0.0.0", "--server.port=8501", \
             "--browser.gatherUsageStats=false"]
 CMD []
+
+# --- Orchestrator (Dagster webserver and daemon) -----------------------------
+# Built on the pipeline stage, so a scheduled run executes the very code the
+# `pipeline` image runs by hand. Which process starts (webserver or daemon) is
+# chosen by the Compose service.
+FROM pipeline AS orchestrator
+USER root
+RUN pip install --no-cache-dir ".[orchestrator]"
+ENV DAGSTER_HOME=/opt/dagster/dagster_home
+COPY orchestrator/dagster.yaml orchestrator/workspace.yaml /opt/dagster/dagster_home/
+RUN chown -R pipeline:pipeline /opt/dagster /app
+USER pipeline
+EXPOSE 3000
+ENTRYPOINT []
+CMD ["dagster-webserver", "-h", "0.0.0.0", "-p", "3000", \
+     "-w", "/opt/dagster/dagster_home/workspace.yaml"]

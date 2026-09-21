@@ -27,7 +27,8 @@ PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 
 .PHONY: help setup setup-app test test-integration lint format explore doctor clean \
         up down logs ps psql init ingest ingest-samples transform dq run run-samples \
-        backfill verify docker-ingest docker-app reset app notebook
+        backfill verify docker-ingest docker-app reset app notebook \
+        setup-orchestrator orchestrator dagster-dev dagster-backfill
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -143,6 +144,20 @@ test-integration:  ## Run only the tests that need PostgreSQL
 	$(PY) -m pytest -v -m postgres
 
 # --- Consumers of the data product -------------------------------------------
+
+setup-orchestrator:  ## Install the Dagster extra into .venv (for dagster-dev and its tests)
+	$(VENV)/bin/pip install -e ".[dev,orchestrator]"
+
+orchestrator:  ## Start PostgreSQL + Dagster (webserver, daemon); UI on http://localhost:3000
+	docker compose up -d --build postgres dagster-webserver dagster-daemon
+	@echo "Dagster UI: http://localhost:$${DAGSTER_PORT:-3000}"
+
+dagster-dev:  ## Run Dagster locally without Docker (needs setup-orchestrator and a reachable PostgreSQL)
+	mkdir -p .dagster && DAGSTER_HOME=$(CURDIR)/.dagster $(VENV)/bin/dagster dev -m deng.orchestration.definitions
+
+dagster-backfill:  ## Backfill through Dagster: make dagster-backfill FROM=2026-09-15 TO=2026-09-17
+	docker compose exec dagster-webserver dagster job backfill -j daily_pipeline \
+		--from $(FROM) --to $(TO) -w /opt/dagster/dagster_home/workspace.yaml --noprompt
 
 setup-app:  ## Install the extras for Streamlit and Jupyter
 	$(VENV)/bin/pip install -e ".[dev,app,notebook]"

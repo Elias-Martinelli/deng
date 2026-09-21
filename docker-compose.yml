@@ -1,17 +1,44 @@
 # Local development environment.
 #
-#   docker compose up -d          start PostgreSQL
-#   docker compose run --rm pipeline python -m deng.pipeline ingest
+#   docker compose up -d          PostgreSQL + Dagster (webserver, daemon)
+#   docker compose run --rm pipeline ingest --from-samples
+#   docker compose --profile app up -d   Streamlit viewer
 #   docker compose down           stop (keeps the data volume)
 #   docker compose down -v        stop and delete the data
 #
-# Two services on one network: the database that holds the pipeline's data, and
-# the pipeline image itself. The pipeline is not a long-running service - it is
-# a batch job, so it is started per run with `docker compose run` instead of
-# being kept alive. The orchestrator added in the next sprint takes over that
-# invocation; the image stays the same.
+# Long-running services: the database and the orchestrator (webserver for the
+# UI, daemon for schedules and the run queue). The pipeline itself is a batch
+# job, not a service: Dagster runs it on schedule, and the `pipeline` service
+# exists to run the same image by hand with `docker compose run`.
 
 name: deng
+
+# Shared by the Dagster webserver and daemon: same image, same database, same
+# mounts. Differences (command, port, health check) are set per service.
+x-orchestrator: &orchestrator
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: orchestrator
+  image: deng-orchestrator:local
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment:
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: 5432
+    POSTGRES_DB: ${POSTGRES_DB:-cl_intelligence}
+    POSTGRES_USER: ${POSTGRES_USER:-deng}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY:-}
+    FOOTBALL_DATA_COMPETITION: ${FOOTBALL_DATA_COMPETITION:-CL}
+    INGEST_SOURCE: ${INGEST_SOURCE:-api}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  volumes:
+    - ./sql:/app/sql:ro
+    - ./data/sample:/app/data/sample:ro
+  networks: [deng]
 
 services:
   postgres:
@@ -101,6 +128,35 @@ services:
       - ./sql:/app/sql:ro
     networks: [deng]
     profiles: ["app"]     # started with: docker compose --profile app up -d
+
+  dagster-webserver:
+    <<: *orchestrator
+    container_name: deng-dagster-webserver
+    command: ["dagster-webserver", "-h", "0.0.0.0", "-p", "3000",
+              "-w", "/opt/dagster/dagster_home/workspace.yaml"]
+    ports:
+      - "${DAGSTER_PORT:-3000}:3000"
+    healthcheck:
+      # No curl in the slim image; Python is there anyway.
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:3000/server_info')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  dagster-daemon:
+    # Evaluates the schedule and dequeues runs. Without it the UI still works
+    # but nothing runs on time - hence its own health check.
+    <<: *orchestrator
+    container_name: deng-dagster-daemon
+    command: ["dagster-daemon", "run", "-w", "/opt/dagster/dagster_home/workspace.yaml"]
+    healthcheck:
+      test: ["CMD", "dagster-daemon", "liveness-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
   pgdata:

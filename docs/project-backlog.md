@@ -68,7 +68,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 4.1 | `docker-compose.yml`: postgres (healthcheck, volume), orchestrator, pipeline image, one network | MUST | MIDTERM | [~] postgres + pipeline done; orchestrator service open |
+| 4.1 | `docker-compose.yml`: postgres (healthcheck, volume), orchestrator, pipeline image, one network | MUST | MIDTERM | [x] + Dagster webserver/daemon, evidence §12 |
 | 4.2 | `Dockerfile` for pipeline code (pinned base image, non-root) | MUST | MIDTERM | [x] python:3.12-slim-bookworm, uid 1000 |
 | 4.3 | `docker compose up -d` starts everything; `make up/down/logs` | MUST | MIDTERM | [x] `make up`, `docker-ingest`, `docker-app` executed, evidence §11 |
 | 4.4 | Clean-environment test on a second machine, documented | MUST | MIDTERM | [ ] |
@@ -77,10 +77,10 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 5.1 | Spike Dagster in Compose (schedule, partition, backfill); decide ADR-002 | MUST | MIDTERM | [ ] |
-| 5.2 | Daily job with dependencies extract → validate → load → transform → dq | MUST | MIDTERM | [ ] |
-| 5.3 | Retry policies (transient only) | MUST | MIDTERM | [ ] |
-| 5.4 | Daily partitions; backfill for a date range tested and documented | MUST | MIDTERM | [~] CLI backfill works (evidence §3); orchestrator partitions open |
+| 5.1 | Spike Dagster in Compose (schedule, partition, backfill); decide ADR-002 | MUST | MIDTERM | [x] ADR-002 ACCEPTED |
+| 5.2 | Daily job with dependencies extract → validate → load → transform → dq | MUST | MIDTERM | [~] `daily_pipeline` ingest → transform → dq; validate step waits for 2.8 |
+| 5.3 | Retry policies (transient only) | MUST | MIDTERM | [x] `TRANSIENT_RETRY` + `run_step`, tested |
+| 5.4 | Daily partitions; backfill for a date range tested and documented | MUST | MIDTERM | [x] CLI (§3) and Dagster (§12) |
 | 5.5 | Rerun test: run twice, compare counts (evidence) | MUST | MIDTERM | [x] evidence §2 + integration test |
 | 5.6 | Failure-behaviour matrix implemented (API down, 429, invalid JSON, DB down, missing weather) | MUST | MIDTERM | [ ] |
 

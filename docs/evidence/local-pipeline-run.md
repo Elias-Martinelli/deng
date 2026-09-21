@@ -315,3 +315,65 @@ host-side commands (`make init`, `pytest`) then talked to the *native* database
 while the containers used their own. Everything looks green, against two
 different databases. The README now says to set `POSTGRES_PORT` to a free port
 in that case.
+
+## 12. Dagster orchestration (21 September 2026)
+
+Spike for [ADR-002](../adr/ADR-002-workflow-orchestrator.md), run in Docker
+Compose on the stack from §11 with `INGEST_SOURCE=samples`.
+
+**Stack:**
+
+```text
+$ make orchestrator
+deng-postgres            Up (healthy)
+deng-dagster-webserver   Up (healthy)       http://localhost:3000
+deng-dagster-daemon      Up (healthy)       dagster-daemon liveness-check
+
+$ dagster schedule list
+Schedule: daily_pipeline_schedule [RUNNING]
+Cron Schedule: 0 6 * * *
+```
+
+**Backfill over three days** (`dagster job backfill -j daily_pipeline --from
+2026-09-15 --to 2026-09-17`), then a **rerun** of 2026-09-16. Dagster's run
+table and our own run log agree:
+
+```text
+ status  | partition  | created  | updated
+ SUCCESS | 2026-09-15 | 10:58:46 | 10:59:00
+ SUCCESS | 2026-09-16 | 10:58:46 | 10:59:10      ← runs queued together,
+ SUCCESS | 2026-09-17 | 10:58:47 | 10:59:18        executed one after another
+ SUCCESS | 2026-09-16 | …        | …             ← rerun
+
+ pipeline_name       | logical_date | status  | rows_extracted | rows_loaded
+ transform_curated   | 2026-09-17   | SUCCESS |              0 |         504
+ ingest_football_raw | 2026-09-17   | SUCCESS |            228 |           4
+ transform_curated   | 2026-09-16   | SUCCESS |              0 |         504
+ …
+ transform_curated   | 2026-09-21   | SUCCESS |              0 |         684
+
+raw rows for 2026-09-16 after the rerun: 4        (unchanged - idempotent)
+CRITICAL data-quality failures:          0
+```
+
+The 504 vs. 684 rows are the stale-data guard at work: transforming an *older*
+date than the one already in staging skips exactly the 144 match rows and 36
+team rows that would otherwise be overwritten with older values (684 − 504 =
+180). A backfill therefore cannot roll the data product back in time.
+
+`make dagster-backfill FROM=2026-09-18 TO=2026-09-19` → both partitions SUCCESS.
+`make dagster-dev` (no Docker) served the UI on port 3000.
+
+**Tests** (`tests/test_orchestration.py`, 9 tests): definitions load with one
+asset per table; the 06:00 tick on 21 Sep targets partition `2026-09-21`;
+transient errors propagate to the retry policy, permanent ones become
+`Failure(allow_retries=False)`; a full run builds 144 / 288 rows; rerunning a
+partition keeps 4 raw rows; a run without an API key fails **without** a retry
+event and without starting the transform.
+
+**Found on the way:** the `connection` test fixture emptied raw and meta but
+not staging and curated. After a `make run-samples` (today's date in staging),
+`test_rerun_for_an_older_date_does_not_overwrite_newer_data` failed - a
+reviewer following the README in order would have hit it. The fixture now
+empties every pipeline table; the full suite (65) passes directly after
+`make run-samples`.

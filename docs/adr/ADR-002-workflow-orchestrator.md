@@ -1,8 +1,8 @@
 # ADR-002 – Workflow orchestrator
 
-Status: **PROPOSED** (2026-09-18). Decision after a one-day spike at the start
-of the midterm sprint: run the fixture ingestion as a scheduled, partitioned job
-in the candidate and check that reruns and backfills work inside Docker Compose.
+Status: **ACCEPTED** (2026-09-21, after the spike below). Proposed 2026-09-18
+with the condition: run the ingestion as a scheduled, partitioned job and check
+that reruns and backfills work inside Docker Compose within one day.
 
 ## Context
 
@@ -12,7 +12,7 @@ Compose (midterm) and against Google Cloud (final). We are two students; the
 tool must be explainable in a 10-minute defence and must not dominate the
 Docker footprint.
 
-## Decision (proposed)
+## Decision
 
 **Dagster** (open-source, `dagster` + `dagster-webserver` + `dagster-daemon`,
 PostgreSQL as Dagster storage – reusing our existing Postgres container).
@@ -54,5 +54,45 @@ PostgreSQL as Dagster storage – reusing our existing Postgres container).
 * If the spike shows that partitions/backfills do not behave as expected inside
   Compose within one day, fall back to **Prefect 3** with an explicit
   `backfill(start_date, end_date)` flow – documented as SUPERSEDED here.
-* Orchestrator metadata lives in a separate `dagster` schema/database inside the
-  same Postgres container, so `docker compose down -v` resets everything.
+* Orchestrator metadata lives in the `public` schema of the project database
+  (see spike result), so `docker compose down -v` resets everything.
+
+## Spike result (2026-09-21)
+
+Every acceptance criterion was met in one session, so the Prefect fallback is
+not needed. Evidence: [`docs/evidence/local-pipeline-run.md` §12](../evidence/local-pipeline-run.md#12-dagster-orchestration-21-september-2026).
+
+| Criterion | Result |
+|---|---|
+| Runs inside Compose | `dagster-webserver` + `dagster-daemon`, one image (`orchestrator` stage on top of the pipeline image), both with health checks |
+| Schedule | `daily_pipeline_schedule`, 06:00 Europe/Zurich, RUNNING by default; a tick on 21 Sep targets partition `2026-09-21` (unit-tested) |
+| Dependencies | asset graph raw → staging → curated → dq; a failed ingest does not start the transform (tested) |
+| Retries | `RetryPolicy` (3×, 60 s, exponential, jitter) for transient errors only; permanent ones raise `Failure(allow_retries=False)` (tested: no retry event) |
+| Backfill | `make dagster-backfill FROM=… TO=…` → one run per day, executed one at a time |
+| Rerun | re-materialising a partition leaves 4 raw rows for that date (tested) |
+| No duplicated logic | assets call `deng.pipeline.command_*` / `run_checks` - the CLI remains the source of truth |
+
+Implementation choices made during the spike, and why:
+
+* **Assets, not ops.** One asset per table, so the UI's lineage graph is our
+  data model. Staging and curated are one `multi_asset` because they run in one
+  transaction; splitting them would break that guarantee.
+* **Daily partitions with `end_offset=1`.** Dagster's last partition is
+  yesterday by default; the 06:00 run would then store today's API state under
+  yesterday's `ingestion_date`.
+* **`max_concurrent_runs: 1`.** All runs write the same curated tables; parallel
+  backfill runs would only wait on each other's row locks.
+* **Backfilling old dates is safe.** Staging upserts only overwrite when the
+  incoming `ingestion_date` is at least as new, so a backfill cannot roll the
+  curated state back (measured: 504 rows written for an old date vs. 684 for
+  today - the difference is exactly the 144 matches + 36 teams left untouched).
+* **Dagster metadata in `public` of the same database**, not a separate
+  database: a second database would need an init script, and Postgres only runs
+  those on an empty volume - existing setups would break silently.
+* **`INGEST_SOURCE=samples`** lets a reviewer without an API key run schedules
+  and backfills; UI backfills cannot take per-run config, so an environment
+  setting is the only option that works everywhere. It is explicit, never a
+  fallback.
+
+Costs observed: the orchestrator image is 501 MB (pipeline image 235 MB), and
+Dagster pins had to be one minor release wide (`>=1.13,<1.14`).

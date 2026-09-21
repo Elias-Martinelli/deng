@@ -9,6 +9,7 @@ Why a single settings object?
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -41,6 +42,10 @@ class Settings(BaseSettings):
     postgres_password: SecretStr = Field(default=SecretStr(""))
 
     # --- Pipeline behaviour ------------------------------------------------
+    # Where the orchestrated ingestion reads from. "samples" replays the
+    # committed payloads, so a reviewer without an API key can run schedules and
+    # backfills end to end. The CLI keeps its explicit `--from-samples` flag.
+    ingest_source: Literal["api", "samples"] = "api"
     local_raw_dir: Path = Path("data/raw")
     log_level: str = "INFO"
 
