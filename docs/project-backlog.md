@@ -62,7 +62,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 3.2 | Raw tables (JSONB + metadata, unique key per source/endpoint/params/date) | MUST | MIDTERM | [x] `raw.football_data` |
 | 3.3 | Idempotent raw loader (`ON CONFLICT`) | MUST | MIDTERM | [x] `raw_loader.py`, evidence §2 |
 | 3.4 | Verification queries (`sql/verify/*.sql`) | MUST | MIDTERM | [x] 8 checks, `make verify` |
-| 3.5 | Grain documentation for every curated table | MUST | MIDTERM | [ ] |
+| 3.5 | Grain documentation for every curated table | MUST | MIDTERM | [x] `docs/data-model.md` + `COMMENT ON TABLE` |
 
 ## EPIC 4 – Docker
 
@@ -90,7 +90,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 |---|---|---|---|---|
 | 6.1 | staging: typed `matches`, `teams`, `standings` from raw JSONB | MUST | MIDTERM | [x] `sql/transform/11x` (weather open) |
 | 6.2 | curated `fact_match` (grain: one CL match) | MUST | MIDTERM | [x] 144 rows, derived outcome |
-| 6.3 | curated `fact_team_match_form` – last-5 form, home/away form, days since last match (point-in-time correct); must carry `matches_considered` because 11 of 36 clubs have no domestic data | MUST | MIDTERM | [ ] |
+| 6.3 | curated `fact_team_match_form` – last-5 form, home/away form, days since last match (point-in-time correct); must carry `matches_considered` because 11 of 36 clubs have no domestic data | MUST | MIDTERM | [~] implemented on CL matches incl. leakage check; cross-competition form waits for 2.4 |
 | 6.4 | curated `dim_team` (+ `dim_venue` with the weather work) | MUST | MIDTERM | [x] `dim_team` incl. coverage flag |
 | 6.5 | curated `fact_match_snapshot` (grain: one upcoming match per snapshot date) with availability states | SHOULD | MIDTERM (basic) / FINAL (full) | [ ] |
 | 6.6 | `dim_date` | SHOULD | FINAL | [ ] |
