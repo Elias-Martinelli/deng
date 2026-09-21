@@ -154,6 +154,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
 | 13.1 | Fixture picker → match intelligence page reading curated tables only | COULD | FINAL | [x] `app/streamlit_app.py`, screenshot in evidence |
+| 13.2 | Responsive layout for phones (iPhone, Android) instead of native apps | COULD | FINAL | [x] `app/components.py`, evidence §13; real-device check open |
 
 ## EPIC 14 – Documentation and reproducibility
 

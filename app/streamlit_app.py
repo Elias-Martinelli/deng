@@ -26,9 +26,33 @@ import streamlit as st
 # installing the package first.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from components import (  # noqa: E402
+    CSS,
+    ResultRow,
+    TeamForm,
+    form_grid,
+    match_hero,
+    outcome_for,
+    result_list,
+    section,
+    status_chips,
+    title,
+)
+
 from deng.config import get_settings  # noqa: E402
 
-st.set_page_config(page_title="CL Match Intelligence", page_icon="⚽", layout="wide")
+# Kick-off times are stored in UTC and shown in the users' time zone: the use
+# case speaks of "22 Oct 2026, 21:00 CEST", not of 19:00 UTC.
+DISPLAY_TZ = "Europe/Zurich"
+
+st.set_page_config(
+    page_title="CL Match Intelligence",
+    page_icon="⚽",
+    layout="wide",
+    # Diagnostics live in the sidebar; on a phone it would cover the page.
+    initial_sidebar_state="collapsed",
+)
+st.markdown(CSS, unsafe_allow_html=True)
 
 
 @st.cache_resource
@@ -58,26 +82,54 @@ def data_is_available() -> bool:
         return False
 
 
-def form_line(row: pd.Series, prefix: str) -> str:
-    """Render a team's form as 'W-D-L over N matches'."""
-    considered = int(row[f"{prefix}_n"])
-    if considered == 0:
-        return "no completed matches yet"
-    return (
-        f"{int(row[f'{prefix}_w'])}W–{int(row[f'{prefix}_d'])}D–{int(row[f'{prefix}_l'])}L "
-        f"over {considered} match{'es' if considered != 1 else ''}"
+def local_time(ts: pd.Timestamp, fmt: str) -> str:
+    """Format a UTC timestamp in the display time zone, with its abbreviation."""
+    return ts.tz_convert(DISPLAY_TZ).strftime(fmt)
+
+
+def form_sequence(team_id: int, before: pd.Timestamp) -> list[str]:
+    """The team's last five results before `before`, most recent first.
+
+    Same window as curated.fact_team_match_form (finished, kick-off strictly
+    before, at most five), so the badges always add up to `matches_considered`.
+    """
+    rows = query(
+        """
+        SELECT home_team_id, home_goals, away_goals
+          FROM curated.fact_match
+         WHERE is_finished
+           AND (home_team_id = %s OR away_team_id = %s)
+           AND utc_kickoff < %s
+         ORDER BY utc_kickoff DESC
+         LIMIT 5
+        """,
+        (team_id, team_id, before.to_pydatetime()),
     )
+    return [
+        outcome_for(team_id, int(r.home_team_id), int(r.home_goals), int(r.away_goals))
+        for r in rows.itertuples()
+    ]
+
+
+def result_rows(frame: pd.DataFrame) -> list[ResultRow]:
+    """Turn a result query into rows for `result_list`."""
+    return [
+        ResultRow(
+            date_label=r.match_date.strftime("%d %b %Y"),
+            home=r.home,
+            away=r.away,
+            home_goals=int(r.home_goals),
+            away_goals=int(r.away_goals),
+        )
+        for r in frame.itertuples()
+    ]
 
 
 # --------------------------------------------------------------------------
 # Page
 # --------------------------------------------------------------------------
 
-st.title("⚽ Champions League Match Intelligence")
-st.caption(
-    "Every figure comes from our own curated tables, produced by the batch pipeline. "
-    "This app makes no API calls."
-)
+st.markdown(title("⚽ Champions League Match Intelligence"), unsafe_allow_html=True)
 
 if not data_is_available():
     st.error(
@@ -86,46 +138,56 @@ if not data_is_available():
     )
     st.stop()
 
-# --- Sidebar: freshness and pipeline health -------------------------------
+# Only finished runs: a row still marked RUNNING is either in flight right now
+# or a leftover, and neither says anything about data freshness.
+runs = query(
+    """
+    SELECT pipeline_name, logical_date, status, finished_at
+      FROM meta.pipeline_runs
+     WHERE finished_at IS NOT NULL
+     ORDER BY finished_at DESC LIMIT 5
+    """
+)
+dq = query(
+    """
+    SELECT check_name, severity, passed, observed
+      FROM meta.dq_results
+     WHERE checked_at = (SELECT max(checked_at) FROM meta.dq_results)
+     ORDER BY passed, check_name
+    """
+)
+dq_failed = dq[~dq["passed"]] if not dq.empty else dq
+st.markdown(
+    status_chips(
+        last_run_date=None if runs.empty else str(runs.iloc[0]["logical_date"]),
+        last_run_ok=not runs.empty and runs.iloc[0]["status"] == "SUCCESS",
+        dq_passed=len(dq) - len(dq_failed),
+        dq_total=len(dq),
+        dq_critical_failed=int((dq_failed["severity"] == "CRITICAL").sum()) if len(dq) else 0,
+    ),
+    unsafe_allow_html=True,
+)
+
+# --- Sidebar: the details behind the status chips --------------------------
 with st.sidebar:
-    st.header("Data freshness")
-    # Only finished runs: a row still marked RUNNING is either in flight right
-    # now or a leftover, and neither says anything about data freshness.
-    runs = query(
-        """
-        SELECT pipeline_name, logical_date, status, finished_at
-          FROM meta.pipeline_runs
-         WHERE finished_at IS NOT NULL
-         ORDER BY finished_at DESC LIMIT 5
-        """
-    )
+    st.header("Pipeline")
     if runs.empty:
         st.info("No completed pipeline run recorded yet.")
     else:
-        latest = runs.iloc[0]
-        st.metric("Last completed run", str(latest["logical_date"]))
-        st.write("✅ SUCCESS" if latest["status"] == "SUCCESS" else f"❌ {latest['status']}")
         st.dataframe(runs, hide_index=True, width="stretch")
-
-    dq = query(
-        """
-        SELECT check_name, severity, passed, observed
-          FROM meta.dq_results
-         WHERE checked_at = (SELECT max(checked_at) FROM meta.dq_results)
-         ORDER BY passed, check_name
-        """
-    )
     if not dq.empty:
-        failed = int((~dq["passed"]).sum())
         st.subheader("Data quality")
-        st.write(f"{len(dq) - failed}/{len(dq)} checks passed")
         st.dataframe(dq, hide_index=True, width="stretch")
+    st.caption(
+        "Every figure comes from our own curated tables, produced by the batch pipeline. "
+        "This app makes no API calls."
+    )
 
 # --- Fixture picker --------------------------------------------------------
 fixtures = query(
     """
     SELECT m.match_id, m.utc_kickoff, m.matchday,
-           h.short_name AS home, a.short_name AS away, h.venue
+           h.short_name AS home, a.short_name AS away
       FROM curated.fact_match m
       JOIN curated.dim_team h ON h.team_id = m.home_team_id
       JOIN curated.dim_team a ON a.team_id = m.away_team_id
@@ -142,35 +204,30 @@ if fixtures.empty:
     st.stop()
 
 fixtures["label"] = (
-    fixtures["utc_kickoff"].dt.strftime("%a %d %b %H:%M")
+    fixtures["utc_kickoff"].dt.tz_convert(DISPLAY_TZ).dt.strftime("%a %d %b, %H:%M")
     + "  ·  "
     + fixtures["home"]
-    + " vs "
+    + " – "
     + fixtures["away"]
 )
-
 selected_label = st.selectbox(
-    f"Upcoming fixture ({len(fixtures)} available)", options=fixtures["label"]
+    f"Upcoming fixture · {len(fixtures)} available", options=fixtures["label"]
 )
-fixture = fixtures[fixtures["label"] == selected_label].iloc[0]
-match_id = int(fixture["match_id"])
+match_id = int(fixtures.loc[fixtures["label"] == selected_label, "match_id"].iloc[0])
 
-# --- Match header ----------------------------------------------------------
 detail = query(
     """
-    SELECT m.utc_kickoff, m.matchday, m.stage,
-           h.team_id AS home_id, h.name AS home_name, h.venue, h.country AS home_country,
+    SELECT m.utc_kickoff, m.matchday,
+           h.team_id AS home_id, h.name AS home_name, h.tla AS home_tla, h.venue,
            h.has_domestic_coverage AS home_cov,
-           a.team_id AS away_id, a.name AS away_name, a.country AS away_country,
+           a.team_id AS away_id, a.name AS away_name, a.tla AS away_tla,
            a.has_domestic_coverage AS away_cov,
-           fh.matches_considered AS home_n, fh.wins_last_5 AS home_w,
-           fh.draws_last_5 AS home_d, fh.losses_last_5 AS home_l,
-           fh.goals_scored_last_5 AS home_gf, fh.goals_conceded_last_5 AS home_ga,
-           fh.points_last_5 AS home_pts, fh.days_since_last_match AS home_rest,
-           fa.matches_considered AS away_n, fa.wins_last_5 AS away_w,
-           fa.draws_last_5 AS away_d, fa.losses_last_5 AS away_l,
-           fa.goals_scored_last_5 AS away_gf, fa.goals_conceded_last_5 AS away_ga,
-           fa.points_last_5 AS away_pts, fa.days_since_last_match AS away_rest
+           fh.matches_considered AS home_n, fh.goals_scored_last_5 AS home_gf,
+           fh.goals_conceded_last_5 AS home_ga, fh.points_last_5 AS home_pts,
+           fh.days_since_last_match AS home_rest,
+           fa.matches_considered AS away_n, fa.goals_scored_last_5 AS away_gf,
+           fa.goals_conceded_last_5 AS away_ga, fa.points_last_5 AS away_pts,
+           fa.days_since_last_match AS away_rest
       FROM curated.fact_match m
       JOIN curated.dim_team h ON h.team_id = m.home_team_id
       JOIN curated.dim_team a ON a.team_id = m.away_team_id
@@ -182,96 +239,102 @@ detail = query(
     """,
     (match_id,),
 ).iloc[0]
+kickoff = detail["utc_kickoff"]
 
-st.header(f"{detail['home_name']} vs {detail['away_name']}")
-meta_left, meta_mid, meta_right = st.columns(3)
-meta_left.metric("Kick-off (UTC)", detail["utc_kickoff"].strftime("%d %b %Y, %H:%M"))
-meta_mid.metric("Matchday", int(detail["matchday"]) if pd.notna(detail["matchday"]) else "–")
-meta_right.metric("Venue", detail["venue"] or "unknown")
+# --- Match header ----------------------------------------------------------
+st.markdown(
+    match_hero(
+        home=detail["home_name"],
+        home_tla=detail["home_tla"],
+        away=detail["away_name"],
+        away_tla=detail["away_tla"],
+        kickoff_label=local_time(kickoff, "%a %d %b %Y · %H:%M %Z"),
+        matchday=int(detail["matchday"]) if pd.notna(detail["matchday"]) else None,
+        venue=detail["venue"],
+    ),
+    unsafe_allow_html=True,
+)
+
+
+def team_form(prefix: str) -> TeamForm:
+    """Collect one side's form from the detail row."""
+    rest = detail[f"{prefix}_rest"]
+    return TeamForm(
+        name=detail[f"{prefix}_name"],
+        tla=detail[f"{prefix}_tla"],
+        sequence=form_sequence(int(detail[f"{prefix}_id"]), kickoff),
+        matches_considered=int(detail[f"{prefix}_n"]),
+        points=int(detail[f"{prefix}_pts"]),
+        goals_for=int(detail[f"{prefix}_gf"]),
+        goals_against=int(detail[f"{prefix}_ga"]),
+        days_rest=int(rest) if pd.notna(rest) else None,
+        has_domestic_coverage=bool(detail[f"{prefix}_cov"]),
+    )
+
 
 # --- Form comparison -------------------------------------------------------
-st.subheader("Form going into this match")
-st.caption(
-    "Built only from matches finished before kick-off. `matches` says how many games the "
-    "window rests on — a one-match form is not comparable to a five-match form."
+st.markdown(
+    section(
+        "Form going into this match",
+        "Only matches finished before kick-off count, most recent first. A form built on one "
+        "match is not comparable to one built on five - the window size is always shown.",
+    )
+    + form_grid(team_form("home"), team_form("away")),
+    unsafe_allow_html=True,
 )
 
-home_col, away_col = st.columns(2)
-for column, prefix, name in (
-    (home_col, "home", detail["home_name"]),
-    (away_col, "away", detail["away_name"]),
-):
-    with column:
-        st.markdown(f"**{name}**")
-        st.write(form_line(detail, prefix))
-        a, b, c = st.columns(3)
-        a.metric("Points", int(detail[f"{prefix}_pts"]))
-        b.metric("Goals for", int(detail[f"{prefix}_gf"]))
-        c.metric("Goals against", int(detail[f"{prefix}_ga"]))
-        rest = detail[f"{prefix}_rest"]
-        st.caption(f"Days since last match: {int(rest)}" if pd.notna(rest) else "No previous match")
-        if not detail[f"{prefix}_cov"]:
-            st.warning(
-                "The free API tier does not cover this club's domestic league, so its form "
-                "rests on Champions League matches alone.",
-                icon="⚠️",
-            )
+RESULTS_SQL = """
+    SELECT m.match_date, h.short_name AS home, m.home_goals, m.away_goals,
+           a.short_name AS away
+      FROM curated.fact_match m
+      JOIN curated.dim_team h ON h.team_id = m.home_team_id
+      JOIN curated.dim_team a ON a.team_id = m.away_team_id
+     WHERE m.is_finished AND {condition}
+     ORDER BY m.utc_kickoff DESC
+     LIMIT {limit}
+"""
 
 # --- Head to head ----------------------------------------------------------
-st.subheader("Previous meetings in our data")
+home_id, away_id = int(detail["home_id"]), int(detail["away_id"])
 h2h = query(
-    """
-    SELECT m.match_date, h.short_name AS home, m.home_goals, m.away_goals,
-           a.short_name AS away, m.outcome
-      FROM curated.fact_match m
-      JOIN curated.dim_team h ON h.team_id = m.home_team_id
-      JOIN curated.dim_team a ON a.team_id = m.away_team_id
-     WHERE m.is_finished
-       AND ((m.home_team_id = %s AND m.away_team_id = %s)
-         OR (m.home_team_id = %s AND m.away_team_id = %s))
-     ORDER BY m.match_date DESC
-    """,
-    (
-        int(detail["home_id"]),
-        int(detail["away_id"]),
-        int(detail["away_id"]),
-        int(detail["home_id"]),
+    RESULTS_SQL.format(
+        condition="((m.home_team_id = %s AND m.away_team_id = %s) "
+        "OR (m.home_team_id = %s AND m.away_team_id = %s))",
+        limit=10,
     ),
+    (home_id, away_id, away_id, home_id),
 )
-if h2h.empty:
-    st.info(
+st.markdown(
+    section("Previous meetings")
+    + result_list(
+        result_rows(h2h),
         "No previous meeting in our data. We hold the current season; earlier seasons are "
-        "available from the source but not ingested yet."
-    )
-else:
-    st.dataframe(h2h, hide_index=True, width="stretch")
-
-# --- Recent results of both teams -----------------------------------------
-st.subheader("Recent results")
-recent = query(
-    """
-    SELECT m.match_date, h.short_name AS home, m.home_goals, m.away_goals,
-           a.short_name AS away, m.outcome
-      FROM curated.fact_match m
-      JOIN curated.dim_team h ON h.team_id = m.home_team_id
-      JOIN curated.dim_team a ON a.team_id = m.away_team_id
-     WHERE m.is_finished
-       AND (m.home_team_id IN (%s, %s) OR m.away_team_id IN (%s, %s))
-     ORDER BY m.utc_kickoff DESC
-     LIMIT 10
-    """,
-    (
-        int(detail["home_id"]),
-        int(detail["away_id"]),
-        int(detail["home_id"]),
-        int(detail["away_id"]),
+        "available from the source but not ingested yet.",
     ),
+    unsafe_allow_html=True,
 )
-st.dataframe(recent, hide_index=True, width="stretch")
+
+# --- Recent results, one tab per team ---------------------------------------
+st.markdown(section("Recent results"), unsafe_allow_html=True)
+for tab, team_id, name in zip(
+    st.tabs([detail["home_name"], detail["away_name"]]),
+    (home_id, away_id),
+    (detail["home_name"], detail["away_name"]),
+    strict=True,
+):
+    with tab:
+        recent = query(
+            RESULTS_SQL.format(condition="(m.home_team_id = %s OR m.away_team_id = %s)", limit=5),
+            (team_id, team_id),
+        )
+        st.markdown(
+            result_list(result_rows(recent), f"{name} has not finished a match yet this season."),
+            unsafe_allow_html=True,
+        )
 
 st.divider()
 st.caption(
-    "Data: football-data.org (free tier). Known limitations are documented in the repository's "
-    "README — no line-ups, injuries or match statistics, and no domestic-league data for 11 of "
-    "the 36 clubs."
+    f"Times in {DISPLAY_TZ.split('/')[1]} local time. Data: football-data.org (free tier). "
+    "No line-ups, injuries or match statistics, and no domestic-league data for 11 of the "
+    "36 clubs - see the README's known limitations."
 )

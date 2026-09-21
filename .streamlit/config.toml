@@ -1,0 +1,13 @@
+# Streamlit settings for the viewer (read from the working directory).
+
+[theme]
+# Champions League navy as the accent; the cards in app/components.py use the
+# same colour for the match header.
+primaryColor = "#1a3a8f"
+
+[client]
+# The page is a product view, not a developer tool: hide the deploy/rerun menu.
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false
