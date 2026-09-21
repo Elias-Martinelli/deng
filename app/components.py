@@ -13,12 +13,14 @@ Why pure functions returning strings:
     - team names, venues - passes through `html.escape`; it originates from an
     external API and must never be able to inject markup into the page.
 
-No external resources: no web fonts, no crest images from the API's CDN. The
-page loads nothing that is not served by our own container.
+No external resources: no web fonts, and crests are embedded from our own
+database (`curated.team_crest`) as data URIs rather than linked to the API's
+CDN. The page loads nothing that is not served by our own container.
 """
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from html import escape
@@ -47,7 +49,11 @@ CSS = """
     display: flex; align-items: center; justify-content: center;
     background: rgba(255,255,255,.14); border: 2px solid rgba(255,255,255,.35);
     font-weight: 800; font-size: .85rem; letter-spacing: .04em; }
+  .cl-badge.cl-crest { background: #fff; border-color: rgba(255,255,255,.6); padding: .35rem; }
+  .cl-badge.cl-crest img { width: 100%; height: 100%; object-fit: contain; }
   .cl-hero .cl-venue { text-align: center; font-size: .85rem; opacity: .85; }
+  .cl-mini { width: 1.5rem; height: 1.5rem; object-fit: contain; vertical-align: -.35rem;
+    margin-right: .45rem; }
 
   .cl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
   @media (max-width: 640px) {
@@ -113,6 +119,7 @@ class TeamForm:
 
     name: str
     tla: str
+    crest_uri: str | None
     sequence: Sequence[str]  # most recent first, each "W", "D" or "L"
     matches_considered: int
     points: int
@@ -143,14 +150,33 @@ def section(heading: str, caption: str | None = None) -> str:
     return f'<div class="cl-section">{escape(heading)}</div>{note}'
 
 
-def badge(tla: str | None, name: str) -> str:
-    """Round badge with the three-letter code (fallback: first letters of the name)."""
+def crest_uri(content_type: str | None, image: bytes | None) -> str | None:
+    """Embed a stored crest as a data URI, or None when there is none.
+
+    Only image types are accepted, and the URI is used in an <img> tag: an SVG
+    loaded that way cannot run scripts, unlike inline SVG markup.
+    """
+    if not image or not content_type or not content_type.startswith("image/"):
+        return None
+    return f"data:{content_type};base64,{base64.b64encode(bytes(image)).decode('ascii')}"
+
+
+def badge(tla: str | None, name: str, crest: str | None = None) -> str:
+    """Round badge: the club crest when stored, otherwise the three-letter code."""
+    if crest:
+        return (
+            f'<div class="cl-badge cl-crest"><img src="{escape(crest)}" '
+            f'alt="{escape(name)} crest"></div>'
+        )
     code = (tla or "".join(word[0] for word in name.split()[:3])).upper()[:3]
     return f'<div class="cl-badge">{escape(code)}</div>'
 
 
-def _hero_team(tla: str | None, name: str) -> str:
-    return f'<div class="cl-team">{badge(tla, name)}<div class="cl-name">{escape(name)}</div></div>'
+def _hero_team(tla: str | None, name: str, crest: str | None) -> str:
+    return (
+        f'<div class="cl-team">{badge(tla, name, crest)}'
+        f'<div class="cl-name">{escape(name)}</div></div>'
+    )
 
 
 def match_hero(
@@ -161,6 +187,8 @@ def match_hero(
     kickoff_label: str,
     matchday: int | None,
     venue: str | None,
+    home_crest: str | None = None,
+    away_crest: str | None = None,
 ) -> str:
     """The match header: both teams, kick-off, matchday and venue."""
     meta = escape(kickoff_label)
@@ -171,9 +199,9 @@ def match_hero(
         '<div class="cl-hero">'
         f'<div class="cl-meta">{meta}</div>'
         '<div class="cl-teams">'
-        f"{_hero_team(home_tla, home)}"
+        f"{_hero_team(home_tla, home, home_crest)}"
         '<div class="cl-vs">VS</div>'
-        f"{_hero_team(away_tla, away)}"
+        f"{_hero_team(away_tla, away, away_crest)}"
         "</div>"
         f"{venue_html}"
         "</div>"
@@ -202,6 +230,7 @@ def form_card(team: TeamForm) -> str:
         if team.days_rest is not None
         else '<div class="cl-rest">No previous match this season</div>'
     )
+    mini = f'<img class="cl-mini" src="{escape(team.crest_uri)}" alt="">' if team.crest_uri else ""
     stats = "".join(
         f'<div class="cl-stat"><div class="cl-val">{value}</div>'
         f'<div class="cl-lbl">{label}</div></div>'
@@ -213,7 +242,7 @@ def form_card(team: TeamForm) -> str:
     )
     return (
         '<div class="cl-card">'
-        f'<div class="cl-team-name">{escape(team.name)}</div>'
+        f'<div class="cl-team-name">{mini}{escape(team.name)}</div>'
         f'<div class="cl-sub">Form · {window}</div>'
         f"{form_pills(team.sequence)}"
         f'<div class="cl-stats">{stats}</div>'

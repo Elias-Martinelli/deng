@@ -30,6 +30,7 @@ from components import (  # noqa: E402
     CSS,
     ResultRow,
     TeamForm,
+    crest_uri,
     form_grid,
     match_hero,
     outcome_for,
@@ -109,6 +110,14 @@ def form_sequence(team_id: int, before: pd.Timestamp) -> list[str]:
         outcome_for(team_id, int(r.home_team_id), int(r.home_goals), int(r.away_goals))
         for r in rows.itertuples()
     ]
+
+
+@st.cache_data(ttl=3600)
+def crests() -> dict[int, str]:
+    """Every stored crest as a data URI, keyed by team. Cached: they change once a season."""
+    frame = query("SELECT team_id, content_type, image FROM curated.team_crest")
+    uris = {int(r.team_id): crest_uri(r.content_type, r.image) for r in frame.itertuples()}
+    return {team_id: uri for team_id, uri in uris.items() if uri}
 
 
 def result_rows(frame: pd.DataFrame) -> list[ResultRow]:
@@ -249,6 +258,8 @@ st.markdown(
         kickoff_label=local_time(kickoff, "%a %d %b %Y · %H:%M %Z"),
         matchday=int(detail["matchday"]) if pd.notna(detail["matchday"]) else None,
         venue=detail["venue"],
+        home_crest=crests().get(int(detail["home_id"])),
+        away_crest=crests().get(int(detail["away_id"])),
     ),
     unsafe_allow_html=True,
 )
@@ -260,6 +271,7 @@ def team_form(prefix: str) -> TeamForm:
     return TeamForm(
         name=detail[f"{prefix}_name"],
         tla=detail[f"{prefix}_tla"],
+        crest_uri=crests().get(int(detail[f"{prefix}_id"])),
         sequence=form_sequence(int(detail[f"{prefix}_id"]), kickoff),
         matches_considered=int(detail[f"{prefix}_n"]),
         points=int(detail[f"{prefix}_pts"]),

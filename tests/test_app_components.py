@@ -9,6 +9,7 @@ from components import (  # noqa: E402
     ResultRow,
     TeamForm,
     badge,
+    crest_uri,
     form_card,
     form_pills,
     match_hero,
@@ -22,6 +23,7 @@ def team(**overrides) -> TeamForm:
     values = dict(
         name="Galatasaray SK",
         tla="GAL",
+        crest_uri=None,
         sequence=["L"],
         matches_considered=1,
         points=0,
@@ -81,3 +83,15 @@ def test_status_is_red_only_for_what_fails_a_run():
     assert "cl-warn" in warning_only and "cl-bad" not in warning_only
     assert "cl-bad" in status_chips("2026-09-21", True, 11, 12, dq_critical_failed=1)
     assert "cl-bad" in status_chips(None, False, 0, 0, dq_critical_failed=0)
+
+
+def test_crest_is_embedded_when_stored_and_code_otherwise():
+    uri = crest_uri("image/png", b"\x89PNG fake")
+    assert uri.startswith("data:image/png;base64,")
+    assert "<img" in badge("GAL", "Galatasaray SK", uri)
+    assert ">GAL<" in badge("GAL", "Galatasaray SK", None)
+
+
+def test_only_image_types_become_a_crest():
+    assert crest_uri("text/html", b"<script>") is None
+    assert crest_uri("image/png", b"") is None

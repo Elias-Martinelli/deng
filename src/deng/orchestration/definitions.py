@@ -1,6 +1,7 @@
 """The daily pipeline as Dagster assets.
 
     raw.football_data  ->  staging.{matches,teams,standings}  ->  curated.*  ->  meta.dq_results
+                                                     curated.dim_team  ->  raw.team_crests  -^
 
 Every asset is one of our tables, and every partition is one logical date: the
 `ingestion_date` in the raw zone, the `%(logical_date)s` the transformations
@@ -28,6 +29,7 @@ from dagster import AssetExecutionContext
 from deng import pipeline
 from deng.config import get_settings
 from deng.database import connect
+from deng.ingestion.crests import fetch_crests
 from deng.ingestion.football_data_client import RetryableApiError
 from deng.quality import run_checks
 
@@ -70,6 +72,7 @@ DIM_TEAM = dg.AssetKey(["curated", "dim_team"])
 FACT_MATCH = dg.AssetKey(["curated", "fact_match"])
 FACT_TEAM_MATCH_FORM = dg.AssetKey(["curated", "fact_team_match_form"])
 DQ_RESULTS = dg.AssetKey(["meta", "dq_results"])
+TEAM_CRESTS = dg.AssetKey(["raw", "team_crests"])
 
 # Mirrors the table dependencies in sql/transform/. Used only for lineage in the
 # UI - the execution order inside the transformation is TRANSFORMATION_ORDER.
@@ -166,8 +169,31 @@ def curated_model(context: AssetExecutionContext):
 
 
 @dg.asset(
+    key=TEAM_CRESTS,
+    deps=[DIM_TEAM],
+    partitions_def=daily_partitions,
+    retry_policy=TRANSIENT_RETRY,
+    group_name="raw",
+    kinds={"postgres"},
+    description=(
+        "Club crest images, fetched once per crest URL. Best effort: a failed download is "
+        "reported, not fatal - the viewer falls back to the team code."
+    ),
+)
+def team_crests(context: AssetExecutionContext) -> dg.MaterializeResult:
+    """Store the crests that are not stored yet (usually none after the first run)."""
+    with connect() as connection:
+        result = fetch_crests(connection)
+    for team_id, reason in result.failed.items():
+        context.log.warning("crest for team %s not stored: %s", team_id, reason)
+    return dg.MaterializeResult(
+        metadata={"fetched": len(result.fetched), "failed": len(result.failed)}
+    )
+
+
+@dg.asset(
     key=DQ_RESULTS,
-    deps=[FACT_MATCH, FACT_TEAM_MATCH_FORM, DIM_TEAM],
+    deps=[FACT_MATCH, FACT_TEAM_MATCH_FORM, DIM_TEAM, TEAM_CRESTS],
     partitions_def=daily_partitions,
     retry_policy=TRANSIENT_RETRY,
     group_name="quality",
@@ -204,9 +230,9 @@ def data_quality(context: AssetExecutionContext) -> dg.MaterializeResult:
 
 daily_pipeline = dg.define_asset_job(
     name="daily_pipeline",
-    selection=dg.AssetSelection.assets(raw_football_data, curated_model, data_quality),
+    selection=dg.AssetSelection.assets(raw_football_data, curated_model, team_crests, data_quality),
     partitions_def=daily_partitions,
-    description="ingest -> transform -> data quality for one logical date.",
+    description="ingest -> transform -> crests -> data quality for one logical date.",
 )
 
 # 06:00 Zurich: late enough that the previous evening's matches are final in
@@ -219,7 +245,7 @@ daily_schedule = dg.build_schedule_from_partitioned_job(
 )
 
 defs = dg.Definitions(
-    assets=[raw_football_data, curated_model, data_quality],
+    assets=[raw_football_data, curated_model, team_crests, data_quality],
     jobs=[daily_pipeline],
     schedules=[daily_schedule],
 )

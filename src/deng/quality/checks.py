@@ -211,6 +211,21 @@ CHECKS: tuple[Check, ...] = (
                 SELECT 1 FROM curated.dim_team d WHERE d.team_id = referenced.team_id)
         """,
     ),
+    Check(
+        name="every_team_has_a_crest",
+        target="curated.team_crest",
+        severity=WARNING,
+        description=(
+            "Every team's current crest is stored. WARNING: without it the viewer shows the "
+            "three-letter code instead - cosmetic, and a download can fail for reasons outside "
+            "our control."
+        ),
+        sql="""
+            SELECT count(*)::text || ' team(s) without a crest' AS observed, count(*) = 0 AS passed
+              FROM curated.dim_team d
+             WHERE NOT EXISTS (SELECT 1 FROM curated.team_crest c WHERE c.team_id = d.team_id)
+        """,
+    ),
 )
 
 
