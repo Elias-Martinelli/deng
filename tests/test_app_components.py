@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 
 from components import (  # noqa: E402
+    MatchWeather,
     ResultRow,
     TeamForm,
     badge,
@@ -16,6 +17,7 @@ from components import (  # noqa: E402
     outcome_for,
     result_list,
     status_chips,
+    weather_card,
 )
 
 
@@ -95,3 +97,17 @@ def test_crest_is_embedded_when_stored_and_code_otherwise():
 def test_only_image_types_become_a_crest():
     assert crest_uri("text/html", b"<script>") is None
     assert crest_uri("image/png", b"") is None
+
+
+def test_weather_shows_values_when_available():
+    html = weather_card(MatchWeather("AVAILABLE", 12.4, 40, 0.2, 13.0, 3, "12 Oct 06:00", 1))
+    assert "12 °C" in html and "40 % rain" in html and "Overcast" in html
+    assert "1 day before kick-off" in html and "CC BY 4.0" in html
+
+
+def test_weather_explains_every_missing_state():
+    for status in ("NOT_YET_AVAILABLE", "VENUE_UNKNOWN", "NOT_CAPTURED", "MISSING"):
+        html = weather_card(MatchWeather(status, available_from="28 Sep"))
+        assert "°C" not in html
+        assert len(html) > 60, status
+    assert "28 Sep" in weather_card(MatchWeather("NOT_YET_AVAILABLE", available_from="28 Sep"))

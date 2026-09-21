@@ -5,6 +5,7 @@
     python -m deng.pipeline ingest --date 2026-09-18  ingest for one logical date
     python -m deng.pipeline transform                 raw -> staging -> curated
     python -m deng.pipeline crests                    fetch club crests not stored yet
+    python -m deng.pipeline weather                   forecasts for matches <= 16 days ahead
     python -m deng.pipeline dq                        data-quality checks
     python -m deng.pipeline run                       ingest + transform + dq in one go
     python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
@@ -27,8 +28,13 @@ from deng.database import PipelineRun, RawLoader, apply_sql_files, connect
 from deng.ingestion.crests import fetch_crests
 from deng.ingestion.extract import fetch_endpoints, read_sample_endpoints
 from deng.ingestion.football_data_client import ApiError, FootballDataClient
+from deng.ingestion.weather import ingest_weather
 from deng.quality import run_checks
-from deng.transformation import run_transformations
+from deng.transformation import (
+    WEATHER_COUNTED_TABLES,
+    WEATHER_TRANSFORMATION_ORDER,
+    run_transformations,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_backfill(args.date_from, args.date_to, from_samples=args.from_samples)
     if args.command == "transform":
         return command_transform(args.date or date.today())
+    if args.command == "weather":
+        return command_weather(args.date or date.today(), from_samples=args.from_samples)
     if args.command == "crests":
         return command_crests()
     if args.command == "dq":
@@ -89,6 +97,10 @@ def build_parser() -> argparse.ArgumentParser:
     transform.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
 
     sub.add_parser("crests", help="fetch club crests that are not stored yet (incremental)")
+
+    weather = sub.add_parser("weather", help="fetch and transform forecasts for one logical date")
+    weather.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+    weather.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
 
     sub.add_parser("dq", help="run the data-quality checks and persist the results")
 
@@ -182,6 +194,44 @@ def command_transform(logical_date: date) -> int:
     return 0
 
 
+def command_weather(logical_date: date, from_samples: bool = False) -> int:
+    """Fetch forecasts for matches inside the horizon, then build the weather tables.
+
+    Runs after the football transformation: which matches need a forecast is
+    read from curated.fact_match. The transformation runs even when nothing was
+    fetched, because every match still gets its weather status.
+    """
+    settings = get_settings()
+    with connect(settings) as connection:
+        with PipelineRun(connection, "ingest_weather", logical_date) as run:
+            result = ingest_weather(
+                connection,
+                logical_date,
+                run.run_id,
+                settings.open_meteo_forecast_url,
+                from_samples=from_samples,
+            )
+            run.add_counts(loaded=len(result.stored))
+        print(f"  weather {result.summary}")
+        with PipelineRun(connection, "transform_weather", logical_date) as run:
+            transformed = run_transformations(
+                connection,
+                logical_date,
+                order=WEATHER_TRANSFORMATION_ORDER,
+                counted=WEATHER_COUNTED_TABLES,
+            )
+            run.add_counts(loaded=transformed.total_rows_written)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT weather_status, count(*) FROM curated.fact_match_weather "
+                "GROUP BY 1 ORDER BY 1"
+            )
+            for status, count in cursor.fetchall():
+                print(f"  {status:<18} {count:>4} matches")
+    print(f"weather for {logical_date}: OK")
+    return 0
+
+
 def command_crests() -> int:
     """Store missing club crests. Best effort: failures are reported, not fatal.
 
@@ -234,6 +284,11 @@ def command_run(logical_date: date, from_samples: bool = False) -> int:
 
     print("\n=== crests ===")
     command_crests()
+
+    print(f"\n=== weather {logical_date} ===")
+    code = command_weather(logical_date, from_samples=from_samples)
+    if code != 0:
+        return code
 
     print("\n=== data quality ===")
     code = command_dq()

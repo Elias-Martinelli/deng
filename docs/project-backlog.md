@@ -34,7 +34,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 1.3 | Register free key, run `scripts/explore_football_api.py`, commit small samples to `data/sample/` | MUST | M1 | [x] `data/sample/football-data/` (8 payloads) |
 | 1.4 | Document schema, business keys, null behaviour from real payloads (`docs/evidence/api-exploration.md`) | MUST | M1 | [x] evidence doc + 13 contract tests |
 | 1.5 | Confirm/refute "current season only" and head2head behaviour; set ADR-001 to ACCEPTED | MUST | M1 | [x] refuted – history IS served; ADR-001 ACCEPTED |
-| 1.6 | Create `data/reference/venues.csv` for the 36 league-phase clubs (lat, lon, tz) | MUST | MIDTERM | [ ] |
+| 1.6 | Create `data/reference/venues.csv` for the 36 league-phase clubs (lat, lon, tz) | MUST | MIDTERM | [x] OSM via `make venues`, 34/36 resolved, evidence weather §2 |
 | 1.7 | ClubElo as cross-season strength signal | COULD | FINAL | [ ] (lower value now that the API serves history) |
 | 1.8 | Probe how far back seasons are actually served (2023/24 verified; test 2015, 2005, 1995) | SHOULD | MIDTERM | [ ] |
 | 1.9 | Decide how many past seasons to ingest, and document the reason | MUST | MIDTERM | [ ] |
@@ -48,7 +48,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 2.3 | Extract jobs: competition, teams, matches, standings | MUST | MIDTERM | [x] `DAILY_ENDPOINTS` |
 | 2.4 | ~~Extract job: team matches (form across competitions)~~ | SHOULD | MIDTERM | dropped – ADR-004 (Champions League only) |
 | 2.5 | Extract job: head2head for upcoming matches – first retest with a pairing known to have met | COULD | FINAL | [ ] |
-| 2.6 | Weather extract: forecast for matches ≤ 16 days ahead | MUST | MIDTERM | [ ] |
+| 2.6 | Weather extract: forecast for matches ≤ 16 days ahead | MUST | MIDTERM | [x] `ingestion/weather.py`; first live forecast 28 Sep |
 | 2.7 | Weather extract: archive actuals for finished matches | SHOULD | FINAL | [ ] |
 | 2.8 | Minimal raw validation (top-level keys, non-empty lists, required ids) – fail fast | MUST | MIDTERM | [ ] |
 | 2.9 | Full vs. incremental decision per endpoint, documented in README | MUST | MIDTERM | [x] table in README, rationale in code |
@@ -91,7 +91,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 6.1 | staging: typed `matches`, `teams`, `standings` from raw JSONB | MUST | MIDTERM | [x] `sql/transform/11x` (weather open) |
 | 6.2 | curated `fact_match` (grain: one CL match) | MUST | MIDTERM | [x] 144 rows, derived outcome |
 | 6.3 | curated `fact_team_match_form` – last-5 form, home/away form, days since last match (point-in-time correct); must carry `matches_considered` because 11 of 36 clubs have no domestic data | MUST | MIDTERM | [x] CL-only by ADR-004, leakage check + `matches_considered` |
-| 6.4 | curated `dim_team` (+ `dim_venue` with the weather work) | MUST | MIDTERM | [x] `dim_team` incl. coverage flag |
+| 6.4 | curated `dim_team` (+ `dim_venue` with the weather work) | MUST | MIDTERM | [x] `dim_team`, `dim_venue`, `fact_match_weather` |
 | 6.5 | curated `fact_match_snapshot` (grain: one upcoming match per snapshot date) with availability states | SHOULD | MIDTERM (basic) / FINAL (full) | [ ] |
 | 6.6 | `dim_date` | SHOULD | FINAL | [ ] |
 | 6.7 | Head-to-head aggregates | COULD | FINAL | [ ] |
@@ -101,7 +101,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
 | 7.1 | SQL checks: not null, unique keys, home ≠ away, valid status, referential integrity, row count > 0 | MUST | MIDTERM | [x] 12 checks in `quality/checks.py` |
-| 7.2 | Plausibility: goals in range (temperature with the weather work) | SHOULD | MIDTERM | [x] `goals_are_plausible` |
+| 7.2 | Plausibility: goals in range (temperature with the weather work) | SHOULD | MIDTERM | [x] `goals_are_plausible`, `weather_values_plausible` |
 | 7.3 | Results persisted in `meta.dq_results`; critical failures fail the run | MUST | MIDTERM | [x] persisted per run, CRITICAL exits non-zero |
 | 7.4 | Schema-drift handling: required-field validation with clear error, optional fields tolerant | MUST | MIDTERM | [ ] |
 | 7.5 | Same checks against BigQuery | MUST | FINAL | [ ] |
@@ -116,6 +116,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
 | 8.4 | Data-quality check tests incl. a deliberately broken row | SHOULD | MIDTERM | [x] `test_a_critical_violation_is_detected` |
 | 8.5 | GitHub Actions: lint + tests on every push | SHOULD | M1 | [x] `.github/workflows/ci.yml` |
+| 8.6 | Separate test database, so `make test` does not empty the local pipeline data | SHOULD | MIDTERM | [ ] |
 
 ## EPIC 9 – Google Cloud Storage
 
@@ -154,6 +155,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
 | 13.1 | Fixture picker → match intelligence page reading curated tables only | COULD | FINAL | [x] `app/streamlit_app.py`, screenshot in evidence |
+| 13.3 | Club crests stored in the database, shown in the viewer | COULD | FINAL | [x] `raw.team_crests`, evidence weather §5 |
 | 13.2 | Responsive layout for phones (iPhone, Android) instead of native apps | COULD | FINAL | [x] `app/components.py`, evidence §13; real-device check open |
 
 ## EPIC 14 – Documentation and reproducibility

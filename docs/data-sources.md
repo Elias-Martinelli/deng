@@ -68,11 +68,11 @@ client throttles on `X-Requests-Available-Minute`.
 
 | Dataset | File | Purpose | Source |
 |---|---|---|---|
-| Venues | `data/reference/venues.csv` (planned) | stadium name, city, country, latitude, longitude, time zone for the 36 league-phase clubs; joins football venue names to weather coordinates | Wikipedia stadium pages, checked manually; ~36 rows |
+| Venues | `data/reference/venues.csv` | stadium, latitude, longitude, time zone and OSM reference for the 36 league-phase clubs; joins clubs to weather coordinates | OpenStreetMap via `make venues`, plausibility-checked, flagged rows reviewed by hand ([evidence](evidence/weather.md#2-venues-why-the-apis-venue-fields-could-not-be-geocoded-blindly)); ODbL |
 
 Small, versioned and reviewable – preferable to geocoding at run time, which
-would introduce a third external dependency into every run. Open-Meteo's free
-geocoding API remains a fallback for clubs that are missing from the file.
+would introduce a third external dependency into every run. Generated rather
+than typed by hand, so every row names the map object it came from.
 
 ## 4. Optional enrichment (COULD, not planned before the final)
 

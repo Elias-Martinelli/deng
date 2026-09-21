@@ -86,6 +86,44 @@ Descriptive attributes only: name, short name, TLA, country, venue, crest.
 Plus `has_domestic_coverage`, a boolean that records whether the club's
 domestic league exists in our API tier. Descriptive only since ADR-004.
 
+### `curated.dim_venue` — dimension
+
+> **Grain: one row represents one club's home venue** (keyed by `team_id`).
+
+Keyed by the club rather than a venue id because in the league phase every
+match is played at the home club's venue, and the source identifies venues only
+by (outdated) name. Coordinates, time zone, the OSM reference they came from
+and `coordinates_status` (`RESOLVED` / `NOT_AVAILABLE`). Built from
+`data/reference/venues.csv` ([evidence](evidence/weather.md#2-venues-why-the-apis-venue-fields-could-not-be-geocoded-blindly)).
+A neutral-venue final would need a venue key of its own - not before May.
+
+### `curated.fact_match_weather` — fact
+
+> **Grain: one row represents one match.**
+
+The forecast for the hour containing the kick-off, from the **newest forecast
+fetched before kick-off** (`forecast_fetched_at < utc_kickoff`) that the run
+could know (`ingestion_date <= logical date`) - the same point-in-time rule as
+the form table, guarded twice (SQL and `weather_fetched_before_kickoff`).
+
+Every match has a row, and `weather_status` says why values are absent:
+
+| Status | Meaning |
+|---|---|
+| `AVAILABLE` | values present (a constraint enforces: values ⇔ AVAILABLE) |
+| `NOT_YET_AVAILABLE` | kick-off beyond the 16-day horizon |
+| `VENUE_UNKNOWN` | the home venue has no verified coordinates |
+| `NOT_CAPTURED` | played before any forecast was fetched; cannot be recovered |
+| `MISSING` | inside the horizon, no forecast - a pipeline gap, reported by a WARNING check |
+
+`lead_days` (match date − forecast date) is kept because a 1-day forecast and a
+14-day forecast are different quality; a model should know which it gets.
+
+### `curated.team_crest` — view
+
+One row per team with a stored crest, selecting from `raw.team_crests` by the
+team's current crest URL. A view, because there is nothing to transform.
+
 ## Staging tables
 
 | Table | Grain |
@@ -93,6 +131,8 @@ domestic league exists in our API tier. Descriptive only since ADR-004.
 | `staging.matches` | one row per match |
 | `staging.teams` | one row per team in the current season |
 | `staging.standings` | **one row per team per season per ingestion date** — a point-in-time snapshot, because the table changes after every matchday |
+| `staging.venues` | one row per club, loaded from `data/reference/venues.csv` on every weather run |
+| `staging.weather_forecast` | **one row per venue per forecast hour per ingestion date** — every day's forecast is kept, so how a forecast evolved towards kick-off stays queryable |
 
 `staging.standings` is the one staging table whose grain includes the ingestion
 date. That is intentional: it turns the league table into a time series and is
@@ -103,22 +143,24 @@ the seed for the match-snapshot idea in the final architecture.
 | Table | Grain |
 |---|---|
 | `raw.football_data` | one row per (source, endpoint, request parameters, ingestion date) — one API answer on one day |
+| `raw.open_meteo` | one row per (endpoint, venue, ingestion date) — one forecast answer for one stadium on one day |
+| `raw.team_crests` | one row per crest URL — image bytes as received, fetched once |
 | `meta.pipeline_runs` | one row per pipeline execution |
 | `meta.dq_results` | one row per data-quality check per run |
 
 ## Dimensional view
 
-`fact_match` and `fact_team_match_form` are the facts; `dim_team` is the shared
-dimension. `dim_date` and `dim_venue` are planned for the cloud model, where a
-date dimension earns its place through partition pruning. Locally they would
-only add joins.
+`fact_match`, `fact_team_match_form` and `fact_match_weather` are the facts;
+`dim_team` and `dim_venue` the dimensions. `dim_date` is planned for the cloud
+model, where a date dimension earns its place through partition pruning.
+Locally it would only add joins.
 
 ```
-            dim_team
-           /        \
-fact_match            fact_team_match_form
-      |                        |
-      +------ match_id --------+
+     dim_venue ─── dim_team
+         |        /        \
+fact_match_weather   fact_match   fact_team_match_form
+         |              |                 |
+         +------------ match_id ----------+
 ```
 
 ## What is not modelled, and why

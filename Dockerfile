@@ -21,6 +21,9 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir .
 
 COPY sql/ ./sql/
+# Reference data is part of the product (venue coordinates for the weather), unlike
+# the sample payloads, which are mounted by Compose for offline runs only.
+COPY data/reference/ ./data/reference/
 COPY scripts/ ./scripts/
 
 # Run as a non-root user: a container that only reads an API and writes to

@@ -97,7 +97,8 @@ existed before the match.
 | Source | Content | Access | Limits (free tier) |
 |---|---|---|---|
 | [football-data.org v4](https://www.football-data.org) | CL fixtures, results, standings, teams, referees, head-to-head | REST/JSON, `X-Auth-Token`, free registration | 10 requests/min; no line-ups, injuries or match statistics; 11 of 36 clubs without domestic-league data |
-| [Open-Meteo](https://open-meteo.com) *(planned)* | 16-day forecast, historical archive | REST/JSON, no key | 10 000 calls/day, CC BY 4.0 |
+| [Open-Meteo](https://open-meteo.com) | 16-day hourly forecast for the kick-off hour | REST/JSON, no key | 10 000 calls/day, CC BY 4.0 |
+| [OpenStreetMap](https://www.openstreetmap.org) via `make venues` | stadium coordinates, once per season → `data/reference/venues.csv` | Nominatim, 1 req/s | ODbL |
 | `data/reference/venues.csv` *(planned)* | stadium coordinates and time zones | versioned in this repo | maintained by hand |
 
 Evaluation including rejected alternatives: [`docs/data-sources.md`](docs/data-sources.md).
@@ -152,6 +153,8 @@ kept next to the code in [`src/deng/ingestion/extract.py`](src/deng/ingestion/ex
 | `competitions/CL/teams` | 36 | FULL | feeds `dim_team`, stable within a season |
 | `competitions/CL/standings` | 36 | FULL | changes every matchday, one request |
 | `competitions/CL/matches` | 144 | FULL | 212 KB in one request |
+| Open-Meteo `v1/forecast` | 1 per venue with a match ≤ 16 days ahead | FULL per venue and day, **today only** | the forecast changes daily and every day's version is kept; a past date would return analysis data, not a forecast |
+| club crests | 36 images | **INCREMENTAL** by URL | a changed crest gets a new URL, so a stored one is never fetched again |
 
 Incremental loading via `lastUpdated` would cost an extra request to discover
 what changed and would still miss matches the API *adds* mid-season. A full
@@ -177,7 +180,7 @@ cd deng
 
 ./setup.sh                 # venv + install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 74 tests; the database ones skip without PostgreSQL
+make test                  # 90 tests; the database ones skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, no API key needed
@@ -251,7 +254,9 @@ first real run exposed: [evidence §11](docs/evidence/local-pipeline-run.md#11-d
 One asset per table, one daily partition per logical date:
 
 ```text
-raw/football_data ──► staging/{matches,teams,standings} ──► curated/{dim_team,fact_match,fact_team_match_form} ──► meta/dq_results
+raw/football_data ──► staging/{matches,teams,standings} ──► curated/{dim_team,fact_match,fact_team_match_form} ─┐
+curated/dim_team  ──► raw/team_crests ─────────────────────────────────────────────────────────────────────────────┼─► meta/dq_results
+curated/fact_match ─► raw/open_meteo ──► staging/weather_forecast ──► curated/{dim_venue,fact_match_weather} ──────┘
       ingest                         transform (one transaction)                                         data quality
 ```
 
@@ -296,6 +301,12 @@ previous data product is still there.
 | 4 | `210_dim_team.sql` | `curated.dim_team` |
 | 5 | `220_fact_match.sql` | `curated.fact_match` incl. derived outcome |
 | 6 | `230_fact_team_match_form.sql` | `curated.fact_team_match_form` |
+| 7 | `310_staging_weather_forecast.sql` | `staging.weather_forecast` (hourly, one version per day) |
+| 8 | `320_dim_venue.sql` | `curated.dim_venue` from `venues.csv` |
+| 9 | `330_fact_match_weather.sql` | `curated.fact_match_weather`: forecast or reason, per match |
+
+Steps 7–9 are a **second transaction**: which forecasts to fetch is read from
+`fact_match`, so the weather can only be fetched after steps 1–6 committed.
 
 Justification for the two non-trivial ones:
 
@@ -307,6 +318,10 @@ Justification for the two non-trivial ones:
   finished *strictly before* that match's kick-off. This directly serves the
   use case (the app shows it, a model would train on it) and is the mechanism
   that prevents data leakage.
+* **`fact_match_weather`** takes the newest forecast *fetched before kick-off*
+  for the kick-off hour - the same leakage rule - and gives every match a
+  `weather_status` (`AVAILABLE`, `NOT_YET_AVAILABLE`, `VENUE_UNKNOWN`,
+  `NOT_CAPTURED`, `MISSING`) instead of a silent null.
 
 The logic lives in `.sql` files rather than Python strings so it can be read,
 reviewed and run by hand in `psql` — and so the BigQuery versions are the same
@@ -320,7 +335,7 @@ cannot drift away from the schema.
 
 ## Data Quality
 
-Twelve checks run after every transformation
+Eighteen checks run after every transformation
 ([`src/deng/quality/checks.py`](src/deng/quality/checks.py)) and are persisted
 to `meta.dq_results`, so "was the data good on 18 September?" is a query rather
 than an archaeology exercise in old logs.
@@ -347,7 +362,7 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
-* CI runs lint, 74 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 90 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -361,10 +376,10 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 74 tests: config, API client, source schema, loader, transformations, DQ, orchestration, app components | `74 passed` (or `43 passed, 31 skipped` without a database; the 9 orchestration tests need `make setup-orchestrator`) |
+| `make test` | 90 tests: config, API client, source schema, loader, transformations, weather, crests, DQ, orchestration, app components | `90 passed` (or `50 passed, 40 skipped` without a database; the 9 orchestration tests need `make setup-orchestrator`) |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log | `2/2 queries passed`, exit 0 |
-| `make dq` | curated-layer data quality | `11/12 checks passed`, exit 0 |
+| `make dq` | curated-layer data quality | `17/18 checks passed`, exit 0 |
 
 Worked examples with real output:
 [`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
@@ -442,8 +457,18 @@ Documented honestly, because hidden failures cost more than known ones:
   today's state, so a backfill for 17 September writes today's data under that
   logical date. It recovers missed runs and enables re-processing; it does not
   recover what the API would have said back then.
-* **Weather ingestion is not implemented yet**, so no weather appears in the
-  app despite being part of the use case.
+* **Weather: first real forecast on 28 September.** Matchday 2 is 22 days
+  after this writing; forecasts reach 16. Until then every upcoming match is
+  `NOT_YET_AVAILABLE` - the AVAILABLE path is proven by integration tests
+  ([evidence](docs/evidence/weather.md)).
+* **No weather for Shakhtar and Sabah home matches** (`VENUE_UNKNOWN`): no
+  verified venue, so no forecast for a guessed location.
+* **No weather for past matches** (`NOT_CAPTURED`): a forecast cannot be
+  fetched after the fact; post-match actuals from the archive API are backlog 2.7.
+* **The forecast is for the hour containing the kick-off** (18:45 → 18:00 UTC),
+  not an average over the match.
+* **Tests share the local database** and empty its tables; run `make
+  run-samples` again after `make test`.
 * The knockout fixtures do not exist until the December draw, so the fixture
   list is currently the 144-match league phase.
 
@@ -452,7 +477,7 @@ Documented honestly, because hidden failures cost more than known ones:
 | Milestone | Deadline | Status |
 |---|---|---|
 | Milestone 1 — initial pitch | week 3 | **complete** — use case, verified sources, Architecture v0.1, ADRs, backlog |
-| Midterm — local pipeline | 22 Oct 2026, 15:30 | **largely complete** — ingestion, raw zone, transformations, curated model, data quality, Dagster orchestration, Docker Compose verified, Streamlit, notebook. Open: weather, raw validation, Architecture v0.2, clean-environment test |
+| Midterm — local pipeline | 22 Oct 2026, 15:30 | **largely complete** — ingestion, raw zone, transformations, curated model, data quality, Dagster orchestration, Docker Compose verified, Streamlit, notebook. Open: raw validation, Architecture v0.2, clean-environment test |
 | Final — cloud pipeline | 10 Dec 2026, 20:00 | not started |
 
 Rubric coverage: [`docs/rubric-checklist.md`](docs/rubric-checklist.md) ·
@@ -478,7 +503,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │   ├── database/             # connections, idempotent raw loader, run log
 │   ├── transformation/       # ordered SQL execution in one transaction
 │   ├── orchestration/        # Dagster assets, schedule, retry policy
-│   └── quality/              # the twelve data-quality checks
+│   └── quality/              # the eighteen data-quality checks
 │
 ├── sql/
 │   ├── schema/               # DDL (applied by `make init`)
@@ -487,7 +512,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │
 ├── app/                      # viewer over the curated tables (page + HTML components)
 ├── notebooks/                # exploration
-├── tests/                    # 74 tests: unit, contract, integration
+├── tests/                    # 90 tests: unit, contract, integration
 ├── data/sample/              # committed API payloads (fixtures + offline source)
 └── docs/
     ├── use-case.md · data-sources.md · data-model.md

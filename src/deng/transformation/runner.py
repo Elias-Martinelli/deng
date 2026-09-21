@@ -36,6 +36,21 @@ TRANSFORMATION_ORDER: tuple[str, ...] = (
     "transform/230_fact_team_match_form.sql",
 )
 
+# The weather chain runs as a second, separate transaction: its input (the
+# forecasts) can only be fetched once fact_match says which matches are inside
+# the horizon, i.e. after the football chain has committed.
+WEATHER_TRANSFORMATION_ORDER: tuple[str, ...] = (
+    "transform/310_staging_weather_forecast.sql",
+    "transform/320_dim_venue.sql",
+    "transform/330_fact_match_weather.sql",
+)
+
+WEATHER_COUNTED_TABLES: tuple[str, ...] = (
+    "staging.weather_forecast",
+    "curated.dim_venue",
+    "curated.fact_match_weather",
+)
+
 # Tables whose row counts are reported after a run.
 COUNTED_TABLES: tuple[str, ...] = (
     "staging.matches",
@@ -65,6 +80,7 @@ def run_transformations(
     connection: psycopg.Connection,
     logical_date: date,
     order: tuple[str, ...] = TRANSFORMATION_ORDER,
+    counted: tuple[str, ...] = COUNTED_TABLES,
 ) -> TransformResult:
     """Run every transformation for one logical date in a single transaction.
 
@@ -75,6 +91,7 @@ def run_transformations(
             `%(logical_date)s`, so a rerun for a past date reproduces that
             date's result rather than today's.
         order: The SQL files to execute, in order.
+        counted: Tables whose row counts are reported afterwards.
 
     Returns:
         A `TransformResult` with per-statement row counts and final table sizes.
@@ -96,7 +113,7 @@ def run_transformations(
                 result.statements.append((relative, affected))
                 logger.info("%s -> %s rows", relative, affected)
 
-            for table in COUNTED_TABLES:
+            for table in counted:
                 cursor.execute(f"SELECT count(*) FROM {table}")  # noqa: S608 - fixed literals
                 row = cursor.fetchone()
                 result.row_counts[table] = int(row[0]) if row else 0

@@ -12,10 +12,10 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 |---|---|---|---|---|---|
 | Use case with problem, end user and data product; transformations linked to it | M1 | DONE | `docs/use-case.md` | document present, transformations listed per table | refine after API exploration |
 | Documented data source: provenance, access, format, schema, update frequency, volume, DQ risks | M1 | DONE | `docs/data-sources.md`, `docs/evidence/api-exploration.md` | 8 real payloads committed; 13 contract tests pass; measured volumes and rate limits | how far back seasons go (backlog 1.8) |
-| Modular batch ingestion; full vs. incremental, frequency and failure behaviour justified | MIDTERM | DONE | `src/deng/ingestion/{football_data_client,extract}.py`, `src/deng/pipeline.py` | 40 tests pass; `docs/evidence/local-pipeline-run.md` §1–§6 | weather ingestion |
+| Modular batch ingestion; full vs. incremental, frequency and failure behaviour justified | MIDTERM | DONE | `src/deng/ingestion/{football_data_client,extract}.py`, `src/deng/pipeline.py` | tests pass; `docs/evidence/local-pipeline-run.md` §1–§6, `docs/evidence/weather.md` | – |
 | PostgreSQL locally | MIDTERM | DONE | `sql/raw/001..003`, `src/deng/database/` | 16 raw rows loaded and queried, evidence §1–§5 | staging + curated schemas |
 | Cloud storage + warehouse (GCS, BigQuery) in the final solution | FINAL | TODO | – | – | EPIC 9, 10 |
-| Transformations justified in README | MIDTERM | DONE | `sql/transform/`, README §Transformation | 6 steps, per-step justification; 16 tests | weather transformations |
+| Transformations justified in README | MIDTERM | DONE | `sql/transform/`, README §Transformation | 9 steps (6 football, 3 weather), per-step justification; transformation + weather tests | – |
 | Orchestration: schedule, dependencies, reruns, retries, backfills | MIDTERM | DONE | Dagster `daily_pipeline` + schedule, transient-only retries | evidence §2, §3, §6, §12; `tests/test_orchestration.py` | validate step (2.8), failure matrix (5.6) |
 | Terraform for GCP resources; no hard-coded secrets | FINAL | TODO | `.env.example`, `.gitignore` rules for tfstate/keys | secrets scan of repo clean | EPIC 11 |
 | Reproducibility: clone → README → run assessed stages | MIDTERM / FINAL | IN PROGRESS | `setup.sh`, `Makefile` (20 targets), `--from-samples` lets a reviewer run without an API key | `make test` in CI; evidence reproducible | clean-environment test on a second machine |
@@ -39,7 +39,7 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 
 | Requirement | Milestone | Status | Implementation | Evidence | Open Tasks |
 |---|---|---|---|---|---|
-| Modular batch-ingestion script loading source data into storage (4 pts) | MIDTERM | DONE | client + extract + raw loader + CLI | evidence §1, 40 tests | weather source |
+| Modular batch-ingestion script loading source data into storage (4 pts) | MIDTERM | DONE | client + extract + raw loader + CLI | evidence §1, weather evidence §3 | – |
 | Local PostgreSQL with loaded, queryable data (2 pts) | MIDTERM | DONE | `raw.football_data`, `meta.pipeline_runs` | `make verify` 2/2 passed, evidence §5 | curated tables |
 | Docker Compose with required services on a common network (3 pts) | MIDTERM | DONE | `docker-compose.yml`, `Dockerfile` | executed on an empty volume: postgres, Dagster webserver + daemon, pipeline and app images (evidence §11, §12) | clean-environment test (4.4) |
 | Orchestrator runs and schedules ingestion, supports reruns/backfills (3 pts) | MIDTERM | DONE | Dagster in Compose, daily partitions, schedule RUNNING | evidence §12, ADR-002 | – |
@@ -57,7 +57,7 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 | Terraform provisions GCS bucket + BigQuery dataset (3 pts) | FINAL | TODO | – | – | EPIC 11 |
 | Orchestrated, schedulable pipeline source → cloud data lake; production path must not depend on local storage (3 pts) | FINAL | TODO | – | – | EPIC 9 |
 | Transformation pipeline data lake → curated BigQuery tables (3 pts, with warehouse design) | FINAL | TODO | – | – | EPIC 10 |
-| Analytical data model; grain stated per final table; facts/dimensions identified | FINAL | IN PROGRESS | `docs/data-model.md`; grains also as COMMENT ON TABLE | 3 curated tables live | BigQuery version, dim_date/dim_venue |
+| Analytical data model; grain stated per final table; facts/dimensions identified | FINAL | IN PROGRESS | `docs/data-model.md`; grains also as COMMENT ON TABLE | 5 curated tables + 1 view live (incl. `dim_venue`, `fact_match_weather`) | BigQuery version, dim_date |
 | Partitioning and clustering justified by query patterns | FINAL | TODO | initial idea in architecture v0.1 §3 | – | ADR |
 | Data-quality checks, failure handling, safe reruns (2 pts) | FINAL | IN PROGRESS | 12 checks persisted to `meta.dq_results`; transactional transform | evidence; CI smoke test | same checks against BigQuery |
 | Documentation, configuration examples, verification queries, known limitations (2 pts) | FINAL | TODO | `.env.example` | – | – |

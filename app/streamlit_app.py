@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from components import (  # noqa: E402
     CSS,
+    MatchWeather,
     ResultRow,
     TeamForm,
     crest_uri,
@@ -38,6 +39,7 @@ from components import (  # noqa: E402
     section,
     status_chips,
     title,
+    weather_card,
 )
 
 from deng.config import get_settings  # noqa: E402
@@ -265,6 +267,44 @@ st.markdown(
 )
 
 
+def match_weather() -> MatchWeather:
+    """The weather row of the selected match (every match has one)."""
+    frame = query(
+        """
+        SELECT weather_status, temperature_c, precipitation_probability, precipitation_mm,
+               wind_speed_kmh, weather_code, forecast_fetched_at, lead_days
+          FROM curated.fact_match_weather
+         WHERE match_id = %s
+        """,
+        (match_id,),
+    )
+    if frame.empty:
+        return MatchWeather(status="MISSING")
+    row = frame.iloc[0]
+
+    def value(column, cast):
+        return cast(row[column]) if pd.notna(row[column]) else None
+
+    # Forecasts reach 15 days past the fetch day, so the first one exists then.
+    available_from = (kickoff.tz_convert(DISPLAY_TZ) - pd.Timedelta(days=15)).strftime("%d %b")
+    return MatchWeather(
+        status=row["weather_status"],
+        temperature_c=value("temperature_c", float),
+        precipitation_probability=value("precipitation_probability", int),
+        precipitation_mm=value("precipitation_mm", float),
+        wind_speed_kmh=value("wind_speed_kmh", float),
+        weather_code=value("weather_code", int),
+        fetched_label=local_time(row["forecast_fetched_at"], "%d %b %H:%M")
+        if pd.notna(row["forecast_fetched_at"])
+        else None,
+        lead_days=value("lead_days", int),
+        available_from=available_from,
+    )
+
+
+st.markdown(section("Weather at kick-off") + weather_card(match_weather()), unsafe_allow_html=True)
+
+
 def team_form(prefix: str) -> TeamForm:
     """Collect one side's form from the detail row."""
     rest = detail[f"{prefix}_rest"]
@@ -344,7 +384,9 @@ for tab, team_id, name in zip(
 
 st.divider()
 st.caption(
-    f"Times in {DISPLAY_TZ.split('/')[1]} local time. Data: football-data.org (free tier). "
+    f"Times in {DISPLAY_TZ.split('/')[1]} local time. Data: football-data.org (free tier); "
+    "weather by Open-Meteo.com (CC BY 4.0); venue locations © OpenStreetMap contributors "
+    "(ODbL). "
     "Scope: UEFA Champions League matches only. No line-ups, injuries or match statistics - "
     "see the README's known limitations."
 )

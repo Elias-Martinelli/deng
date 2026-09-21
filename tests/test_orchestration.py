@@ -33,6 +33,10 @@ def test_definitions_load_with_one_asset_per_table():
         "curated/fact_team_match_form",
         "meta/dq_results",
         "raw/team_crests",
+        "raw/open_meteo",
+        "staging/weather_forecast",
+        "curated/dim_venue",
+        "curated/fact_match_weather",
     }
 
 

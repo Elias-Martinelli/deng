@@ -103,6 +103,12 @@ CSS = """
     .cl-row .cl-date { grid-column: 1 / -1; }
   }
 
+  .cl-weather { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .cl-weather .cl-icon { font-size: 2.2rem; line-height: 1; }
+  .cl-weather .cl-temp { font-size: 1.8rem; font-weight: 800; }
+  .cl-weather .cl-facts { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .9rem; }
+  .cl-weather-note { font-size: .8rem; opacity: .75; margin-top: .5rem; }
+
   .cl-status { display: inline-flex; gap: .5rem; flex-wrap: wrap; margin: .1rem 0 1rem; }
   .cl-chip { font-size: .78rem; padding: .25rem .6rem; border-radius: 999px;
     border: 1px solid rgba(127,127,127,.3); }
@@ -312,3 +318,99 @@ def outcome_for(team_id: int, home_id: int, home_goals: int, away_goals: int) ->
         return "D"
     team_won = (home_goals > away_goals) == (team_id == home_id)
     return "W" if team_won else "L"
+
+
+# WMO weather interpretation codes as used by Open-Meteo, grouped.
+WMO_CODES: dict[int, tuple[str, str]] = {
+    0: ("☀️", "Clear sky"),
+    1: ("🌤", "Mainly clear"),
+    2: ("⛅", "Partly cloudy"),
+    3: ("☁️", "Overcast"),
+    45: ("🌫", "Fog"),
+    48: ("🌫", "Rime fog"),
+    51: ("🌦", "Light drizzle"),
+    53: ("🌦", "Drizzle"),
+    55: ("🌧", "Dense drizzle"),
+    61: ("🌦", "Light rain"),
+    63: ("🌧", "Rain"),
+    65: ("🌧", "Heavy rain"),
+    66: ("🌧", "Freezing rain"),
+    67: ("🌧", "Heavy freezing rain"),
+    71: ("🌨", "Light snow"),
+    73: ("🌨", "Snow"),
+    75: ("❄️", "Heavy snow"),
+    77: ("🌨", "Snow grains"),
+    80: ("🌦", "Rain showers"),
+    81: ("🌧", "Heavy rain showers"),
+    82: ("⛈", "Violent rain showers"),
+    85: ("🌨", "Snow showers"),
+    86: ("🌨", "Heavy snow showers"),
+    95: ("⛈", "Thunderstorm"),
+    96: ("⛈", "Thunderstorm with hail"),
+    99: ("⛈", "Thunderstorm with heavy hail"),
+}
+
+WEATHER_REASONS: dict[str, str] = {
+    "NOT_YET_AVAILABLE": "Forecasts reach 16 days ahead. Available from {available_from}.",
+    "VENUE_UNKNOWN": (
+        "No verified venue for this home side, so no forecast - rather than one for a "
+        "guessed location."
+    ),
+    "NOT_CAPTURED": (
+        "Played before the pipeline fetched a forecast for it. A forecast cannot be "
+        "fetched after the fact."
+    ),
+    "MISSING": (
+        "Inside the forecast horizon, but no forecast was fetched - a pipeline gap, "
+        "flagged by the data-quality checks."
+    ),
+}
+
+
+@dataclass(frozen=True)
+class MatchWeather:
+    """The weather row of one match, as the page shows it."""
+
+    status: str
+    temperature_c: float | None = None
+    precipitation_probability: int | None = None
+    precipitation_mm: float | None = None
+    wind_speed_kmh: float | None = None
+    weather_code: int | None = None
+    fetched_label: str | None = None
+    lead_days: int | None = None
+    available_from: str | None = None
+
+
+def weather_card(weather: MatchWeather) -> str:
+    """Forecast for the kick-off hour, or the reason there is none."""
+    if weather.status != "AVAILABLE":
+        reason = WEATHER_REASONS.get(weather.status, weather.status).format(
+            available_from=weather.available_from or "16 days before kick-off"
+        )
+        return f'<div class="cl-card cl-empty">🌡 {escape(reason)}</div>'
+    icon, label = WMO_CODES.get(weather.weather_code or -1, ("🌡", "Weather"))
+    facts = [
+        f"🌧 {weather.precipitation_probability} % rain"
+        if weather.precipitation_probability is not None
+        else None,
+        f"💧 {weather.precipitation_mm:.1f} mm" if weather.precipitation_mm is not None else None,
+        f"💨 {weather.wind_speed_kmh:.0f} km/h" if weather.wind_speed_kmh is not None else None,
+    ]
+    lead = (
+        f" - {weather.lead_days} day{'s' if weather.lead_days != 1 else ''} before kick-off"
+        if weather.lead_days is not None
+        else ""
+    )
+    return (
+        '<div class="cl-card"><div class="cl-weather">'
+        f'<span class="cl-icon">{icon}</span>'
+        f'<span class="cl-temp">{weather.temperature_c:.0f} °C</span>'
+        f"<span>{escape(label)}</span>"
+        '<span class="cl-facts">'
+        + "".join(f"<span>{fact}</span>" for fact in facts if fact)
+        + "</span></div>"
+        f'<div class="cl-weather-note">Forecast for the kick-off hour, fetched '
+        f"{escape(weather.fetched_label or '?')}{lead}. Open-Meteo, CC BY 4.0.</div>"
+        "</div>"
+    )
