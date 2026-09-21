@@ -275,3 +275,43 @@ Reads `curated.fact_match`, `curated.dim_team` and
 for the sidebar. No HTTP request leaves the app. The screenshot shows the
 one-match form window and the honest "no previous meeting in our data" notice
 rather than an invented head-to-head.
+
+## 11. Docker Compose, executed (21 September 2026)
+
+Docker 28.0.4, Compose v2.34.0 (Docker Desktop, WSL 2 integration). Until
+this run the Compose file had only been written, not executed - and executing it
+found three defects that no unit test could have caught:
+
+| Defect | Symptom | Fix |
+|---|---|---|
+| `pipeline` service built without `target` | Compose built the *last* Dockerfile stage, the Streamlit image: `make docker-ingest` failed with `streamlit run … No such option '--from-samples'` | stage renamed to `pipeline`, `target: pipeline` in Compose |
+| `docker-ingest` skipped the DDL | `relation "meta.pipeline_runs" does not exist` on a fresh volume | target runs `init` first (idempotent) |
+| sample payloads not in the container | `FileNotFoundError: …/data/sample/football-data/competition.json` | `./data/sample` mounted read-only, like `./sql` |
+
+After the fixes, on an empty volume:
+
+```text
+$ make up                       → PostgreSQL is healthy.
+$ make docker-ingest            → applied 5 SQL file(s) … ingest for 2026-09-21: OK
+                                  (4 payloads INSERTED, 144 matches)
+$ docker compose run --rm pipeline transform
+                                  curated.fact_match 144 rows
+                                  curated.fact_team_match_form 288 rows
+$ docker compose run --rm pipeline verify
+                                  verification: 2/2 queries passed
+$ make docker-app               → GET /_stcore/health → ok
+```
+
+The viewer was also rendered headless inside its container
+(`streamlit.testing.v1.AppTest`): no exception, no error element, a fixture
+picker with 126 upcoming matches and populated metrics - i.e. it reads the
+containerised database, not just "the server is up". The same run surfaced a
+deprecation (`use_container_width`), replaced by `width="stretch"` with
+Streamlit pinned to the verified range `>=1.64,<2`.
+
+**Trap found on the way:** a natively installed PostgreSQL on the host already
+listened on `localhost:5432`. Docker Desktop still started the container, but
+host-side commands (`make init`, `pytest`) then talked to the *native* database
+while the containers used their own. Everything looks green, against two
+different databases. The README now says to set `POSTGRES_PORT` to a free port
+in that case.

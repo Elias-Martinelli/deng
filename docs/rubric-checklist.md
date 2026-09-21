@@ -41,7 +41,7 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 |---|---|---|---|---|---|
 | Modular batch-ingestion script loading source data into storage (4 pts) | MIDTERM | DONE | client + extract + raw loader + CLI | evidence §1, 40 tests | weather source |
 | Local PostgreSQL with loaded, queryable data (2 pts) | MIDTERM | DONE | `raw.football_data`, `meta.pipeline_runs` | `make verify` 2/2 passed, evidence §5 | curated tables |
-| Docker Compose with required services on a common network (3 pts) | MIDTERM | IN PROGRESS | `docker-compose.yml`, `Dockerfile` | written with healthcheck, volume, non-root image | must be run on a machine with Docker; add orchestrator service |
+| Docker Compose with required services on a common network (3 pts) | MIDTERM | IN PROGRESS | `docker-compose.yml`, `Dockerfile` | executed on an empty volume: postgres, pipeline image, app image (evidence §11) | add orchestrator service |
 | Orchestrator runs and schedules ingestion, supports reruns/backfills (3 pts) | MIDTERM | IN PROGRESS | CLI parameterised by logical date; reruns and backfills proven | evidence §2, §3 | scheduler itself (ADR-002 spike) |
 | ≥ 1 justified transformation supporting the use case | MIDTERM | DONE | `fact_match`, `fact_team_match_form` | point-in-time form; leakage guard tested | – |
 | Architecture v0.2 reflecting implementation experience | MIDTERM | TODO | – | – | 14.4 |

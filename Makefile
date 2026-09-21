@@ -132,7 +132,8 @@ backfill:  ## Re-run a date range: make backfill FROM=2026-09-01 TO=2026-09-10
 verify:  ## Run the verification queries; non-zero exit when a check fails
 	$(PY) -m deng.pipeline verify
 
-docker-ingest:  ## Run the ingestion inside the container image (proves the image works)
+docker-ingest:  ## Run init + ingestion inside the container image (proves the image works)
+	docker compose run --rm pipeline init
 	docker compose run --rm pipeline ingest --from-samples
 
 docker-app:  ## Start the Streamlit viewer in a container on http://localhost:8501

@@ -235,6 +235,15 @@ the database's *health check*, not merely for the container to exist, so a cold
 start cannot fail with "connection refused". The app is a second build stage,
 which keeps the pipeline image free of a web framework.
 
+> **Port 5432 already taken?** If PostgreSQL is also installed natively, it
+> keeps `localhost:5432` and host-side commands (`make init`, `make test`)
+> silently talk to *that* database instead of the container. Set
+> `POSTGRES_PORT=5433` in `.env` before `make up`. `ss -ltn | grep 5432` shows
+> whether something is listening.
+
+Executed end to end on an empty volume, including the three defects that the
+first real run exposed: [evidence §11](docs/evidence/local-pipeline-run.md#11-docker-compose-executed-21-september-2026).
+
 ## Workflow Orchestration
 
 Candidate: Dagster, because daily partitions map one-to-one onto our ingestion

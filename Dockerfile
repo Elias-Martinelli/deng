@@ -3,7 +3,7 @@
 # Pinned minor version so a rebuild in December produces the same interpreter as
 # today; slim rather than alpine because psycopg ships manylinux wheels that
 # alpine's musl cannot use, which would force a source build.
-FROM python:3.12-slim-bookworm AS base
+FROM python:3.12-slim-bookworm AS pipeline
 
 # No .pyc files, unbuffered logs (so `docker compose logs` shows output live),
 # and pip without its version-check noise.
@@ -36,7 +36,7 @@ CMD ["--help"]
 # --- Streamlit viewer -------------------------------------------------------
 # A separate stage so the pipeline image stays small: a scheduled batch job has
 # no reason to carry a web framework.
-FROM base AS app
+FROM pipeline AS app
 USER root
 RUN pip install --no-cache-dir ".[app]"
 COPY app/ /app/app/

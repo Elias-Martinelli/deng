@@ -105,7 +105,7 @@ with st.sidebar:
         latest = runs.iloc[0]
         st.metric("Last completed run", str(latest["logical_date"]))
         st.write("✅ SUCCESS" if latest["status"] == "SUCCESS" else f"❌ {latest['status']}")
-        st.dataframe(runs, hide_index=True, use_container_width=True)
+        st.dataframe(runs, hide_index=True, width="stretch")
 
     dq = query(
         """
@@ -119,7 +119,7 @@ with st.sidebar:
         failed = int((~dq["passed"]).sum())
         st.subheader("Data quality")
         st.write(f"{len(dq) - failed}/{len(dq)} checks passed")
-        st.dataframe(dq, hide_index=True, use_container_width=True)
+        st.dataframe(dq, hide_index=True, width="stretch")
 
 # --- Fixture picker --------------------------------------------------------
 fixtures = query(
@@ -244,7 +244,7 @@ if h2h.empty:
         "available from the source but not ingested yet."
     )
 else:
-    st.dataframe(h2h, hide_index=True, use_container_width=True)
+    st.dataframe(h2h, hide_index=True, width="stretch")
 
 # --- Recent results of both teams -----------------------------------------
 st.subheader("Recent results")
@@ -267,7 +267,7 @@ recent = query(
         int(detail["away_id"]),
     ),
 )
-st.dataframe(recent, hide_index=True, use_container_width=True)
+st.dataframe(recent, hide_index=True, width="stretch")
 
 st.divider()
 st.caption(

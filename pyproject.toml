@@ -27,7 +27,9 @@ dev = [
 # pipeline image stays small and a reviewer who only runs the pipeline does not
 # install Streamlit and Jupyter.
 app = [
-  "streamlit>=1.38",
+  # >=1.64: the version verified in the container; `width="stretch"` replaces the
+  # removed `use_container_width`. <2 guards against the next breaking release.
+  "streamlit>=1.64,<2",
   "pandas>=2.2",
 ]
 notebook = [

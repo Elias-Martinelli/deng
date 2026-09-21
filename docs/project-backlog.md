@@ -70,7 +70,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 |---|---|---|---|---|
 | 4.1 | `docker-compose.yml`: postgres (healthcheck, volume), orchestrator, pipeline image, one network | MUST | MIDTERM | [~] postgres + pipeline done; orchestrator service open |
 | 4.2 | `Dockerfile` for pipeline code (pinned base image, non-root) | MUST | MIDTERM | [x] python:3.12-slim-bookworm, uid 1000 |
-| 4.3 | `docker compose up -d` starts everything; `make up/down/logs` | MUST | MIDTERM | [~] targets exist; need verification on a machine with Docker |
+| 4.3 | `docker compose up -d` starts everything; `make up/down/logs` | MUST | MIDTERM | [x] `make up`, `docker-ingest`, `docker-app` executed, evidence §11 |
 | 4.4 | Clean-environment test on a second machine, documented | MUST | MIDTERM | [ ] |
 
 ## EPIC 5 – Workflow orchestration

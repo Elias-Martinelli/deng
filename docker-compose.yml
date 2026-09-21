@@ -43,6 +43,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Explicit target: without it Compose builds the LAST stage of the
+      # Dockerfile, which is the Streamlit image - the pipeline service would
+      # then start `streamlit run` instead of `python -m deng.pipeline`.
+      target: pipeline
     image: deng-pipeline:local
     depends_on:
       postgres:
@@ -66,6 +70,10 @@ services:
       # baked in on purpose - the image is what we ship, not a shell around the
       # working copy.
       - ./sql:/app/sql:ro
+      # The committed API samples, so `--from-samples` works in the container
+      # too. Mounted rather than copied: they are reproducibility fixtures, not
+      # part of the image we would ship.
+      - ./data/sample:/app/data/sample:ro
     networks: [deng]
     profiles: ["tools"]   # not started by `up`; invoked with `run`
 
