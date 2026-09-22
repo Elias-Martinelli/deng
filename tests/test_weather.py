@@ -4,7 +4,10 @@ import json
 from datetime import date
 from pathlib import Path
 
-from deng.ingestion.weather import HOURLY_VARIABLES, ForecastRequest
+import pytest
+
+from deng.ingestion.football_data_client import ApiError, RetryableApiError
+from deng.ingestion.weather import HOURLY_VARIABLES, ForecastRequest, fetch_forecast
 
 SAMPLE = (
     Path(__file__).resolve().parents[1]
@@ -39,3 +42,36 @@ def test_real_sample_snaps_to_the_model_grid():
     payload = json.loads(SAMPLE.read_text())
     assert abs(payload["latitude"] - 50.43282) < 0.1
     assert payload["latitude"] != 50.43282
+
+
+class _Response:
+    def __init__(self, status, body):
+        self.status_code, self._body, self.url, self.text = status, body, "u", str(body)
+
+    def json(self):
+        if isinstance(self._body, Exception):
+            raise self._body
+        return self._body
+
+
+class _Session:
+    def __init__(self, response):
+        self.response = response
+
+    def get(self, url, params, timeout):
+        return self.response
+
+
+REQUEST = ForecastRequest(546, 50.43, 2.81, date(2026, 10, 13), date(2026, 10, 14))
+
+
+def test_a_200_that_is_not_json_is_a_permanent_error():
+    with pytest.raises(ApiError) as caught:
+        fetch_forecast(_Session(_Response(200, ValueError("no json"))), "u", REQUEST)
+    assert type(caught.value) is ApiError
+
+
+def test_rate_limit_and_server_errors_are_retryable():
+    for status in (429, 503):
+        with pytest.raises(RetryableApiError):
+            fetch_forecast(_Session(_Response(status, {})), "u", REQUEST)

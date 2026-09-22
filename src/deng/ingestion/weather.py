@@ -188,8 +188,13 @@ def fetch_forecast(session: requests.Session, base_url: str, request: ForecastRe
         raise RetryableApiError(response.status_code, response.text[:200])
     if response.status_code != 200:
         raise ApiError(response.status_code, response.text[:200])
-    payload = response.json()
-    if payload.get("error") or "hourly" not in payload:
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        # Same rule as the football client: a 200 that is not JSON is a changed
+        # API or a proxy page - permanent, for a human to look at.
+        raise ApiError(response.status_code, "invalid JSON from Open-Meteo") from exc
+    if not isinstance(payload, dict) or payload.get("error") or "hourly" not in payload:
         raise ApiError(response.status_code, f"unexpected payload: {str(payload)[:200]}")
     return response.url, payload
 
