@@ -15,17 +15,25 @@ name: deng
 
 # Shared by the Dagster webserver and daemon: same image, same database, same
 # mounts. Differences (command, port, health check) are set per service.
+# YAML mechanics: `&orchestrator` names this block (an anchor), `<<: *orchestrator`
+# below pastes it into a service. The `x-` prefix tells Compose this key is not
+# a service of its own.
 x-orchestrator: &orchestrator
   build:
     context: .
     dockerfile: Dockerfile
     target: orchestrator
   image: deng-orchestrator:local
+  # Restart after a crash or a Docker restart - unless someone stopped it on
+  # purpose. A scheduler that silently stays down would miss every run.
   restart: unless-stopped
   depends_on:
     postgres:
       condition: service_healthy
   environment:
+    # Inside the Compose network every service is reachable under its service
+    # name (Docker's internal DNS), and on the container port 5432 - regardless
+    # of which host port POSTGRES_PORT publishes.
     POSTGRES_HOST: postgres
     POSTGRES_PORT: 5432
     POSTGRES_DB: ${POSTGRES_DB:-cl_intelligence}
@@ -158,9 +166,14 @@ services:
       retries: 3
       start_period: 60s
 
+# A named volume, managed by Docker: the database files survive `down` and
+# container rebuilds, and `down -v` deletes them deliberately. The code folders
+# (./sql, ./app) are bind mounts instead - live views of the working copy.
 volumes:
   pgdata:
 
+# One user-defined bridge network: all services see each other by name, and
+# nothing else on the host network does unless a port is published.
 networks:
   deng:
     driver: bridge
