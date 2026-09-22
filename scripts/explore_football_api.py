@@ -1,4 +1,8 @@
-"""Phase-12 API exploration: fetch a few small football-data.org payloads and profile them.
+"""One-off API exploration (milestone 1): fetch small football-data.org payloads and profile them.
+
+Run once to learn the source before building anything on it; the findings are
+in docs/evidence/api-exploration.md, and several assumptions were corrected by
+it (historical seasons are served; ?status=SCHEDULED returns TIMED rows).
 
 Usage (after `cp .env.example .env` and setting FOOTBALL_DATA_API_KEY):
 
@@ -34,6 +38,8 @@ from deng.ingestion.football_data_client import ApiError, FootballDataClient  # 
 SAMPLE_DIR = Path("data/sample/football-data")
 
 # (name, path template, params). `{code}` is replaced by the competition code.
+# The two filtered match calls exist to compare filter and stored status - that
+# comparison exposed the SCHEDULED/TIMED mismatch.
 ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("competition", "competitions/{code}", {}),
     ("teams", "competitions/{code}/teams", {}),
@@ -72,7 +78,8 @@ def main() -> int:
         profile(response.payload)
         time.sleep(6.5)  # stay safely under 10 requests/minute on the free tier
 
-    # One team-level call to see cross-competition match history (used for team form).
+    # One team-level call to see cross-competition match history. Explored in
+    # milestone 1; the pipeline does not use it (ADR-004: Champions League only).
     first_team_id = _first_team_id(SAMPLE_DIR / "teams.json")
     if first_team_id is not None:
         path = f"teams/{first_team_id}/matches"
@@ -86,7 +93,8 @@ def main() -> int:
         except ApiError as exc:
             print(f"  !! {exc}")
 
-    # Head-to-head for the first scheduled match (historical encounters across seasons).
+    # Head-to-head for the first scheduled match (historical encounters across
+    # seasons). Backlog 2.5: the first test pair had never met, so still open.
     first_match_id = _first_match_id(SAMPLE_DIR / "matches_scheduled.json")
     if first_match_id is not None:
         time.sleep(6.5)
@@ -128,6 +136,7 @@ def _profile_records(records: list[dict[str, Any]]) -> None:
     for field_name in sorted(types):
         type_summary = ",".join(f"{t}:{c}" for t, c in types[field_name].most_common())
         print(f"    {field_name:<25} {type_summary:<21} {nulls[field_name]}")
+    # A field is only a business key if it is present in every record and unique.
     if all("id" in r for r in records):
         ids = [r["id"] for r in records]
         unique = len(set(ids)) == len(ids)
