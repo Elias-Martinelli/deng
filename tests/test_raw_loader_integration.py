@@ -62,7 +62,8 @@ def test_second_run_same_day_does_not_duplicate(connection, run_id, sample_paylo
 
     assert first.inserted is True
     assert second.inserted is False
-    assert second.updated is True
+    assert second.unchanged is True, "identical payload on a rerun is not an update"
+    assert second.action == "UNCHANGED"
     assert after_first == after_second == 1
     assert first.payload_hash == second.payload_hash
 
@@ -231,3 +232,22 @@ def test_record_count_finds_the_main_list():
     assert count_records({"matches": [1, 2, 3]}) == 3
     assert count_records({"teams": []}) == 0
     assert count_records({"nothing": "here"}) is None
+
+
+def test_a_changed_source_on_the_same_day_is_an_update(connection, run_id, sample_payload):
+    """Same day, different answer (e.g. a score corrected): overwritten, reported as UPDATED."""
+    loader = RawLoader(connection)
+    kwargs = dict(
+        run_id=run_id,
+        endpoint=ENDPOINT,
+        request_params={},
+        request_url="https://api.football-data.org/v4/competitions/CL/matches",
+        ingestion_date=INGESTION_DATE,
+    )
+    loader.load(payload=sample_payload, **kwargs)
+    changed = dict(sample_payload, matches=sample_payload["matches"][:-1])
+    result = loader.load(payload=changed, **kwargs)
+    connection.commit()
+    assert result.action == "UPDATED"
+    assert row_count(connection) == 1
+    assert loader.existing_hash(ENDPOINT, {}, INGESTION_DATE) == hash_payload(changed)

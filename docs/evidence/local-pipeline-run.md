@@ -57,6 +57,26 @@ window in which the table was empty, because the mechanism is
 `INSERT ... ON CONFLICT (source, endpoint, request_params, ingestion_date)
 DO UPDATE` rather than delete-then-insert.
 
+**Correction (22 September 2026):** the label `UPDATED` above was imprecise - the
+payload was identical, only the row was refreshed. The loader now compares the
+stored hash with the new one in the same statement and reports three distinct
+outcomes. Same rerun today:
+
+```console
+$ python -m deng.pipeline ingest --date 2026-09-22 --from-samples   # first run
+  competition  INSERTED  records=47 hash=ccad28e735b0
+  ...
+$ python -m deng.pipeline ingest --date 2026-09-22 --from-samples   # same day again
+  competition  UNCHANGED records=47 hash=ccad28e735b0
+  teams        UNCHANGED records=36 hash=fccb2862341b
+  standings    UNCHANGED records=1 hash=e60484a8d440
+  matches      UNCHANGED records=144 hash=1e5a13475e9d
+```
+
+`UPDATED` is now reserved for a changed answer on a day already stored (a score
+corrected, a kick-off moved) - tested in
+`test_a_changed_source_on_the_same_day_is_an_update`.
+
 ## 3. Backfill over a date range
 
 ```console
