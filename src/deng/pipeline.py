@@ -28,7 +28,7 @@ from deng.database import PipelineRun, RawLoader, apply_sql_files, connect
 from deng.ingestion.crests import fetch_crests
 from deng.ingestion.extract import fetch_endpoints, read_sample_endpoints
 from deng.ingestion.football_data_client import ApiError, FootballDataClient
-from deng.ingestion.weather import ingest_weather
+from deng.ingestion.weather import ingest_weather, pipeline_today
 from deng.quality import run_checks
 from deng.transformation import (
     WEATHER_COUNTED_TABLES,
@@ -39,6 +39,7 @@ from deng.transformation import (
 logger = logging.getLogger(__name__)
 
 PIPELINE_NAME = "ingest_football_raw"
+DATE_HELP = "logical date (default: today in Europe/Zurich)"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -54,19 +55,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "init":
         return command_init()
     if args.command == "ingest":
-        return command_ingest(args.date or date.today(), from_samples=args.from_samples)
+        return command_ingest(args.date or pipeline_today(), from_samples=args.from_samples)
     if args.command == "backfill":
         return command_backfill(args.date_from, args.date_to, from_samples=args.from_samples)
     if args.command == "transform":
-        return command_transform(args.date or date.today())
+        return command_transform(args.date or pipeline_today())
     if args.command == "weather":
-        return command_weather(args.date or date.today(), from_samples=args.from_samples)
+        return command_weather(args.date or pipeline_today(), from_samples=args.from_samples)
     if args.command == "crests":
         return command_crests()
     if args.command == "dq":
         return command_dq()
     if args.command == "run":
-        return command_run(args.date or date.today(), from_samples=args.from_samples)
+        return command_run(args.date or pipeline_today(), from_samples=args.from_samples)
     if args.command == "verify":
         return command_verify()
     parser.print_help()
@@ -81,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("init", help="create schemas and tables (idempotent)")
 
     ingest = sub.add_parser("ingest", help="ingest raw payloads for one logical date")
-    ingest.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+    ingest.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
     ingest.add_argument(
         "--from-samples",
         action="store_true",
@@ -94,18 +95,18 @@ def build_parser() -> argparse.ArgumentParser:
     backfill.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
 
     transform = sub.add_parser("transform", help="raw -> staging -> curated for one logical date")
-    transform.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+    transform.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
 
     sub.add_parser("crests", help="fetch club crests that are not stored yet (incremental)")
 
     weather = sub.add_parser("weather", help="fetch and transform forecasts for one logical date")
-    weather.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+    weather.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
     weather.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
 
     sub.add_parser("dq", help="run the data-quality checks and persist the results")
 
     run = sub.add_parser("run", help="ingest, transform and check in one go")
-    run.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+    run.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
     run.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
 
     sub.add_parser("verify", help="run the verification queries and print the results")
@@ -240,7 +241,7 @@ def command_crests() -> int:
     WARNING check keeps it visible. Only a database error fails this step.
     """
     with connect() as connection:
-        with PipelineRun(connection, "fetch_crests", date.today()) as run:
+        with PipelineRun(connection, "fetch_crests", pipeline_today()) as run:
             result = fetch_crests(connection, run_id=run.run_id)
             run.add_counts(loaded=len(result.fetched))
     for team_id, reason in result.failed.items():
