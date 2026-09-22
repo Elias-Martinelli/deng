@@ -7,12 +7,11 @@ logical date does not duplicate data and does not lose data.
 from datetime import date
 
 import pytest
-from tests.conftest import requires_postgres
 
 from deng.database import RawLoader
 from deng.database.raw_loader import count_records, hash_payload
 
-pytestmark = requires_postgres
+pytestmark = pytest.mark.postgres
 
 INGESTION_DATE = date(2026, 9, 20)
 ENDPOINT = "competitions/CL/matches"

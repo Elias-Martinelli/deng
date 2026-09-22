@@ -29,10 +29,28 @@ def postgres_available() -> bool:
         return False
 
 
-requires_postgres = pytest.mark.skipif(
-    not postgres_available(),
-    reason="no PostgreSQL reachable - start it with `make up`",
-)
+def pytest_configure(config):
+    """Register the marker so `-m postgres` works and pytest does not warn."""
+    config.addinivalue_line(
+        "markers", "postgres: needs a reachable PostgreSQL (started with `make up`)"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip every test marked `postgres` when no database is reachable.
+
+    Implemented as a hook rather than an importable constant on purpose: a test
+    module that does `from tests.conftest import ...` only works when the
+    repository root happens to be on sys.path, which is true for
+    `python -m pytest` and false for a bare `pytest` - exactly the difference
+    that made CI fail while local runs passed.
+    """
+    if postgres_available():
+        return
+    skip = pytest.mark.skip(reason="no PostgreSQL reachable - start it with `make up`")
+    for item in items:
+        if "postgres" in item.keywords:
+            item.add_marker(skip)
 
 
 @pytest.fixture
@@ -59,6 +77,24 @@ def sample_payload() -> dict:
     if not (SAMPLE_DIR / "matches_all.json").exists():
         pytest.skip("API samples not present - run `make explore`")
     return json.loads((SAMPLE_DIR / "matches_all.json").read_text())
+
+
+@pytest.fixture
+def all_samples() -> dict:
+    """Every committed payload, keyed by the endpoint it came from."""
+    mapping = {
+        "competitions/CL": "competition.json",
+        "competitions/CL/teams": "teams.json",
+        "competitions/CL/standings": "standings.json",
+        "competitions/CL/matches": "matches_all.json",
+    }
+    payloads = {}
+    for endpoint, filename in mapping.items():
+        path = SAMPLE_DIR / filename
+        if not path.exists():
+            pytest.skip(f"sample {filename} missing - run `make explore`")
+        payloads[endpoint] = json.loads(path.read_text())
+    return payloads
 
 
 @pytest.fixture
