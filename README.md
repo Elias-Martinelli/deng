@@ -219,6 +219,103 @@ ingestion date)**. A `UNIQUE` constraint on exactly that key plus
 `INSERT … ON CONFLICT DO UPDATE` is what makes reruns safe; a `payload_hash`
 over the canonical JSON shows whether the source actually changed that day.
 
+### Entity-relationship diagram (simplified)
+
+Keys and a few defining columns only; every column, grain and constraint is in
+[`docs/data-model.md`](docs/data-model.md). `staging` is left out: it is the
+typed copy of `raw`, connected by the transformations, not by foreign keys.
+
+**The data product** — `dim_team` in the middle, one fact table per question:
+
+```mermaid
+erDiagram
+    dim_team["curated.dim_team"] {
+        bigint team_id PK
+        text name
+        text crest_url
+    }
+    dim_venue["curated.dim_venue"] {
+        bigint team_id PK, FK
+        numeric latitude
+        numeric longitude
+    }
+    fact_match["curated.fact_match"] {
+        bigint match_id PK
+        bigint home_team_id FK
+        bigint away_team_id FK
+        timestamptz utc_kickoff
+        text outcome
+    }
+    fact_team_match_form["curated.fact_team_match_form"] {
+        bigint match_id PK, FK
+        bigint team_id PK, FK
+        int matches_considered
+        int points_last_5
+    }
+    fact_match_weather["curated.fact_match_weather"] {
+        bigint match_id PK, FK
+        text weather_status
+        numeric temperature_c
+    }
+    team_crests["raw.team_crests"] {
+        text crest_url PK
+        bytea image
+    }
+
+    dim_team ||--o{ fact_match : "home / away"
+    fact_match ||--|{ fact_team_match_form : "2 per match"
+    dim_team ||--o{ fact_team_match_form : "team_id"
+    fact_match ||--|| fact_match_weather : "1 per match"
+    dim_team ||--o| dim_venue : "home venue"
+    dim_venue ||..o{ fact_match_weather : "venue_team_id"
+    dim_team ||..o| team_crests : "crest_url"
+```
+
+**Run log and raw zone** — every raw row and every check result points to the
+run that wrote it:
+
+```mermaid
+erDiagram
+    direction LR
+    pipeline_runs["meta.pipeline_runs"] {
+        uuid run_id PK
+        date logical_date
+        text status
+    }
+    dq_results["meta.dq_results"] {
+        bigint dq_result_id PK
+        uuid run_id FK
+        bool passed
+    }
+    football_data["raw.football_data"] {
+        bigint raw_id PK
+        uuid run_id FK
+        jsonb payload
+    }
+    open_meteo["raw.open_meteo"] {
+        bigint raw_id PK
+        uuid run_id FK
+        jsonb payload
+    }
+    team_crests["raw.team_crests"] {
+        text crest_url PK
+        uuid run_id FK
+    }
+
+    pipeline_runs ||--o{ football_data : "run_id"
+    pipeline_runs ||--o{ open_meteo : "run_id"
+    pipeline_runs ||--o{ team_crests : "run_id"
+    pipeline_runs ||--o{ dq_results : "run_id"
+```
+
+How to read it: `||` exactly one, `o|` zero or one, `|{` one or many,
+`o{` zero or many. **Solid lines are foreign keys** enforced by PostgreSQL;
+**dashed lines are join keys without a constraint**, on purpose:
+`venue_team_id` - a club missing from `venues.csv` (e.g. new after the
+knockout draw) must not abort the weather run; its matches get `VENUE_UNKNOWN`
+and a WARNING check reports it. `crest_url` - a crest is optional and fetched
+after the team exists.
+
 DDL: [`sql/schema/`](sql/schema/) · transformations: [`sql/transform/`](sql/transform/) ·
 verification: [`sql/verify/`](sql/verify/).
 
