@@ -180,7 +180,7 @@ cd deng
 
 ./setup.sh                 # venv + install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 90 tests; the database ones skip without PostgreSQL
+make test                  # 96 tests; the database ones skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, no API key needed
@@ -362,7 +362,7 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
-* CI runs lint, 90 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 96 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -376,7 +376,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 90 tests: config, API client, source schema, loader, transformations, weather, crests, DQ, orchestration, app components | `90 passed` (or `50 passed, 40 skipped` without a database; the 9 orchestration tests need `make setup-orchestrator`) |
+| `make test` | 96 tests: config, API client, source schema, loader, transformations, weather, crests, DQ, orchestration, app components | `96 passed` (or `54 passed, 42 skipped` without a database; the 9 orchestration tests need `make setup-orchestrator`) |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log | `2/2 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | `17/18 checks passed`, exit 0 |
@@ -512,7 +512,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │
 ├── app/                      # viewer over the curated tables (page + HTML components)
 ├── notebooks/                # exploration
-├── tests/                    # 90 tests: unit, contract, integration
+├── tests/                    # 96 tests: unit, contract, integration
 ├── data/sample/              # committed API payloads (fixtures + offline source)
 └── docs/
     ├── use-case.md · data-sources.md · data-model.md

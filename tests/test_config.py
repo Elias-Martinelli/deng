@@ -1,3 +1,14 @@
+"""Tests for the settings object (deng.config).
+
+Claims defended: defaults work without any configuration, the environment
+overrides them, the API key never shows up in a repr or log line, a missing
+key produces an actionable message, and the connection URL survives
+passwords with special characters.
+
+Test names are written as statements of the behaviour they prove - the same
+convention as in every test module of this repository.
+"""
+
 import pytest
 
 from deng.config import Settings
