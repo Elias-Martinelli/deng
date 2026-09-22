@@ -4,10 +4,11 @@ HSLU · DENG – Data Engineering · HS26 · End-to-End Batch Data Pipeline
 
 [![CI](https://github.com/Elias-Martinelli/deng/actions/workflows/ci.yml/badge.svg)](https://github.com/Elias-Martinelli/deng/actions/workflows/ci.yml)
 
-A reproducible daily batch pipeline that turns UEFA Champions League fixtures,
-results, standings and team data into a curated, point-in-time-correct
-pre-match dataset — served to a notebook, a Streamlit viewer and, later, to
-machine learning.
+A reproducible daily batch pipeline that collects UEFA Champions League
+fixtures, results, standings and weather and assembles them into a curated,
+point-in-time-correct dataset — the foundation on which a model can later
+predict who wins a match. **The pipeline is the product**; the Streamlit viewer
+is a preview of its data.
 
 ![Data pipeline architecture](docs/architecture.svg)
 
@@ -48,46 +49,56 @@ meaningful two weeks out, and line-ups appear an hour before kick-off.
 
 This platform ingests those sources on a schedule, keeps every raw payload,
 and derives curated tables that answer **what was known about a match at a
-given point in time** — the property that makes the data usable both for a
-pre-match overview and as leakage-free training data.
+given point in time**. That property is what a match-outcome model needs: it
+may only learn from information that existed before kick-off. Building that
+model is the downstream use of the data, not part of this project.
 
 ## Problem Statement
 
-Assembling a consistent pre-match picture means integrating several APIs
-repeatedly, reconciling their keys, and recording *when* each piece of
-information became available. Doing that by hand is error-prone; doing it in
-the frontend on every click throws away history and burns a shared rate limit.
+The source APIs only ever answer with today's state; what was known last week
+is gone unless someone stored it. Training a model on match data therefore
+means integrating several APIs every day, reconciling their keys, and recording
+*when* each piece of information became available. A model trained on form or
+weather that already contains the match it predicts looks excellent in testing
+and fails in reality (data leakage).
 Details: [`docs/use-case.md`](docs/use-case.md).
 
 ## End User
 
-* **Primary:** football analysts and interested users who want a structured
-  pre-match overview of an upcoming fixture.
-* **Secondary:** data scientists who need a point-in-time-correct feature table
-  to train and evaluate match-outcome models.
+* **Primary: a data scientist or analyst** who wants to build and evaluate a
+  match-outcome model (HOME_WIN / DRAW / AWAY_WIN) and needs a clean,
+  documented, leakage-free table to train it on.
+* **Secondary: football-interested users** who look at an upcoming fixture in
+  the Streamlit viewer - a preview of what the pipeline holds.
 
 ## Data Product
 
-| Table | One row represents | Status |
-|---|---|---|
-| `curated.fact_match` | one Champions League match | **implemented** |
-| `curated.fact_team_match_form` | one team's participation in one match, with its form going in | **implemented** |
-| `curated.dim_team` | one team | **implemented** |
-| `curated.fact_match_snapshot` | one upcoming match on one pipeline run date | planned (final) |
-| `curated.dim_venue`, `dim_date` | one venue / calendar day | planned (final) |
+| Table | One row represents | Role for a model | Status |
+|---|---|---|---|
+| `curated.fact_match` | one Champions League match | label: `outcome`, derived from the goals | **implemented** |
+| `curated.fact_team_match_form` | one team's participation in one match, with its form going in | features known before kick-off | **implemented** |
+| `curated.fact_match_weather` | one match | forecast for the kick-off hour, fetched before kick-off, or why it is missing | **implemented** |
+| `curated.dim_team`, `curated.dim_venue` | one team / one home venue | descriptive attributes, coordinates | **implemented** |
+| `curated.fact_match_snapshot` | one upcoming match on one pipeline run date | **the training table**: everything known on that day | planned (final) |
+| `curated.dim_date` | one calendar day | partition pruning in BigQuery | planned (final) |
 
 Full definitions, keys and reasoning: [`docs/data-model.md`](docs/data-model.md).
 
 ## Use Case
 
-Select an upcoming fixture — say *RC Lens vs Sporting CP, 13 Oct 2026* — and
-see the kick-off, venue, both teams' recent form (with the number of matches
-that form rests on), previous meetings and recent results. Everything is served
-from our own tables; the app makes no API calls.
+1. **Model development** - train a baseline HOME/DRAW/AWAY classifier on
+   features taken *N days before kick-off* and test it on later matchdays. The
+   pipeline guarantees that every feature row only contains what was known at
+   that point.
+2. **Availability analysis** - how many days before kick-off does a usable
+   forecast exist, how often do kick-off times move?
+3. **Data preview** - pick a fixture in the Streamlit viewer, e.g. *RC Lens vs
+   Sporting CP, 13 Oct 2026*, and see the features a model would get, their
+   window sizes and states, data freshness and quality results. Everything is
+   served from our own tables; the app makes no API calls.
 
-Secondary: analyse how many days before kick-off each attribute group becomes
-available, and train a baseline HOME/DRAW/AWAY classifier on features that
-existed before the match.
+A single league phase has 144 matches - too few to train on. Past seasons are
+served by the API, so loading several of them is the planned lever (backlog 1.9).
 
 ## Data Sources
 
@@ -514,10 +525,13 @@ a test.
 make app           # http://localhost:8501   (or: make docker-app)
 ```
 
-Pick an upcoming fixture and see kick-off (Zurich time), venue, both teams'
-form as W/D/L badges with the number of matches behind it, previous meetings
-and recent results. Status chips at the top show data freshness and the latest
-data-quality result; the sidebar holds the details.
+**A preview of the data, not the product.** It shows what the pipeline holds
+for one upcoming fixture - the inputs a match-outcome model would get - and
+nothing it did not compute: kick-off (Zurich time), venue, both teams' form as
+W/D/L badges with the number of matches behind it, the weather state, previous
+meetings and recent results. Status chips at the top show data freshness and
+the latest data-quality result; the sidebar holds the details. It earns no
+points on its own; it makes the curated tables inspectable in a defence.
 
 **One page for desktop, iPhone and Android.** Instead of a native app, the
 viewer is a responsive web page: cards on a CSS grid that switch from two
