@@ -108,15 +108,24 @@ def run_transformations(
             for relative in order:
                 path = sql_dir / relative
                 statement = path.read_text()
+                # The date is a bound parameter (%(logical_date)s in the SQL),
+                # never pasted into the text: no quoting bugs, no SQL injection,
+                # and PostgreSQL types it as a date. That is also why literal %
+                # signs in the SQL files are written as %% (e.g. LIKE '%%/teams').
                 cursor.execute(statement, {"logical_date": logical_date})
+                # rows inserted or updated by this statement (upserts count both)
                 affected = cursor.rowcount if cursor.rowcount is not None else 0
                 result.statements.append((relative, affected))
                 logger.info("%s -> %s rows", relative, affected)
 
+            # Counted inside the same transaction, so the numbers describe exactly
+            # the state that is about to be committed.
             for table in counted:
                 cursor.execute(f"SELECT count(*) FROM {table}")  # noqa: S608 - fixed literals
                 row = cursor.fetchone()
                 result.row_counts[table] = int(row[0]) if row else 0
+        # The single commit is the "all or nothing" point: until here no other
+        # connection (the app, a report) sees any of the new rows.
         connection.commit()
     except psycopg.Error:
         connection.rollback()

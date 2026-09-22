@@ -38,6 +38,11 @@ from deng.transformation import (
 
 logger = logging.getLogger(__name__)
 
+# Exit codes follow the Unix convention the orchestrator and CI rely on:
+#   0 success, 1 the step failed, 2 wrong usage (bad arguments).
+# A non-zero exit is what makes a failed run visible to Dagster, `make` and CI.
+
+# Name under which ingestion runs appear in meta.pipeline_runs.
 PIPELINE_NAME = "ingest_football_raw"
 DATE_HELP = "logical date (default: today in Europe/Zurich)"
 
@@ -133,6 +138,9 @@ def command_ingest(logical_date: date, from_samples: bool = False) -> int:
             API. Lets a reviewer exercise the pipeline without credentials.
     """
     settings = get_settings()
+    # `source` is part of the raw zone's unique key, so replayed samples live in
+    # their own rows and can never overwrite a real API answer for the same day
+    # (and vice versa). Staging takes the newest payload of the day.
     source_name = "football-data.org" if not from_samples else "football-data.org (sample)"
 
     if from_samples:
@@ -145,6 +153,8 @@ def command_ingest(logical_date: date, from_samples: bool = False) -> int:
             print(
                 "       or run with --from-samples to use the committed payloads.", file=sys.stderr
             )
+            # A configuration error, reported as exit 1 rather than a traceback;
+            # Dagster turns it into a non-retryable failure (run_step).
             return 1
         client = FootballDataClient(api_key=api_key, base_url=settings.football_data_base_url)
         responses = fetch_endpoints(client, settings.football_data_competition)
@@ -171,8 +181,15 @@ def command_ingest(logical_date: date, from_samples: bool = False) -> int:
                         f"  {endpoint.name:<12} {result.action:<9} "
                         f"records={result.record_count} hash={result.payload_hash[:12]}"
                     )
+                # One commit for all endpoints of the day: either the whole day's
+                # snapshot is stored or none of it. A half-stored day (teams but
+                # no matches) would let the transformation build an inconsistent
+                # curated state.
                 connection.commit()
             except ApiError:
+                # Covers RetryableApiError too (subclass). Roll back this day's
+                # partial writes, then re-raise so PipelineRun records FAILED
+                # and the orchestrator can decide whether to retry.
                 connection.rollback()
                 raise
 
@@ -273,6 +290,9 @@ def command_dq(run_id=None) -> int:
 
 def command_run(logical_date: date, from_samples: bool = False) -> int:
     """Ingest, transform and check - the sequence the orchestrator schedules daily."""
+    # The order is a dependency chain, not a preference: transform reads what
+    # ingest stored, crests and weather read what transform built, and the
+    # checks judge the finished state. Each step stops the chain on failure.
     print(f"=== ingest {logical_date} ===")
     code = command_ingest(logical_date, from_samples=from_samples)
     if code != 0:
@@ -314,7 +334,7 @@ def command_backfill(date_from: date, date_to: date, from_samples: bool = False)
     """
     if date_from > date_to:
         print("ERROR: --from must not be after --to", file=sys.stderr)
-        return 2
+        return 2  # usage error, see the exit-code convention at the top
     current = date_from
     failures = 0
     while current <= date_to:

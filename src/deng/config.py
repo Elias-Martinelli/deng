@@ -24,15 +24,24 @@ class Settings(BaseSettings):
     environment are ignored so the settings work inside Docker as well.
     """
 
+    # Precedence: a real environment variable beats `.env`. That is what lets
+    # Docker Compose set POSTGRES_HOST=postgres for the containers while the
+    # same `.env` says localhost for the host. extra="ignore": the environment
+    # holds many unrelated variables (PATH, HOME, ...), which must not fail
+    # validation.
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # --- football-data.org -------------------------------------------------
+    # SecretStr instead of str: printing or logging the settings shows
+    # '**********', so the key cannot leak into a log file or a traceback by
+    # accident. The value is only unwrapped where it is sent (get_secret_value).
     football_data_api_key: SecretStr = Field(default=SecretStr(""))
     football_data_base_url: str = "https://api.football-data.org/v4"
     football_data_competition: str = "CL"
 
     # --- Open-Meteo --------------------------------------------------------
     open_meteo_forecast_url: str = "https://api.open-meteo.com/v1/forecast"
+    # Reserved for post-match weather actuals (backlog 2.7); not used yet.
     open_meteo_archive_url: str = "https://archive-api.open-meteo.com/v1/archive"
 
     # --- PostgreSQL --------------------------------------------------------
@@ -46,11 +55,18 @@ class Settings(BaseSettings):
     # Where the orchestrated ingestion reads from. "samples" replays the
     # committed payloads, so a reviewer without an API key can run schedules and
     # backfills end to end. The CLI keeps its explicit `--from-samples` flag.
+    # Literal: any other value fails at start-up with a clear validation error
+    # instead of silently behaving like "api".
     ingest_source: Literal["api", "samples"] = "api"
+    # Reserved for a local file cache of raw payloads; the raw zone is the
+    # database today, so nothing writes here yet.
     local_raw_dir: Path = Path("data/raw")
     log_level: str = "INFO"
 
     # --- Google Cloud (final milestone) ------------------------------------
+    # Declared now so .env.example documents them from the start; read by the
+    # cloud path in the final milestone. europe-west6 is Zurich: data stays in
+    # Switzerland and latency from HSLU is lowest.
     gcp_project_id: str = ""
     gcp_region: str = "europe-west6"
     gcs_raw_bucket: str = ""
@@ -82,5 +98,10 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    """Build a fresh `Settings` instance (kept as a function so tests can override env vars)."""
+    """Build a fresh `Settings` instance (kept as a function so tests can override env vars).
+
+    Deliberately not cached: reading a few environment variables costs
+    microseconds, and a cached object would ignore `monkeypatch.setenv` in tests
+    and INGEST_SOURCE changes between Dagster runs.
+    """
     return Settings()

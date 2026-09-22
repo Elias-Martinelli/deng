@@ -39,6 +39,8 @@ class PipelineRun:
         self.connection = connection
         self.pipeline_name = pipeline_name
         self.logical_date = logical_date
+        # Generated here rather than by the database so the id is known before
+        # the first write - raw rows reference it as a foreign key.
         self.run_id = uuid.uuid4()
         self.rows_extracted = 0
         self.rows_loaded = 0
@@ -54,6 +56,9 @@ class PipelineRun:
                 """,
                 (self.run_id, self.pipeline_name, self.logical_date),
             )
+        # Committed immediately and separately from the run's data: if the
+        # process is killed mid-run, a RUNNING row remains as evidence (and the
+        # verification query flags runs stuck in RUNNING for over an hour).
         self.connection.commit()
         logger.info(
             "run %s started (pipeline=%s, logical_date=%s)",
@@ -77,6 +82,8 @@ class PipelineRun:
     ) -> bool:
         """Close the run row with SUCCESS or FAILED; never swallow the exception."""
         status = "SUCCESS" if exc is None else "FAILED"
+        # Truncated so one huge error (e.g. an HTML error page in the message)
+        # cannot bloat the run log.
         message = None if exc is None else f"{exc_type.__name__}: {exc}"[:2000]
         try:
             # A failed run may have left the transaction broken - roll back first

@@ -46,6 +46,9 @@ class CrestResult:
 
 def missing_crests(connection: psycopg.Connection) -> list[tuple[int, str]]:
     """Teams whose current crest URL has no stored image yet."""
+    # The NOT EXISTS anti-join *is* the incremental load: it returns only URLs
+    # that are not stored yet, so a normal day returns nothing and makes no
+    # request. A club that gets a new crest URL shows up here automatically.
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -67,7 +70,7 @@ def download(session: requests.Session, url: str) -> tuple[str, bytes]:
         requests.RequestException: on HTTP or network errors.
     """
     response = session.get(url, timeout=20)
-    response.raise_for_status()
+    response.raise_for_status()  # 4xx/5xx -> requests.HTTPError, a RequestException
     content_type = response.headers.get("Content-Type", "").split(";")[0].strip()
     if not content_type.startswith("image/"):
         raise ValueError(f"not an image: Content-Type {content_type!r}")
@@ -113,6 +116,9 @@ def fetch_crests(
                     run_id,
                 ),
             )
+        # Commit per crest (unlike the daily payloads): the images are
+        # independent of each other, so what arrived is kept even if a later
+        # download fails - and the next run only fetches the rest.
         connection.commit()
         result.fetched.append(team_id)
     logger.info("crests: %s", result.summary)

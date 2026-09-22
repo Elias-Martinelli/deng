@@ -20,6 +20,10 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# Upper bound for one request. The largest payload (the season's fixture list,
+# ~212 KB) arrives in well under a second; 30 s only matters when the API hangs,
+# and then a timeout that surfaces as a retryable error beats a run that waits
+# forever and never records a failure.
 DEFAULT_TIMEOUT_SECONDS = 30
 
 
@@ -34,7 +38,12 @@ class ApiError(Exception):
 
 
 class RetryableApiError(ApiError):
-    """Transient API error (rate limit, server error, network) – safe to retry."""
+    """Transient API error (rate limit, server error, network) – safe to retry.
+
+    A subclass, not a sibling: code that only cares "did the API fail?" catches
+    `ApiError` and gets both; code that retries catches this narrower class.
+    Callers must therefore check `RetryableApiError` *before* `ApiError`.
+    """
 
 
 @dataclass
@@ -74,7 +83,12 @@ class FootballDataClient:
         timeout: int = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         """Create a client; a custom `session` allows injecting a mock in tests."""
+        # rstrip/lstrip below make "…/v4" + "competitions/CL" and "…/v4/" +
+        # "/competitions/CL" produce the same URL - a typo in .env must not
+        # silently turn into a 404.
         self._base_url = base_url.rstrip("/")
+        # One Session re-uses the TCP/TLS connection across the daily requests
+        # and carries the auth header, so it is set once, not per call.
         self._session = session or requests.Session()
         self._session.headers.update({"X-Auth-Token": api_key, "Accept": "application/json"})
         self._timeout = timeout
@@ -94,6 +108,8 @@ class FootballDataClient:
         try:
             response = self._session.get(url, params=params, timeout=self._timeout)
         except requests.RequestException as exc:  # timeouts, DNS, connection resets
+            # No HTTP answer at all, hence status 0. Network trouble is the
+            # textbook transient error, so it is classified as retryable.
             raise RetryableApiError(0, f"network error calling {url}: {exc}") from exc
 
         rate_limit = RateLimitInfo.from_headers(response.headers)
@@ -104,15 +120,23 @@ class FootballDataClient:
             rate_limit.requests_available_minute,
         )
 
+        # 429 (rate limit) and 5xx (their server) can succeed later - retry.
+        # Every other 4xx is about *our* request (bad path, missing plan, wrong
+        # key): the same request will fail the same way, so fail fast.
         if response.status_code == 429 or response.status_code >= 500:
             raise RetryableApiError(response.status_code, _error_message(response))
         if response.status_code >= 400:
             raise ApiError(response.status_code, _error_message(response))
 
+        # A 200 with a body that is not JSON is treated as permanent on purpose:
+        # it points at a changed API or a proxy page, which a human must look at.
+        # Retrying would hide it for three attempts and then fail anyway.
         try:
             payload = response.json()
         except ValueError as exc:
             raise ApiError(response.status_code, f"invalid JSON from {url}") from exc
+        # Every v4 endpoint we use answers with a JSON object; a list or a bare
+        # value would break the raw loader's assumptions, so it stops here.
         if not isinstance(payload, dict):
             raise ApiError(response.status_code, f"unexpected payload type from {url}")
 

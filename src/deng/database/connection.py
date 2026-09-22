@@ -29,16 +29,16 @@ def _find_sql_dir() -> Path:
     root locally, `/app` in the image), then the repo layout for an editable
     install.
     """
+    # DENG_SQL_DIR: escape hatch for unusual layouts (e.g. running a test
+    # against a copied SQL tree); nothing in the repository sets it.
     override = os.environ.get("DENG_SQL_DIR")
     if override:
         return Path(override)
     cwd_candidate = Path.cwd() / "sql"
     if cwd_candidate.is_dir():
         return cwd_candidate
+    # src/deng/database/connection.py -> parents[3] is the repository root.
     return Path(__file__).resolve().parents[3] / "sql"
-
-
-SQL_DIR = _find_sql_dir()
 
 
 @contextmanager
@@ -53,6 +53,10 @@ def connect(settings: Settings | None = None) -> Iterator[psycopg.Connection]:
         commits on a clean exit of the connection context and rolls back on error.
     """
     settings = settings or get_settings()
+    # One short-lived connection per command, no pool: a batch run opens a
+    # handful of connections a day, so pooling would add a dependency and
+    # configuration without a measurable benefit. The Streamlit app, which
+    # serves repeated requests, keeps one cached connection instead.
     with psycopg.connect(settings.postgres_dsn) as connection:
         yield connection
 
@@ -75,6 +79,8 @@ def apply_sql_files(connection: psycopg.Connection, directory: Path | None = Non
         The names of the files that were applied, in order.
     """
     directory = directory or _find_sql_dir() / "schema"
+    # The numeric prefixes (001_, 002_, ...) make file-name order the dependency
+    # order: schemas before tables, tables before the views that read them.
     files = sorted(p for p in directory.rglob("*.sql"))
     applied: list[str] = []
     with connection.cursor() as cursor:
@@ -82,5 +88,7 @@ def apply_sql_files(connection: psycopg.Connection, directory: Path | None = Non
             logger.info("applying %s", path.name)
             cursor.execute(path.read_text())
             applied.append(path.name)
+    # One commit for all files: a failing file leaves the database as it was
+    # (PostgreSQL DDL is transactional), not half-migrated.
     connection.commit()
     return applied

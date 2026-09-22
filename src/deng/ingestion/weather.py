@@ -103,6 +103,8 @@ def pipeline_today() -> date:
 
 
 def _find(relative: Path) -> Path:
+    # Working directory first (repo root locally, /app in the image), then the
+    # repository layout - the same lookup order as for the sql/ directory.
     candidate = Path.cwd() / relative
     return candidate if candidate.exists() else REPO_ROOT / relative
 
@@ -113,9 +115,15 @@ def load_venues(connection: psycopg.Connection, path: Path | None = None) -> int
     with path.open(encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
 
+    # CSV has no types and no NULL: an empty cell means "unknown" and becomes
+    # NULL, never 0.0 - a stadium at latitude 0 would be in the Atlantic.
     def number(value: str) -> float | None:
         return float(value) if value else None
 
+    # Reloaded on every weather run (36 rows, milliseconds), so an edited CSV
+    # takes effect on the next run without a separate command. Upsert, not
+    # truncate-and-insert: a row that disappears from the file stays until a
+    # person removes it - deleting reference data should be a decision.
     with connection.cursor() as cursor:
         cursor.executemany(
             """
@@ -152,7 +160,11 @@ def load_venues(connection: psycopg.Connection, path: Path | None = None) -> int
 
 def plan_requests(connection: psycopg.Connection, logical_date: date) -> list[ForecastRequest]:
     """One request per venue that hosts an unfinished match inside the horizon."""
+    # Inclusive range: logical date + 15 is the last day the API still serves.
     last_day = logical_date + timedelta(days=HORIZON_DAYS - 1)
+    # Finished matches need no forecast. min/max per venue give one date range
+    # covering all its matches inside the horizon; the days in between cost
+    # nothing extra because the answer is one small JSON document.
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -227,6 +239,9 @@ def store(
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (source, endpoint, venue_team_id, ingestion_date) DO UPDATE SET
                 request_params = EXCLUDED.request_params, request_url = EXCLUDED.request_url,
+                -- A rerun refreshes the fetch time on purpose: the leakage guard
+                -- compares it with the kick-off, so a rerun after kick-off makes
+                -- that day's forecast unusable and the previous day's is taken.
                 ingested_at = now(), run_id = EXCLUDED.run_id,
                 payload = EXCLUDED.payload, payload_hash = EXCLUDED.payload_hash
             """,
@@ -264,6 +279,9 @@ def ingest_weather(
         today: Override for "today" (tests).
     """
     result = WeatherResult()
+    # Venues are committed first and on their own: even when the fetch below is
+    # skipped or fails, dim_venue can still be built and every match still gets
+    # a weather status.
     load_venues(connection)
     connection.commit()
 
@@ -290,6 +308,8 @@ def ingest_weather(
             url, payload = fetch_forecast(session, base_url, request)
         store(connection, request, url, payload, logical_date, run_id)
         result.stored.append(request.venue_team_id)
+    # All venues of the day in one commit, like the football payloads: a
+    # failure on the fifth venue leaves no half-fetched day behind.
     connection.commit()
     logger.info("weather %s", result.summary)
     return result

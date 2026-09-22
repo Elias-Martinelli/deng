@@ -55,7 +55,11 @@ class LoadResult:
 
 
 class RawLoader:
-    """Writes API payloads into `raw.football_data`."""
+    """Writes API payloads into `raw.football_data`.
+
+    The loader never commits: the caller decides the transaction boundary, so a
+    whole run's payloads land together or not at all (see command_ingest).
+    """
 
     def __init__(self, connection: psycopg.Connection, source: str = "football-data.org") -> None:
         """Create a loader bound to an open connection."""
@@ -88,6 +92,10 @@ class RawLoader:
         """
         payload_hash = hash_payload(payload)
         record_count = count_records(payload)
+
+        # Jsonb(...) wraps dicts so psycopg sends them as JSONB. request_params is
+        # compared as JSONB in the unique key, where {"a":1,"b":2} equals
+        # {"b":2,"a":1} - key order cannot create a false "new" row.
 
         with self.connection.cursor() as cursor:
             # `xmax = 0` is true for a freshly inserted row and non-zero for one
@@ -186,6 +194,9 @@ def hash_payload(payload: dict[str, Any]) -> str:
     Keys are sorted so that two semantically identical documents hash equally
     regardless of the order in which the API happened to serialise them.
     """
+    # separators without spaces and ensure_ascii=False: one canonical byte
+    # representation, so the hash depends on the content only - not on
+    # whitespace or on how non-ASCII names (Bodø, Fenerbahçe) are escaped.
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
