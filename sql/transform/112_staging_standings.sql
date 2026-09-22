@@ -1,8 +1,14 @@
--- Unpack the standings payload. Parameter: %(logical_date)s
+-- Unpack the standings payload into one row per team and ingestion date.
+-- Parameter: %(logical_date)s
 --
 -- The league phase has exactly one table (`standings[0].table`); the older
 -- group format had one per group. Iterating over all of them keeps the
 -- transformation valid for historical seasons too.
+--
+-- Unlike teams and matches, the ingestion date is part of the key: every day's
+-- table is kept, which turns the standings into a time series ("position on
+-- 20 October"). Hence no "only if newer" guard - a backfill writes its own
+-- day's row and cannot touch another day's.
 
 WITH payload AS (
     SELECT payload
@@ -12,6 +18,7 @@ WITH payload AS (
      ORDER BY ingested_at DESC
      LIMIT 1
 ),
+-- Two levels of nesting: standings[] (one per group or phase) -> table[] (rows).
 tables AS (
     SELECT (payload -> 'season' ->> 'id')::bigint AS season_id,
            jsonb_array_elements(payload -> 'standings') AS grp

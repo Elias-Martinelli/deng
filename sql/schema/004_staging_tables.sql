@@ -53,9 +53,9 @@ CREATE TABLE IF NOT EXISTS staging.teams (
     venue           TEXT,
     website         TEXT,
     area_name       TEXT,
-    -- Competition codes the club currently plays in, e.g. {CL,BL1}. Used to
-    -- tell apart clubs whose domestic league our tier covers from those where
-    -- form can only come from Champions League matches.
+    -- Competition codes the club currently plays in, e.g. {CL,BL1}. Feeds the
+    -- descriptive flag dim_team.has_domestic_coverage (form itself is
+    -- Champions League only for every club, ADR-004).
     competitions    TEXT[]      NOT NULL DEFAULT '{}',
     ingestion_date  DATE        NOT NULL,
     loaded_at       TIMESTAMPTZ NOT NULL DEFAULT now()

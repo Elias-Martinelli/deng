@@ -1,4 +1,4 @@
--- Unpack the newest raw payloads into the staging tables.
+-- Unpack the day's fixture payload into one typed row per match.
 --
 -- Parameter: %(logical_date)s - the ingestion date to transform. Passing it
 -- explicitly (rather than using "the newest row") is what makes a rerun for a
@@ -10,6 +10,8 @@
 -- --------------------------------------------------------------------------
 -- matches
 -- --------------------------------------------------------------------------
+-- The unfiltered season list only: a request with filters (e.g. ?status=...)
+-- would be a different, partial answer stored under different request_params.
 WITH payload AS (
     SELECT payload
       FROM raw.football_data
@@ -32,12 +34,13 @@ SELECT
     (m ->> 'id')::bigint,
     (m -> 'season' ->> 'id')::bigint,
     m -> 'competition' ->> 'code',
-    (m ->> 'utcDate')::timestamptz,
+    (m ->> 'utcDate')::timestamptz,              -- "2026-10-13T16:45:00Z": UTC, stored as such
     m ->> 'status',
     m ->> 'stage',
     (m ->> 'matchday')::int,
     (m -> 'homeTeam' ->> 'id')::bigint,
     (m -> 'awayTeam' ->> 'id')::bigint,
+    -- NULL until the match is played; `::int` of a JSON null stays NULL.
     (m -> 'score' -> 'fullTime' ->> 'home')::int,
     (m -> 'score' -> 'fullTime' ->> 'away')::int,
     (m -> 'score' -> 'halfTime' ->> 'home')::int,

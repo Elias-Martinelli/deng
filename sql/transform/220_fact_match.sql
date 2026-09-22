@@ -28,11 +28,15 @@ SELECT
     m.matchday,
     m.status,
     m.status = 'FINISHED',
+    -- Wall clock (now()), not the logical date, on purpose: fact_match is the
+    -- *current* state and feeds "which fixtures are still to come" in the app.
+    -- What was known on a past day is the job of the snapshot table.
     m.status <> 'FINISHED' AND m.utc_kickoff > now(),
     m.home_team_id,
     m.away_team_id,
     m.home_goals,
     m.away_goals,
+    -- NULL (not 0) before the match: "no result yet" is not a draw.
     CASE WHEN m.home_goals IS NOT NULL AND m.away_goals IS NOT NULL
          THEN m.home_goals - m.away_goals END,
     CASE

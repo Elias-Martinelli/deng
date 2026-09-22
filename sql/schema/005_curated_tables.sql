@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS curated.fact_team_match_form (
 
     -- Rolling window over the team's last completed matches BEFORE this match.
     -- matches_considered is part of the data, not metadata: comparing a form
-    -- built on 5 matches with one built on 1 would be misleading, and for 11 of
-    -- 36 clubs the small window is the normal case.
+    -- built on 5 matches with one built on 1 would be misleading, and with at
+    -- most 8 league-phase matches per club small windows are common (ADR-004).
     matches_considered  INTEGER NOT NULL,
     wins_last_5         INTEGER NOT NULL,
     draws_last_5        INTEGER NOT NULL,
