@@ -29,3 +29,12 @@ def test_missing_api_key_gives_actionable_error(clean_env):
     settings = Settings(_env_file=None)
     with pytest.raises(ValueError, match="FOOTBALL_DATA_API_KEY"):
         settings.require_football_api_key()
+
+
+def test_dsn_survives_special_characters_in_the_password(clean_env, monkeypatch):
+    from psycopg.conninfo import conninfo_to_dict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "p@ss:w/rd#1")
+    parsed = conninfo_to_dict(Settings(_env_file=None).postgres_dsn)
+    assert parsed["password"] == "p@ss:w/rd#1"
+    assert parsed["host"] == "localhost"

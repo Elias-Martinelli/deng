@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -57,10 +58,15 @@ class Settings(BaseSettings):
 
     @property
     def postgres_dsn(self) -> str:
-        """Return a libpq-style connection string for PostgreSQL."""
-        password = self.postgres_password.get_secret_value()
+        """Return a libpq-style connection string for PostgreSQL.
+
+        User and password are percent-encoded: a password containing @, / or :
+        would otherwise be read as part of the host or path of the URL.
+        """
+        user = quote(self.postgres_user, safe="")
+        password = quote(self.postgres_password.get_secret_value(), safe="")
         return (
-            f"postgresql://{self.postgres_user}:{password}"
+            f"postgresql://{user}:{password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
