@@ -32,6 +32,11 @@ def test_definitions_load_with_one_asset_per_table():
         "curated/fact_match",
         "curated/fact_team_match_form",
         "meta/dq_results",
+        "raw/team_crests",
+        "raw/open_meteo",
+        "staging/weather_forecast",
+        "curated/dim_venue",
+        "curated/fact_match_weather",
     }
 
 
@@ -75,6 +80,16 @@ def test_run_step_fails_on_a_non_zero_exit_code():
 
 
 # --- against PostgreSQL ------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_crest_downloads(monkeypatch):
+    """Keep the job tests offline: the crest step is tested on its own."""
+    from deng.ingestion.crests import CrestResult
+
+    monkeypatch.setattr(
+        "deng.orchestration.definitions.fetch_crests", lambda connection: CrestResult()
+    )
 
 
 def _execute(partition_key: str):

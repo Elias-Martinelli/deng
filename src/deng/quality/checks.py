@@ -211,6 +211,100 @@ CHECKS: tuple[Check, ...] = (
                 SELECT 1 FROM curated.dim_team d WHERE d.team_id = referenced.team_id)
         """,
     ),
+    Check(
+        name="every_match_has_a_weather_row",
+        target="curated.fact_match_weather",
+        severity=CRITICAL,
+        description=(
+            "Every match has a weather row - with values or with the reason there are none. "
+            "A match without a row would be indistinguishable from one we forgot."
+        ),
+        sql="""
+            SELECT count(*)::text || ' match(es) without a weather row' AS observed,
+                   count(*) = 0 AS passed
+              FROM curated.fact_match m
+             WHERE NOT EXISTS (
+                SELECT 1 FROM curated.fact_match_weather w WHERE w.match_id = m.match_id)
+        """,
+    ),
+    Check(
+        name="weather_fetched_before_kickoff",
+        target="curated.fact_match_weather",
+        severity=CRITICAL,
+        description=(
+            "Leakage guard, recomputed independently of the SQL that builds the table: no "
+            "forecast used for a match may have been fetched at or after its kick-off."
+        ),
+        sql="""
+            SELECT count(*)::text AS observed, count(*) = 0 AS passed
+              FROM curated.fact_match_weather w
+              JOIN curated.fact_match m USING (match_id)
+             WHERE w.weather_status = 'AVAILABLE'
+               AND w.forecast_fetched_at >= m.utc_kickoff
+        """,
+    ),
+    Check(
+        name="weather_values_plausible",
+        target="curated.fact_match_weather",
+        severity=CRITICAL,
+        description=(
+            "Temperature -40..50 °C, precipitation >= 0 mm, probability 0..100 %, wind "
+            "0..250 km/h. Outside that the unpacking is wrong, not the weather."
+        ),
+        sql="""
+            SELECT count(*)::text AS observed, count(*) = 0 AS passed
+              FROM curated.fact_match_weather
+             WHERE weather_status = 'AVAILABLE'
+               AND (temperature_c NOT BETWEEN -40 AND 50
+                    OR precipitation_mm < 0
+                    OR precipitation_probability NOT BETWEEN 0 AND 100
+                    OR wind_speed_kmh NOT BETWEEN 0 AND 250)
+        """,
+    ),
+    Check(
+        name="no_forecast_missing_inside_horizon",
+        target="curated.fact_match_weather",
+        severity=WARNING,
+        description=(
+            "Upcoming matches inside the 16-day horizon have a forecast. WARNING: a gap here "
+            "means a failed or skipped weather run; the football data is still valid."
+        ),
+        sql="""
+            SELECT count(*)::text || ' match(es) MISSING' AS observed, count(*) = 0 AS passed
+              FROM curated.fact_match_weather
+             WHERE weather_status = 'MISSING'
+        """,
+    ),
+    Check(
+        name="every_team_has_a_venue_row",
+        target="curated.dim_venue",
+        severity=WARNING,
+        description=(
+            "Every club appears in data/reference/venues.csv (resolved or with a reason). A new "
+            "club after the knockout draw needs `make venues`."
+        ),
+        sql="""
+            SELECT count(*)::text || ' team(s) without a venue row' AS observed,
+                   count(*) = 0 AS passed
+              FROM curated.dim_team d
+             WHERE NOT EXISTS (SELECT 1 FROM curated.dim_venue v WHERE v.team_id = d.team_id)
+        """,
+    ),
+    Check(
+        name="every_team_has_a_crest",
+        target="curated.team_crest",
+        severity=WARNING,
+        description=(
+            "Every team's current crest is stored. WARNING: without it the viewer shows the "
+            "three-letter code instead - cosmetic, and a download can fail for reasons outside "
+            "our control."
+        ),
+        sql="""
+            SELECT count(*)::text || ' team(s) without a crest' AS observed, count(*) = 0 AS passed
+              FROM curated.dim_team d
+             WHERE NOT EXISTS (SELECT 1 FROM curated.team_crest c WHERE c.team_id = d.team_id)
+        """,
+    ),
 )
 
 

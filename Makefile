@@ -28,7 +28,7 @@ PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 .PHONY: help setup setup-app test test-integration lint format explore doctor clean \
         up down logs ps psql init ingest ingest-samples transform dq run run-samples \
         backfill verify docker-ingest docker-app reset app notebook \
-        setup-orchestrator orchestrator dagster-dev dagster-backfill
+        setup-orchestrator orchestrator dagster-dev dagster-backfill venues
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -74,6 +74,9 @@ lint:  ## Static checks (ruff)
 format:  ## Auto-format code
 	$(PY) -m ruff format .
 	$(PY) -m ruff check --fix .
+
+venues:  ## Rebuild data/reference/venues.csv from OpenStreetMap (once per season; review the diff)
+	$(PY) scripts/build_venues.py
 
 explore:  ## API exploration: fetch small samples from football-data.org (needs FOOTBALL_DATA_API_KEY)
 	$(PY) scripts/explore_football_api.py

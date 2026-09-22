@@ -79,8 +79,7 @@ external APIs itself.
   get corrected, forecasts are overwritten. Loads must upsert on business keys
   and snapshots must be keyed by run date.
 * **Data quality is real:** kick-off times can be `TBD`, venues can be missing
-  for neutral finals, teams from leagues outside the API's free tier have no
-  domestic form data, and forecasts beyond 16 days do not exist.
+  for neutral finals, and forecasts beyond 16 days do not exist.
 
 ## Expected output (per milestone)
 
@@ -97,9 +96,11 @@ external APIs itself.
   head-to-head and an ML training set of several thousand matches are therefore
   feasible. Note that the competition format changed in 2024/25 (groups → single
   league phase), so cross-season comparisons must account for it.
-* **Asymmetric domestic coverage:** for 11 of the 36 league-phase clubs the free
-  tier carries no domestic league, so their form rests on Champions League
-  matches alone. Form features carry the number of matches behind them.
+* **Champions League only:** form, rest days and results use Champions League
+  matches for every club ([ADR-004](adr/ADR-004-champions-league-scope.md)) -
+  the free tier covers the domestic league of only 25 of 36 clubs, and two
+  definitions of form in one column would not be comparable. Form features
+  carry the number of matches behind them.
 * **The API's own aggregates are unreliable** (`resultSet.wins/draws/losses` do
   not sum to the match count; `standings.form` is null), so all form figures are
   computed from individual match rows.

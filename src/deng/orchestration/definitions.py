@@ -1,6 +1,8 @@
 """The daily pipeline as Dagster assets.
 
-    raw.football_data  ->  staging.{matches,teams,standings}  ->  curated.*  ->  meta.dq_results
+    raw.football_data -> staging.{matches,teams,standings} -> curated.*  --+
+    curated.dim_team   -> raw.team_crests                                  +--> meta.dq_results
+    curated.fact_match -> raw.open_meteo -> staging/curated weather      --+
 
 Every asset is one of our tables, and every partition is one logical date: the
 `ingestion_date` in the raw zone, the `%(logical_date)s` the transformations
@@ -27,9 +29,16 @@ from dagster import AssetExecutionContext
 
 from deng import pipeline
 from deng.config import get_settings
-from deng.database import connect
-from deng.ingestion.football_data_client import RetryableApiError
+from deng.database import PipelineRun, connect
+from deng.ingestion.crests import fetch_crests
+from deng.ingestion.football_data_client import ApiError, RetryableApiError
+from deng.ingestion.weather import ingest_weather
 from deng.quality import run_checks
+from deng.transformation import (
+    WEATHER_COUNTED_TABLES,
+    WEATHER_TRANSFORMATION_ORDER,
+    run_transformations,
+)
 
 # The 2026/27 league phase starts in mid-September; the first partition sits
 # before it so that the whole season is backfillable.
@@ -70,6 +79,19 @@ DIM_TEAM = dg.AssetKey(["curated", "dim_team"])
 FACT_MATCH = dg.AssetKey(["curated", "fact_match"])
 FACT_TEAM_MATCH_FORM = dg.AssetKey(["curated", "fact_team_match_form"])
 DQ_RESULTS = dg.AssetKey(["meta", "dq_results"])
+TEAM_CRESTS = dg.AssetKey(["raw", "team_crests"])
+RAW_WEATHER = dg.AssetKey(["raw", "open_meteo"])
+STAGING_WEATHER = dg.AssetKey(["staging", "weather_forecast"])
+DIM_VENUE = dg.AssetKey(["curated", "dim_venue"])
+FACT_MATCH_WEATHER = dg.AssetKey(["curated", "fact_match_weather"])
+
+WEATHER_SPECS: tuple[dg.AssetSpec, ...] = (
+    dg.AssetSpec(STAGING_WEATHER, deps=[RAW_WEATHER], group_name="staging"),
+    dg.AssetSpec(DIM_VENUE, deps=[DIM_TEAM], group_name="curated"),
+    dg.AssetSpec(
+        FACT_MATCH_WEATHER, deps=[STAGING_WEATHER, DIM_VENUE, FACT_MATCH], group_name="curated"
+    ),
+)
 
 # Mirrors the table dependencies in sql/transform/. Used only for lineage in the
 # UI - the execution order inside the transformation is TRANSFORMATION_ORDER.
@@ -166,8 +188,97 @@ def curated_model(context: AssetExecutionContext):
 
 
 @dg.asset(
+    key=TEAM_CRESTS,
+    deps=[DIM_TEAM],
+    partitions_def=daily_partitions,
+    retry_policy=TRANSIENT_RETRY,
+    group_name="raw",
+    kinds={"postgres"},
+    description=(
+        "Club crest images, fetched once per crest URL. Best effort: a failed download is "
+        "reported, not fatal - the viewer falls back to the team code."
+    ),
+)
+def team_crests(context: AssetExecutionContext) -> dg.MaterializeResult:
+    """Store the crests that are not stored yet (usually none after the first run)."""
+    with connect() as connection:
+        result = fetch_crests(connection)
+    for team_id, reason in result.failed.items():
+        context.log.warning("crest for team %s not stored: %s", team_id, reason)
+    return dg.MaterializeResult(
+        metadata={"fetched": len(result.fetched), "failed": len(result.failed)}
+    )
+
+
+@dg.asset(
+    key=RAW_WEATHER,
+    deps=[FACT_MATCH],
+    partitions_def=daily_partitions,
+    retry_policy=TRANSIENT_RETRY,
+    group_name="raw",
+    kinds={"postgres"},
+    description=(
+        "Open-Meteo forecasts for venues hosting a match within 16 days. Only fetched for "
+        "today's partition: for a past date the answer would not be a forecast."
+    ),
+)
+def raw_open_meteo(context: AssetExecutionContext) -> dg.MaterializeResult:
+    """Load the venues and fetch today's forecasts."""
+    settings = get_settings()
+    logical_date = _logical_date(context)
+    with connect(settings) as connection:
+        with PipelineRun(connection, "ingest_weather", logical_date) as run:
+            try:
+                result = ingest_weather(
+                    connection,
+                    logical_date,
+                    run.run_id,
+                    settings.open_meteo_forecast_url,
+                    from_samples=settings.ingest_source == "samples",
+                )
+            except TRANSIENT_ERRORS:
+                raise
+            except ApiError as exc:
+                raise dg.Failure(description=f"weather: {exc}", allow_retries=False) from exc
+            run.add_counts(loaded=len(result.stored))
+    if result.skipped_reason:
+        context.log.info("weather fetch skipped: %s", result.skipped_reason)
+    return dg.MaterializeResult(
+        metadata={"planned": result.planned, "stored": len(result.stored), "note": result.summary}
+    )
+
+
+@dg.multi_asset(
+    specs=WEATHER_SPECS,
+    partitions_def=daily_partitions,
+    retry_policy=TRANSIENT_RETRY,
+    can_subset=False,
+    description="Forecast unpacking, dim_venue and fact_match_weather in one transaction.",
+)
+def weather_model(context: AssetExecutionContext):
+    """Build the weather tables; every match gets a weather status."""
+    try:
+        with connect() as connection:
+            with PipelineRun(connection, "transform_weather", _logical_date(context)) as run:
+                result = run_transformations(
+                    connection,
+                    _logical_date(context),
+                    order=WEATHER_TRANSFORMATION_ORDER,
+                    counted=WEATHER_COUNTED_TABLES,
+                )
+                run.add_counts(loaded=result.total_rows_written)
+    except TRANSIENT_ERRORS:
+        raise
+    except Exception as exc:
+        raise dg.Failure(description=f"weather transform: {exc}", allow_retries=False) from exc
+    for spec in WEATHER_SPECS:
+        table = ".".join(spec.key.path)
+        yield dg.MaterializeResult(asset_key=spec.key, metadata={"row_count": _count(table)})
+
+
+@dg.asset(
     key=DQ_RESULTS,
-    deps=[FACT_MATCH, FACT_TEAM_MATCH_FORM, DIM_TEAM],
+    deps=[FACT_MATCH, FACT_TEAM_MATCH_FORM, DIM_TEAM, TEAM_CRESTS, FACT_MATCH_WEATHER],
     partitions_def=daily_partitions,
     retry_policy=TRANSIENT_RETRY,
     group_name="quality",
@@ -204,9 +315,11 @@ def data_quality(context: AssetExecutionContext) -> dg.MaterializeResult:
 
 daily_pipeline = dg.define_asset_job(
     name="daily_pipeline",
-    selection=dg.AssetSelection.assets(raw_football_data, curated_model, data_quality),
+    selection=dg.AssetSelection.assets(
+        raw_football_data, curated_model, team_crests, raw_open_meteo, weather_model, data_quality
+    ),
     partitions_def=daily_partitions,
-    description="ingest -> transform -> data quality for one logical date.",
+    description="ingest -> transform -> crests -> weather -> data quality for one logical date.",
 )
 
 # 06:00 Zurich: late enough that the previous evening's matches are final in
@@ -219,7 +332,14 @@ daily_schedule = dg.build_schedule_from_partitioned_job(
 )
 
 defs = dg.Definitions(
-    assets=[raw_football_data, curated_model, data_quality],
+    assets=[
+        raw_football_data,
+        curated_model,
+        team_crests,
+        raw_open_meteo,
+        weather_model,
+        data_quality,
+    ],
     jobs=[daily_pipeline],
     schedules=[daily_schedule],
 )

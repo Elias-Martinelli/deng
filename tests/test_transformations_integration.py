@@ -10,9 +10,14 @@ from datetime import date, timedelta
 import pytest
 
 from deng.database import RawLoader
+from deng.ingestion.weather import load_venues
 from deng.quality import run_checks
 from deng.quality.checks import CRITICAL
-from deng.transformation import run_transformations
+from deng.transformation import (
+    WEATHER_COUNTED_TABLES,
+    WEATHER_TRANSFORMATION_ORDER,
+    run_transformations,
+)
 
 pytestmark = pytest.mark.postgres
 
@@ -21,7 +26,11 @@ LOGICAL_DATE = date(2026, 9, 20)
 
 @pytest.fixture
 def transformed(connection, run_id, all_samples):
-    """Ingest every sample payload and run the full transformation chain."""
+    """Ingest every sample payload and run both transformation chains.
+
+    The weather chain runs too, as it does in production before the checks: it
+    gives every match its weather status even when no forecast was fetched.
+    """
     loader = RawLoader(connection)
     for endpoint, payload in all_samples.items():
         loader.load(
@@ -33,7 +42,12 @@ def transformed(connection, run_id, all_samples):
             ingestion_date=LOGICAL_DATE,
         )
     connection.commit()
-    return run_transformations(connection, LOGICAL_DATE)
+    result = run_transformations(connection, LOGICAL_DATE)
+    load_venues(connection)
+    run_transformations(
+        connection, LOGICAL_DATE, order=WEATHER_TRANSFORMATION_ORDER, counted=WEATHER_COUNTED_TABLES
+    )
+    return result
 
 
 def scalar(connection, sql: str):

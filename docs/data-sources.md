@@ -38,7 +38,7 @@ Endpoints planned for the daily batch (football-data.org):
 | `GET /competitions/CL/teams` | teams (id, name, short name, crest, venue name, address) | 1 |
 | `GET /competitions/CL/matches` | all matches of the season (scheduled + finished) | 1–2 |
 | `GET /competitions/CL/standings` | league-phase table | 1 |
-| `GET /teams/{id}/matches?status=FINISHED` | team form across all free-tier competitions (36 teams) | 36 |
+| ~~`GET /teams/{id}/matches?status=FINISHED`~~ | dropped by [ADR-004](adr/ADR-004-champions-league-scope.md): form is Champions League only | – |
 | `GET /matches/{id}/head2head` | historical encounters for upcoming matches (only within 14 days of kick-off) | ≤ 18 |
 
 ≈ 60 calls per day ⇒ ~6 minutes at 10 calls/minute. Well within limits, and the
@@ -68,11 +68,11 @@ client throttles on `X-Requests-Available-Minute`.
 
 | Dataset | File | Purpose | Source |
 |---|---|---|---|
-| Venues | `data/reference/venues.csv` (planned) | stadium name, city, country, latitude, longitude, time zone for the 36 league-phase clubs; joins football venue names to weather coordinates | Wikipedia stadium pages, checked manually; ~36 rows |
+| Venues | `data/reference/venues.csv` | stadium, latitude, longitude, time zone and OSM reference for the 36 league-phase clubs; joins clubs to weather coordinates | OpenStreetMap via `make venues`, plausibility-checked, flagged rows reviewed by hand ([evidence](evidence/weather.md#2-venues-why-the-apis-venue-fields-could-not-be-geocoded-blindly)); ODbL |
 
 Small, versioned and reviewable – preferable to geocoding at run time, which
-would introduce a third external dependency into every run. Open-Meteo's free
-geocoding API remains a fallback for clubs that are missing from the file.
+would introduce a third external dependency into every run. Generated rather
+than typed by hand, so every row names the map object it came from.
 
 ## 4. Optional enrichment (COULD, not planned before the final)
 
@@ -93,7 +93,7 @@ state per attribute group.
 | Venue name | with the fixture (home stadium); neutral final venue known in advance | football-data.org teams / reference file | `NOT_AVAILABLE` |
 | Venue coordinates | always (reference file) | `venues.csv` | `NOT_AVAILABLE` (new club not yet in file – data-quality alert) |
 | Standings / league position | after matchday 1; changes after every matchday | football-data.org | `NOT_YET_AVAILABLE` before matchday 1 |
-| Team form (last 5 matches) | as soon as ≥ 1 match is finished; domestic matches only for clubs from free-tier leagues | football-data.org team matches | `PARTIAL` (fewer than 5 matches) |
+| Team form (last 5 matches) | as soon as ≥ 1 Champions League match is finished (ADR-004) | football-data.org team matches | `PARTIAL` (fewer than 5 matches) |
 | Head-to-head | if the teams met before (any season) | football-data.org head2head | `NO_PREVIOUS_MEETINGS` |
 | Weather forecast | ≤ 16 days before kick-off (reliable ≤ 7 days) | Open-Meteo forecast | `NOT_YET_AVAILABLE` |
 | Weather actuals | ≥ 5 days after the match | Open-Meteo archive | `NOT_YET_AVAILABLE` |

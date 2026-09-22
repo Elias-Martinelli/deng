@@ -5,9 +5,8 @@
 -- kick-off*. Nothing from M itself, nothing from later. That is what makes the
 -- table usable as ML features without leaking the result we want to predict.
 --
--- Scope today: the window draws on Champions League matches only, because the
--- pipeline ingests the competition endpoints and not yet each team's matches
--- across competitions (backlog 2.4). Early in a season that means
+-- Scope: Champions League matches only, for every club (ADR-004) - one
+-- definition of form that is comparable across all 36. Early in a season that means
 -- matches_considered is frequently 0 or 1 - which is precisely why the column
 -- exists instead of silently presenting a 1-match form as "form".
 

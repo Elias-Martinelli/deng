@@ -68,6 +68,28 @@ def main() -> int:
         print(f"[{FAIL}] .env missing – run: cp .env.example .env")
         blocking += 1
 
+    # 5b. .env complete? An .env copied before a variable was added to the
+    # template silently lacks it; Compose then refuses to start with an
+    # interpolation error that does not point at the real cause.
+    template = REPO_ROOT / ".env.example"
+    if env_file.exists() and template.exists():
+        missing = sorted(_env_keys(template) - _env_keys(env_file))
+        if not missing:
+            print(f"[{OK}] .env has every variable from .env.example")
+        if "POSTGRES_PASSWORD" in missing:
+            print(
+                f"[{FAIL}] .env lacks POSTGRES_PASSWORD – Docker Compose will not start.\n"
+                "         Copy the missing lines from .env.example (value: change-me)"
+            )
+            blocking += 1
+            missing.remove("POSTGRES_PASSWORD")
+        if missing:
+            print(
+                f"[{WARN}] .env lacks {len(missing)} variable(s) from .env.example "
+                f"(defaults apply): {', '.join(missing)}"
+            )
+            warnings += 1
+
     # 6. Settings load and API key present
     from deng.config import get_settings  # imported late, after the checks above
 
@@ -96,6 +118,16 @@ def main() -> int:
             print(f"[{OK}] .env is not tracked by git")
 
     return _summary(blocking, warnings)
+
+
+def _env_keys(path: Path) -> set[str]:
+    """Variable names defined in a dotenv file (comments and blank lines ignored)."""
+    keys = set()
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            keys.add(line.split("=", 1)[0].strip())
+    return keys
 
 
 def _summary(blocking: int, warnings: int) -> int:

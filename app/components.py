@@ -13,12 +13,14 @@ Why pure functions returning strings:
     - team names, venues - passes through `html.escape`; it originates from an
     external API and must never be able to inject markup into the page.
 
-No external resources: no web fonts, no crest images from the API's CDN. The
-page loads nothing that is not served by our own container.
+No external resources: no web fonts, and crests are embedded from our own
+database (`curated.team_crest`) as data URIs rather than linked to the API's
+CDN. The page loads nothing that is not served by our own container.
 """
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from html import escape
@@ -47,7 +49,11 @@ CSS = """
     display: flex; align-items: center; justify-content: center;
     background: rgba(255,255,255,.14); border: 2px solid rgba(255,255,255,.35);
     font-weight: 800; font-size: .85rem; letter-spacing: .04em; }
+  .cl-badge.cl-crest { background: #fff; border-color: rgba(255,255,255,.6); padding: .35rem; }
+  .cl-badge.cl-crest img { width: 100%; height: 100%; object-fit: contain; }
   .cl-hero .cl-venue { text-align: center; font-size: .85rem; opacity: .85; }
+  .cl-mini { width: 1.5rem; height: 1.5rem; object-fit: contain; vertical-align: -.35rem;
+    margin-right: .45rem; }
 
   .cl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
   @media (max-width: 640px) {
@@ -78,8 +84,6 @@ CSS = """
   .cl-stat .cl-val { font-size: 1.35rem; font-weight: 700; line-height: 1.1; }
   .cl-stat .cl-lbl { font-size: .72rem; opacity: .7; text-transform: uppercase;
     letter-spacing: .04em; }
-  .cl-note { margin-top: .7rem; font-size: .78rem; padding: .45rem .6rem;
-    border-radius: 8px; background: rgba(242,153,0,.14); }
   .cl-rest { margin-top: .6rem; font-size: .8rem; opacity: .75; }
 
   .cl-list { border: 1px solid rgba(127,127,127,.25); border-radius: 14px;
@@ -99,6 +103,12 @@ CSS = """
     .cl-row .cl-date { grid-column: 1 / -1; }
   }
 
+  .cl-weather { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .cl-weather .cl-icon { font-size: 2.2rem; line-height: 1; }
+  .cl-weather .cl-temp { font-size: 1.8rem; font-weight: 800; }
+  .cl-weather .cl-facts { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .9rem; }
+  .cl-weather-note { font-size: .8rem; opacity: .75; margin-top: .5rem; }
+
   .cl-status { display: inline-flex; gap: .5rem; flex-wrap: wrap; margin: .1rem 0 1rem; }
   .cl-chip { font-size: .78rem; padding: .25rem .6rem; border-radius: 999px;
     border: 1px solid rgba(127,127,127,.3); }
@@ -115,13 +125,13 @@ class TeamForm:
 
     name: str
     tla: str
+    crest_uri: str | None
     sequence: Sequence[str]  # most recent first, each "W", "D" or "L"
     matches_considered: int
     points: int
     goals_for: int
     goals_against: int
     days_rest: int | None
-    has_domestic_coverage: bool
 
 
 @dataclass(frozen=True)
@@ -146,14 +156,33 @@ def section(heading: str, caption: str | None = None) -> str:
     return f'<div class="cl-section">{escape(heading)}</div>{note}'
 
 
-def badge(tla: str | None, name: str) -> str:
-    """Round badge with the three-letter code (fallback: first letters of the name)."""
+def crest_uri(content_type: str | None, image: bytes | None) -> str | None:
+    """Embed a stored crest as a data URI, or None when there is none.
+
+    Only image types are accepted, and the URI is used in an <img> tag: an SVG
+    loaded that way cannot run scripts, unlike inline SVG markup.
+    """
+    if not image or not content_type or not content_type.startswith("image/"):
+        return None
+    return f"data:{content_type};base64,{base64.b64encode(bytes(image)).decode('ascii')}"
+
+
+def badge(tla: str | None, name: str, crest: str | None = None) -> str:
+    """Round badge: the club crest when stored, otherwise the three-letter code."""
+    if crest:
+        return (
+            f'<div class="cl-badge cl-crest"><img src="{escape(crest)}" '
+            f'alt="{escape(name)} crest"></div>'
+        )
     code = (tla or "".join(word[0] for word in name.split()[:3])).upper()[:3]
     return f'<div class="cl-badge">{escape(code)}</div>'
 
 
-def _hero_team(tla: str | None, name: str) -> str:
-    return f'<div class="cl-team">{badge(tla, name)}<div class="cl-name">{escape(name)}</div></div>'
+def _hero_team(tla: str | None, name: str, crest: str | None) -> str:
+    return (
+        f'<div class="cl-team">{badge(tla, name, crest)}'
+        f'<div class="cl-name">{escape(name)}</div></div>'
+    )
 
 
 def match_hero(
@@ -164,6 +193,8 @@ def match_hero(
     kickoff_label: str,
     matchday: int | None,
     venue: str | None,
+    home_crest: str | None = None,
+    away_crest: str | None = None,
 ) -> str:
     """The match header: both teams, kick-off, matchday and venue."""
     meta = escape(kickoff_label)
@@ -174,9 +205,9 @@ def match_hero(
         '<div class="cl-hero">'
         f'<div class="cl-meta">{meta}</div>'
         '<div class="cl-teams">'
-        f"{_hero_team(home_tla, home)}"
+        f"{_hero_team(home_tla, home, home_crest)}"
         '<div class="cl-vs">VS</div>'
-        f"{_hero_team(away_tla, away)}"
+        f"{_hero_team(away_tla, away, away_crest)}"
         "</div>"
         f"{venue_html}"
         "</div>"
@@ -197,20 +228,15 @@ def form_pills(sequence: Iterable[str]) -> str:
 
 
 def form_card(team: TeamForm) -> str:
-    """One team's form: sequence, window size, points, goals, rest, coverage note."""
+    """One team's form: sequence, window size, points, goals, days of rest."""
     n = team.matches_considered
-    window = f"last {n} match{'es' if n != 1 else ''}" if n else "no matches yet"
+    window = f"last {n} CL match{'es' if n != 1 else ''}" if n else "no CL match yet"
     rest = (
         f'<div class="cl-rest">{team.days_rest} days since last match</div>'
         if team.days_rest is not None
         else '<div class="cl-rest">No previous match this season</div>'
     )
-    note = (
-        ""
-        if team.has_domestic_coverage
-        else '<div class="cl-note">⚠️ Domestic league not in the free API tier - '
-        "form rests on Champions League matches only.</div>"
-    )
+    mini = f'<img class="cl-mini" src="{escape(team.crest_uri)}" alt="">' if team.crest_uri else ""
     stats = "".join(
         f'<div class="cl-stat"><div class="cl-val">{value}</div>'
         f'<div class="cl-lbl">{label}</div></div>'
@@ -222,11 +248,11 @@ def form_card(team: TeamForm) -> str:
     )
     return (
         '<div class="cl-card">'
-        f'<div class="cl-team-name">{escape(team.name)}</div>'
+        f'<div class="cl-team-name">{mini}{escape(team.name)}</div>'
         f'<div class="cl-sub">Form · {window}</div>'
         f"{form_pills(team.sequence)}"
         f'<div class="cl-stats">{stats}</div>'
-        f"{rest}{note}"
+        f"{rest}"
         "</div>"
     )
 
@@ -292,3 +318,99 @@ def outcome_for(team_id: int, home_id: int, home_goals: int, away_goals: int) ->
         return "D"
     team_won = (home_goals > away_goals) == (team_id == home_id)
     return "W" if team_won else "L"
+
+
+# WMO weather interpretation codes as used by Open-Meteo, grouped.
+WMO_CODES: dict[int, tuple[str, str]] = {
+    0: ("☀️", "Clear sky"),
+    1: ("🌤", "Mainly clear"),
+    2: ("⛅", "Partly cloudy"),
+    3: ("☁️", "Overcast"),
+    45: ("🌫", "Fog"),
+    48: ("🌫", "Rime fog"),
+    51: ("🌦", "Light drizzle"),
+    53: ("🌦", "Drizzle"),
+    55: ("🌧", "Dense drizzle"),
+    61: ("🌦", "Light rain"),
+    63: ("🌧", "Rain"),
+    65: ("🌧", "Heavy rain"),
+    66: ("🌧", "Freezing rain"),
+    67: ("🌧", "Heavy freezing rain"),
+    71: ("🌨", "Light snow"),
+    73: ("🌨", "Snow"),
+    75: ("❄️", "Heavy snow"),
+    77: ("🌨", "Snow grains"),
+    80: ("🌦", "Rain showers"),
+    81: ("🌧", "Heavy rain showers"),
+    82: ("⛈", "Violent rain showers"),
+    85: ("🌨", "Snow showers"),
+    86: ("🌨", "Heavy snow showers"),
+    95: ("⛈", "Thunderstorm"),
+    96: ("⛈", "Thunderstorm with hail"),
+    99: ("⛈", "Thunderstorm with heavy hail"),
+}
+
+WEATHER_REASONS: dict[str, str] = {
+    "NOT_YET_AVAILABLE": "Forecasts reach 16 days ahead. Available from {available_from}.",
+    "VENUE_UNKNOWN": (
+        "No verified venue for this home side, so no forecast - rather than one for a "
+        "guessed location."
+    ),
+    "NOT_CAPTURED": (
+        "Played before the pipeline fetched a forecast for it. A forecast cannot be "
+        "fetched after the fact."
+    ),
+    "MISSING": (
+        "Inside the forecast horizon, but no forecast was fetched - a pipeline gap, "
+        "flagged by the data-quality checks."
+    ),
+}
+
+
+@dataclass(frozen=True)
+class MatchWeather:
+    """The weather row of one match, as the page shows it."""
+
+    status: str
+    temperature_c: float | None = None
+    precipitation_probability: int | None = None
+    precipitation_mm: float | None = None
+    wind_speed_kmh: float | None = None
+    weather_code: int | None = None
+    fetched_label: str | None = None
+    lead_days: int | None = None
+    available_from: str | None = None
+
+
+def weather_card(weather: MatchWeather) -> str:
+    """Forecast for the kick-off hour, or the reason there is none."""
+    if weather.status != "AVAILABLE":
+        reason = WEATHER_REASONS.get(weather.status, weather.status).format(
+            available_from=weather.available_from or "16 days before kick-off"
+        )
+        return f'<div class="cl-card cl-empty">🌡 {escape(reason)}</div>'
+    icon, label = WMO_CODES.get(weather.weather_code or -1, ("🌡", "Weather"))
+    facts = [
+        f"🌧 {weather.precipitation_probability} % rain"
+        if weather.precipitation_probability is not None
+        else None,
+        f"💧 {weather.precipitation_mm:.1f} mm" if weather.precipitation_mm is not None else None,
+        f"💨 {weather.wind_speed_kmh:.0f} km/h" if weather.wind_speed_kmh is not None else None,
+    ]
+    lead = (
+        f" - {weather.lead_days} day{'s' if weather.lead_days != 1 else ''} before kick-off"
+        if weather.lead_days is not None
+        else ""
+    )
+    return (
+        '<div class="cl-card"><div class="cl-weather">'
+        f'<span class="cl-icon">{icon}</span>'
+        f'<span class="cl-temp">{weather.temperature_c:.0f} °C</span>'
+        f"<span>{escape(label)}</span>"
+        '<span class="cl-facts">'
+        + "".join(f"<span>{fact}</span>" for fact in facts if fact)
+        + "</span></div>"
+        f'<div class="cl-weather-note">Forecast for the kick-off hour, fetched '
+        f"{escape(weather.fetched_label or '?')}{lead}. Open-Meteo, CC BY 4.0.</div>"
+        "</div>"
+    )

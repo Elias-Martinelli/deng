@@ -70,7 +70,9 @@ def connection():
         cursor.execute(
             "TRUNCATE raw.football_data, meta.dq_results, meta.pipeline_runs, "
             "staging.matches, staging.teams, staging.standings, "
-            "curated.dim_team, curated.fact_match, curated.fact_team_match_form CASCADE"
+            "curated.dim_team, curated.fact_match, curated.fact_team_match_form, "
+            "raw.open_meteo, staging.weather_forecast, curated.dim_venue, "
+            "curated.fact_match_weather CASCADE"
         )
     conn.commit()
     yield conn

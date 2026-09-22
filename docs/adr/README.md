@@ -12,6 +12,7 @@ Disadvantages → Consequences. Status is one of **PROPOSED**, **ACCEPTED**,
 | [ADR-001](ADR-001-football-data-source.md) | Football and weather data sources | ACCEPTED | 2026-09-20 |
 | [ADR-002](ADR-002-workflow-orchestrator.md) | Workflow orchestrator | ACCEPTED (Dagster) | 2026-09-21 |
 | [ADR-003](ADR-003-raw-data-storage.md) | Raw data storage strategy | PROPOSED | 2026-09-18 |
+| [ADR-004](ADR-004-champions-league-scope.md) | Scope: Champions League matches only, free tier only | ACCEPTED | 2026-09-21 |
 
 Planned (not yet written because the decision is not yet due): transformation
 approach (SQL files vs. dbt), analytical data model and grain, BigQuery

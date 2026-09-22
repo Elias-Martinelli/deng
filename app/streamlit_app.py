@@ -28,8 +28,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from components import (  # noqa: E402
     CSS,
+    MatchWeather,
     ResultRow,
     TeamForm,
+    crest_uri,
     form_grid,
     match_hero,
     outcome_for,
@@ -37,6 +39,7 @@ from components import (  # noqa: E402
     section,
     status_chips,
     title,
+    weather_card,
 )
 
 from deng.config import get_settings  # noqa: E402
@@ -109,6 +112,14 @@ def form_sequence(team_id: int, before: pd.Timestamp) -> list[str]:
         outcome_for(team_id, int(r.home_team_id), int(r.home_goals), int(r.away_goals))
         for r in rows.itertuples()
     ]
+
+
+@st.cache_data(ttl=3600)
+def crests() -> dict[int, str]:
+    """Every stored crest as a data URI, keyed by team. Cached: they change once a season."""
+    frame = query("SELECT team_id, content_type, image FROM curated.team_crest")
+    uris = {int(r.team_id): crest_uri(r.content_type, r.image) for r in frame.itertuples()}
+    return {team_id: uri for team_id, uri in uris.items() if uri}
 
 
 def result_rows(frame: pd.DataFrame) -> list[ResultRow]:
@@ -219,9 +230,7 @@ detail = query(
     """
     SELECT m.utc_kickoff, m.matchday,
            h.team_id AS home_id, h.name AS home_name, h.tla AS home_tla, h.venue,
-           h.has_domestic_coverage AS home_cov,
            a.team_id AS away_id, a.name AS away_name, a.tla AS away_tla,
-           a.has_domestic_coverage AS away_cov,
            fh.matches_considered AS home_n, fh.goals_scored_last_5 AS home_gf,
            fh.goals_conceded_last_5 AS home_ga, fh.points_last_5 AS home_pts,
            fh.days_since_last_match AS home_rest,
@@ -251,9 +260,49 @@ st.markdown(
         kickoff_label=local_time(kickoff, "%a %d %b %Y · %H:%M %Z"),
         matchday=int(detail["matchday"]) if pd.notna(detail["matchday"]) else None,
         venue=detail["venue"],
+        home_crest=crests().get(int(detail["home_id"])),
+        away_crest=crests().get(int(detail["away_id"])),
     ),
     unsafe_allow_html=True,
 )
+
+
+def match_weather() -> MatchWeather:
+    """The weather row of the selected match (every match has one)."""
+    frame = query(
+        """
+        SELECT weather_status, temperature_c, precipitation_probability, precipitation_mm,
+               wind_speed_kmh, weather_code, forecast_fetched_at, lead_days
+          FROM curated.fact_match_weather
+         WHERE match_id = %s
+        """,
+        (match_id,),
+    )
+    if frame.empty:
+        return MatchWeather(status="MISSING")
+    row = frame.iloc[0]
+
+    def value(column, cast):
+        return cast(row[column]) if pd.notna(row[column]) else None
+
+    # Forecasts reach 15 days past the fetch day, so the first one exists then.
+    available_from = (kickoff.tz_convert(DISPLAY_TZ) - pd.Timedelta(days=15)).strftime("%d %b")
+    return MatchWeather(
+        status=row["weather_status"],
+        temperature_c=value("temperature_c", float),
+        precipitation_probability=value("precipitation_probability", int),
+        precipitation_mm=value("precipitation_mm", float),
+        wind_speed_kmh=value("wind_speed_kmh", float),
+        weather_code=value("weather_code", int),
+        fetched_label=local_time(row["forecast_fetched_at"], "%d %b %H:%M")
+        if pd.notna(row["forecast_fetched_at"])
+        else None,
+        lead_days=value("lead_days", int),
+        available_from=available_from,
+    )
+
+
+st.markdown(section("Weather at kick-off") + weather_card(match_weather()), unsafe_allow_html=True)
 
 
 def team_form(prefix: str) -> TeamForm:
@@ -262,13 +311,13 @@ def team_form(prefix: str) -> TeamForm:
     return TeamForm(
         name=detail[f"{prefix}_name"],
         tla=detail[f"{prefix}_tla"],
+        crest_uri=crests().get(int(detail[f"{prefix}_id"])),
         sequence=form_sequence(int(detail[f"{prefix}_id"]), kickoff),
         matches_considered=int(detail[f"{prefix}_n"]),
         points=int(detail[f"{prefix}_pts"]),
         goals_for=int(detail[f"{prefix}_gf"]),
         goals_against=int(detail[f"{prefix}_ga"]),
         days_rest=int(rest) if pd.notna(rest) else None,
-        has_domestic_coverage=bool(detail[f"{prefix}_cov"]),
     )
 
 
@@ -276,8 +325,9 @@ def team_form(prefix: str) -> TeamForm:
 st.markdown(
     section(
         "Form going into this match",
-        "Only matches finished before kick-off count, most recent first. A form built on one "
-        "match is not comparable to one built on five - the window size is always shown.",
+        "Champions League matches only, finished before kick-off, most recent first. A form "
+        "built on one match is not comparable to one built on five - the window size is always "
+        "shown.",
     )
     + form_grid(team_form("home"), team_form("away")),
     unsafe_allow_html=True,
@@ -334,7 +384,9 @@ for tab, team_id, name in zip(
 
 st.divider()
 st.caption(
-    f"Times in {DISPLAY_TZ.split('/')[1]} local time. Data: football-data.org (free tier). "
-    "No line-ups, injuries or match statistics, and no domestic-league data for 11 of the "
-    "36 clubs - see the README's known limitations."
+    f"Times in {DISPLAY_TZ.split('/')[1]} local time. Data: football-data.org (free tier); "
+    "weather by Open-Meteo.com (CC BY 4.0); venue locations © OpenStreetMap contributors "
+    "(ODbL). "
+    "Scope: UEFA Champions League matches only. No line-ups, injuries or match statistics - "
+    "see the README's known limitations."
 )
