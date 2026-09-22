@@ -177,7 +177,7 @@ cd deng
 
 ./setup.sh                 # venv + install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 65 tests; the database ones skip without PostgreSQL
+make test                  # 74 tests; the database ones skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, no API key needed
@@ -347,7 +347,7 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
-* CI runs lint, 65 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 74 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -361,7 +361,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 65 tests: config, API client, source schema, loader, transformations, DQ, orchestration | `65 passed` (or `34 passed, 31 skipped` without a database; the 9 orchestration tests need `make setup-orchestrator`) |
+| `make test` | 74 tests: config, API client, source schema, loader, transformations, DQ, orchestration, app components | `74 passed` (or `43 passed, 31 skipped` without a database; the 9 orchestration tests need `make setup-orchestrator`) |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log | `2/2 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | `11/12 checks passed`, exit 0 |
@@ -391,15 +391,31 @@ a test.
 make app           # http://localhost:8501   (or: make docker-app)
 ```
 
-Pick an upcoming fixture and see kick-off, venue, both teams' form with the
-number of matches behind it, previous meetings and recent results. The sidebar
-shows pipeline freshness and the latest data-quality results.
+Pick an upcoming fixture and see kick-off (Zurich time), venue, both teams'
+form as W/D/L badges with the number of matches behind it, previous meetings
+and recent results. Status chips at the top show data freshness and the latest
+data-quality result; the sidebar holds the details.
 
-**The app never calls an external API.** Selecting a fixture runs a SQL query
-against our curated tables. A frontend calling football-data.org on each click
-would be quicker to write and would make the pipeline pointless: no history, no
-reproducibility, no point-in-time correctness, and a rate limit shared with
-every visitor.
+**One page for desktop, iPhone and Android.** Instead of a native app, the
+viewer is a responsive web page: cards on a CSS grid that switch from two
+columns to one below 640 px, no tables that scroll sideways on a phone. Open the
+URL on a phone in the same network, or use "Add to Home Screen" for an app-like
+icon. Verified by rendering in Chrome with the iPhone 15 and Pixel 7 device
+profiles (no horizontal overflow at 393 / 412 px) - see
+[evidence §13](docs/evidence/local-pipeline-run.md#13-responsive-viewer-desktop-iphone-android-21-september-2026).
+Native apps were rejected: an iPhone build needs a Mac with Xcode, both need an
+API layer in front of the database, and none of it is assessed.
+
+| Desktop | iPhone 15 | Pixel 7 |
+|---|---|---|
+| ![desktop](docs/evidence/streamlit-app.png) | ![iPhone](docs/evidence/streamlit-iphone.png) | ![Android](docs/evidence/streamlit-android.png) |
+
+**The app never calls an external API** - nor loads anything from the internet
+(no web fonts, no crest images from the API's CDN). Selecting a fixture runs a
+SQL query against our curated tables. A frontend calling football-data.org on
+each click would be quicker to write and would make the pipeline pointless: no
+history, no reproducibility, no point-in-time correctness, and a rate limit
+shared with every visitor.
 
 ## Google Cloud Architecture
 
@@ -469,9 +485,9 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │   ├── transform/            # raw → staging → curated
 │   └── verify/               # verification queries
 │
-├── app/streamlit_app.py      # viewer over the curated tables
+├── app/                      # viewer over the curated tables (page + HTML components)
 ├── notebooks/                # exploration
-├── tests/                    # 65 tests: unit, contract, integration
+├── tests/                    # 74 tests: unit, contract, integration
 ├── data/sample/              # committed API payloads (fixtures + offline source)
 └── docs/
     ├── use-case.md · data-sources.md · data-model.md

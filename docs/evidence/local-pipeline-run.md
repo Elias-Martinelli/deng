@@ -268,13 +268,16 @@ integration tests, 16 transformation and data-quality tests. Among them:
 
 ## 10. Streamlit viewer
 
-![Streamlit viewer showing RC Lens vs Sporting CP](streamlit-app.png)
+![Streamlit viewer showing PSG vs Galatasaray](streamlit-app.png)
+
+(Screenshot replaced by the responsive redesign, §13.)
 
 Reads `curated.fact_match`, `curated.dim_team` and
 `curated.fact_team_match_form`, plus `meta.pipeline_runs` and `meta.dq_results`
 for the sidebar. No HTTP request leaves the app. The screenshot shows the
-one-match form window and the honest "no previous meeting in our data" notice
-rather than an invented head-to-head.
+one-match form window, the coverage warning for a club without domestic data,
+and the honest "no previous meeting in our data" notice rather than an invented
+head-to-head.
 
 ## 11. Docker Compose, executed (21 September 2026)
 
@@ -377,3 +380,61 @@ not staging and curated. After a `make run-samples` (today's date in staging),
 reviewer following the README in order would have hit it. The fixture now
 empties every pipeline table; the full suite (65) passes directly after
 `make run-samples`.
+
+## 13. Responsive viewer: desktop, iPhone, Android (21 September 2026)
+
+The viewer was redesigned to work on phones as well as on a desktop,
+**without** a native app. The page structure lives in `app/components.py`
+(pure functions returning HTML, 9 unit tests), and one CSS grid switches from
+two columns to one below 640 px.
+
+**How it was checked:** Chrome (Playwright) with the built-in device profiles
+- viewport, pixel density, touch and user agent of an iPhone 15 and a Pixel 7 -
+against the stack from §11/§12, fixture PSG vs Galatasaray:
+
+```text
+desktop  viewport 1280  scrollWidth 1280  no horizontal overflow
+iphone   viewport  393  scrollWidth  393  no horizontal overflow
+android  viewport  412  scrollWidth  412  no horizontal overflow
+```
+
+| Desktop | iPhone 15 | Pixel 7 |
+|---|---|---|
+| ![desktop](streamlit-app.png) | ![iPhone](streamlit-iphone.png) | ![Android](streamlit-android.png) |
+
+The same page inside its container (`make docker-app`, headless `AppTest`):
+no exception, match header and both form cards rendered.
+
+**What this does *not* prove:** it is Chrome emulating the devices, not Safari
+on a real iPhone. Playwright's WebKit build could not start on this WSL host
+(missing system libraries). The layout uses only CSS grid, flexbox and media
+queries, which Safari has supported for years, but a check on a real phone is
+still open.
+
+Found by looking at the screenshots rather than trusting the render test:
+
+* Streamlit's fixed header bar covered the page title (top padding 1.5 rem,
+  header ≈ 3.5 rem) - fixed with 3.75 rem.
+* Team badges sat at different heights when one name wrapped onto two lines -
+  aligned to the top.
+
+Design decisions:
+
+* **Cards instead of `st.dataframe`**: a dataframe on a 393 px screen scrolls
+  sideways; the result rows reflow instead.
+* **W/D/L badges carry letters**, not only colour (colour-blind users, greyscale
+  prints). They use the same window as `fact_team_match_form` (finished,
+  strictly before kick-off, at most five), so badges and `matches_considered`
+  cannot disagree.
+* **Status chips**: red only for what fails a run (failed run, CRITICAL check);
+  a failed WARNING check is amber.
+* **Kick-off in Zurich time with the zone** (`21:00 CET`): the use case speaks
+  of CEST, not UTC.
+* **Team codes instead of crest images**: the crests would be fetched from the
+  API's CDN by every visitor's browser - an external dependency the "no API
+  calls" rule is meant to exclude.
+* **Fixed light theme** (set by `.streamlit/config.toml`): the page looks the
+  same on every device; the cards were also checked to stay legible in the dark
+  theme.
+* **All API-derived text is HTML-escaped** before it reaches the page (tested
+  with `<script>` and `<img>` payloads).

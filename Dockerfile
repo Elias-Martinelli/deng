@@ -40,6 +40,8 @@ FROM pipeline AS app
 USER root
 RUN pip install --no-cache-dir ".[app]"
 COPY app/ /app/app/
+# Theme and toolbar settings; Streamlit reads them from the working directory.
+COPY .streamlit/config.toml /app/.streamlit/config.toml
 RUN chown -R pipeline:pipeline /app
 USER pipeline
 EXPOSE 8501
