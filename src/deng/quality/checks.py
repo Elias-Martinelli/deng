@@ -329,6 +329,8 @@ def run_checks(
             cursor.execute(check.sql)
             row = cursor.fetchone()
             observed = "" if row is None else str(row[0])
+            # A check that returns no row counts as failed: "could not measure"
+            # must never be mistaken for "measured and fine".
             passed = bool(row[1]) if row is not None else False
             result = CheckResult(check=check, passed=passed, observed=observed)
             results.append(result)
@@ -349,6 +351,8 @@ def run_checks(
                     check.description,
                 ),
             )
+            # Failures are logged at WARNING, so they stand out in `docker compose
+            # logs` and the Dagster run log without extra tooling.
             log = logger.info if passed else logger.warning
             log(
                 "dq %s [%s] %s: %s",
@@ -357,9 +361,9 @@ def run_checks(
                 "PASS" if passed else "FAIL",
                 observed,
             )
+    # One commit for all results. Inside one transaction PostgreSQL's now()
+    # returns the transaction's start time, so every row of this check run gets
+    # the *same* checked_at - which is how the viewer selects "the latest run's
+    # results" with a single max(checked_at).
     connection.commit()
     return results
-
-
-class DataQualityError(RuntimeError):
-    """Raised when at least one CRITICAL check failed."""

@@ -1,5 +1,12 @@
-# Only commands that work at the current project stage are listed here.
-# New targets (up/down/ingest/transform/verify) are added together with the code they run.
+# Entry point for every workflow in this repository: `make help` lists the targets.
+#
+# Make in four sentences, for readers who rarely use it:
+#   * `name: ## text` defines a target; `make help` prints every line with `##`.
+#   * Recipe lines must start with a TAB; `@` in front hides the command itself.
+#   * `$(VAR)` is a Make variable; `$$` passes a literal `$` to the shell, so
+#     shell variables and $(...) inside recipes are written `$$var`, `$$(...)`.
+#   * .PHONY marks targets that are commands, not files - otherwise a file
+#     called `test` would make `make test` think there is nothing to do.
 #
 # Two interpreter variables, because they answer two different questions:
 #   PYTHON – which interpreter builds the virtualenv? The newest one on this
@@ -31,7 +38,7 @@ PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
         setup-orchestrator orchestrator dagster-dev dagster-backfill venues
 
 help:  ## Show available targets
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-19s %s\n", $$1, $$2}'
 
 setup:  ## Create a virtualenv and install the package with dev dependencies
 	@if [ -z "$(PYTHON)" ]; then \
@@ -64,7 +71,10 @@ setup:  ## Create a virtualenv and install the package with dev dependencies
 doctor:  ## Check that the environment is ready (interpreter, package, .env, API key)
 	@$(PY) scripts/doctor.py
 
-test:  ## Run the unit tests (no network, no database required)
+# The tests marked `postgres` skip themselves when no database is reachable
+# (tests/conftest.py), so this works on a laptop without Docker and runs the
+# full suite where PostgreSQL is up.
+test:  ## Run all tests; the database tests skip when no PostgreSQL is reachable
 	$(PY) -m pytest
 
 lint:  ## Static checks (ruff)
@@ -83,6 +93,9 @@ explore:  ## API exploration: fetch small samples from football-data.org (needs 
 
 # --- Docker environment -----------------------------------------------------
 
+# `up -d` returns as soon as the container exists, not when the database accepts
+# connections. The loop polls Docker's health status (defined by the healthcheck
+# in docker-compose.yml) for up to 60 s, so the next command cannot race it.
 up:  ## Start PostgreSQL and wait until it is healthy
 	docker compose up -d postgres
 	@echo "waiting for PostgreSQL to become healthy..."
@@ -104,6 +117,7 @@ logs:  ## Follow the PostgreSQL logs
 ps:  ## Show container status
 	docker compose ps
 
+# $${VAR:-default}: the shell's "value or default" - works with or without .env.
 psql:  ## Open a psql shell in the database container
 	docker compose exec postgres psql -U $${POSTGRES_USER:-deng} -d $${POSTGRES_DB:-cl_intelligence}
 
@@ -124,13 +138,15 @@ transform:  ## raw -> staging -> curated for today
 dq:  ## Run the data-quality checks and persist the results
 	$(PY) -m deng.pipeline dq
 
-run:  ## Full daily sequence from the API: ingest -> transform -> data quality
+run:  ## Full daily sequence from the API: ingest -> transform -> crests -> weather -> checks
 	$(PY) -m deng.pipeline run
 
-run-samples:  ## Full daily sequence from the committed payloads (no API key needed)
+run-samples:  ## Same sequence from the committed payloads (no API key needed)
 	$(PY) -m deng.pipeline run --from-samples
 
-backfill:  ## Re-run a date range: make backfill FROM=2026-09-01 TO=2026-09-10
+# The CLI backfill re-ingests raw payloads only; `make dagster-backfill` runs
+# the whole chain (ingest -> transform -> crests -> weather -> checks) per day.
+backfill:  ## Re-ingest raw data for a date range: make backfill FROM=2026-09-01 TO=2026-09-10
 	$(PY) -m deng.pipeline backfill --from $(FROM) --to $(TO)
 
 verify:  ## Run the verification queries; non-zero exit when a check fails
@@ -146,7 +162,7 @@ docker-app:  ## Start the Streamlit viewer in a container on http://localhost:85
 test-integration:  ## Run only the tests that need PostgreSQL
 	$(PY) -m pytest -v -m postgres
 
-# --- Consumers of the data product -------------------------------------------
+# --- Orchestration (Dagster) --------------------------------------------------
 
 setup-orchestrator:  ## Install the Dagster extra into .venv (for dagster-dev and its tests)
 	$(VENV)/bin/pip install -e ".[dev,orchestrator]"
@@ -155,6 +171,8 @@ orchestrator:  ## Start PostgreSQL + Dagster (webserver, daemon); UI on http://l
 	docker compose up -d --build postgres dagster-webserver dagster-daemon
 	@echo "Dagster UI: http://localhost:$${DAGSTER_PORT:-3000}"
 
+# DAGSTER_HOME=.dagster: without it `dagster dev` keeps its run history in a
+# temporary directory that is gone after the process ends.
 dagster-dev:  ## Run Dagster locally without Docker (needs setup-orchestrator and a reachable PostgreSQL)
 	mkdir -p .dagster && DAGSTER_HOME=$(CURDIR)/.dagster $(VENV)/bin/dagster dev -m deng.orchestration.definitions
 
@@ -162,6 +180,10 @@ dagster-backfill:  ## Backfill through Dagster: make dagster-backfill FROM=2026-
 	docker compose exec dagster-webserver dagster job backfill -j daily_pipeline \
 		--from $(FROM) --to $(TO) -w /opt/dagster/dagster_home/workspace.yaml --noprompt
 
+# --- Consumers of the data product -------------------------------------------
+
+# `pip install -e` (editable): the package points at src/, so code changes take
+# effect without reinstalling. The extras in [...] come from pyproject.toml.
 setup-app:  ## Install the extras for Streamlit and Jupyter
 	$(VENV)/bin/pip install -e ".[dev,app,notebook]"
 

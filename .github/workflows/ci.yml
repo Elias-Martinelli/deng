@@ -1,14 +1,20 @@
+# Continuous integration: every pull request and every push to main is linted
+# and tested on a fresh machine. "Works on my laptop" is not evidence; a green
+# run here is - and it is the closest thing to a peer reviewer's clean clone.
+
 name: CI
 
 on:
   push:
     branches: [main]
-  pull_request:
+  pull_request:   # any PR, whatever its target branch (stacked PRs included)
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # Let both Python versions finish even if one fails, to see whether a
+      # failure is version-specific.
       fail-fast: false
       matrix:
         # Lowest supported version (Ubuntu 22.04 LTS default) and a current one.
@@ -53,6 +59,8 @@ jobs:
         run: pip install -e ".[dev,orchestrator]"
 
       - name: Lint
+        # `format --check` fails on unformatted code instead of fixing it: CI
+        # reports, it never changes the code it is judging.
         run: |
           python -m ruff check .
           python -m ruff format --check .
@@ -65,6 +73,8 @@ jobs:
         # Makefile runs, so a green local run means a green CI run.
         run: python -m pytest -v
 
+      # End-to-end on the real database service: the same commands a reviewer
+      # runs, including the idempotency claim (second ingest, same result).
       - name: Pipeline smoke test (ingest twice, must stay idempotent)
         run: |
           python -m deng.pipeline ingest --date 2026-09-20 --from-samples

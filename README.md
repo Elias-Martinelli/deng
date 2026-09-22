@@ -4,18 +4,16 @@ HSLU · DENG – Data Engineering · HS26 · End-to-End Batch Data Pipeline
 
 [![CI](https://github.com/Elias-Martinelli/deng/actions/workflows/ci.yml/badge.svg)](https://github.com/Elias-Martinelli/deng/actions/workflows/ci.yml)
 
-A reproducible daily batch pipeline that turns UEFA Champions League fixtures,
-results, standings and team data into a curated, point-in-time-correct
-pre-match dataset — served to a notebook, a Streamlit viewer and, later, to
-machine learning.
+A reproducible daily batch pipeline that collects UEFA Champions League
+fixtures, results, standings and weather and assembles them into a curated,
+point-in-time-correct dataset — the foundation on which a model can later
+predict who wins a match. **The pipeline is the product**; the Streamlit viewer
+is a preview of its data.
 
-```text
-football-data.org ──┐                                    ┌─ Jupyter notebook
-Open-Meteo *) ──────┼─► batch ingestion ─► RAW ─► STAGING ─► CURATED ─┼─ Streamlit viewer
-venues.csv *) ──────┘   (daily, idempotent)                          └─ Analytics / ML *)
-```
+![Data pipeline architecture](docs/architecture.svg)
 
-`*)` planned — see [Project Status](#project-status).
+How the pieces fit: [Architecture](#architecture) · what is done and what is
+not: [Project Status](#project-status).
 
 **Quick start** (no API key needed):
 
@@ -51,46 +49,56 @@ meaningful two weeks out, and line-ups appear an hour before kick-off.
 
 This platform ingests those sources on a schedule, keeps every raw payload,
 and derives curated tables that answer **what was known about a match at a
-given point in time** — the property that makes the data usable both for a
-pre-match overview and as leakage-free training data.
+given point in time**. That property is what a match-outcome model needs: it
+may only learn from information that existed before kick-off. Building that
+model is the downstream use of the data, not part of this project.
 
 ## Problem Statement
 
-Assembling a consistent pre-match picture means integrating several APIs
-repeatedly, reconciling their keys, and recording *when* each piece of
-information became available. Doing that by hand is error-prone; doing it in
-the frontend on every click throws away history and burns a shared rate limit.
+The source APIs only ever answer with today's state; what was known last week
+is gone unless someone stored it. Training a model on match data therefore
+means integrating several APIs every day, reconciling their keys, and recording
+*when* each piece of information became available. A model trained on form or
+weather that already contains the match it predicts looks excellent in testing
+and fails in reality (data leakage).
 Details: [`docs/use-case.md`](docs/use-case.md).
 
 ## End User
 
-* **Primary:** football analysts and interested users who want a structured
-  pre-match overview of an upcoming fixture.
-* **Secondary:** data scientists who need a point-in-time-correct feature table
-  to train and evaluate match-outcome models.
+* **Primary: a data scientist or analyst** who wants to build and evaluate a
+  match-outcome model (HOME_WIN / DRAW / AWAY_WIN) and needs a clean,
+  documented, leakage-free table to train it on.
+* **Secondary: football-interested users** who look at an upcoming fixture in
+  the Streamlit viewer - a preview of what the pipeline holds.
 
 ## Data Product
 
-| Table | One row represents | Status |
-|---|---|---|
-| `curated.fact_match` | one Champions League match | **implemented** |
-| `curated.fact_team_match_form` | one team's participation in one match, with its form going in | **implemented** |
-| `curated.dim_team` | one team | **implemented** |
-| `curated.fact_match_snapshot` | one upcoming match on one pipeline run date | planned (final) |
-| `curated.dim_venue`, `dim_date` | one venue / calendar day | planned (final) |
+| Table | One row represents | Role for a model | Status |
+|---|---|---|---|
+| `curated.fact_match` | one Champions League match | label: `outcome`, derived from the goals | **implemented** |
+| `curated.fact_team_match_form` | one team's participation in one match, with its form going in | features known before kick-off | **implemented** |
+| `curated.fact_match_weather` | one match | forecast for the kick-off hour, fetched before kick-off, or why it is missing | **implemented** |
+| `curated.dim_team`, `curated.dim_venue` | one team / one home venue | descriptive attributes, coordinates | **implemented** |
+| `curated.fact_match_snapshot` | one upcoming match on one pipeline run date | **the training table**: everything known on that day | planned (final) |
+| `curated.dim_date` | one calendar day | partition pruning in BigQuery | planned (final) |
 
 Full definitions, keys and reasoning: [`docs/data-model.md`](docs/data-model.md).
 
 ## Use Case
 
-Select an upcoming fixture — say *RC Lens vs Sporting CP, 13 Oct 2026* — and
-see the kick-off, venue, both teams' recent form (with the number of matches
-that form rests on), previous meetings and recent results. Everything is served
-from our own tables; the app makes no API calls.
+1. **Model development** - train a baseline HOME/DRAW/AWAY classifier on
+   features taken *N days before kick-off* and test it on later matchdays. The
+   pipeline guarantees that every feature row only contains what was known at
+   that point.
+2. **Availability analysis** - how many days before kick-off does a usable
+   forecast exist, how often do kick-off times move?
+3. **Data preview** - pick a fixture in the Streamlit viewer, e.g. *RC Lens vs
+   Sporting CP, 13 Oct 2026*, and see the features a model would get, their
+   window sizes and states, data freshness and quality results. Everything is
+   served from our own tables; the app makes no API calls.
 
-Secondary: analyse how many days before kick-off each attribute group becomes
-available, and train a baseline HOME/DRAW/AWAY classifier on features that
-existed before the match.
+A single league phase has 144 matches - too few to train on. Past seasons are
+served by the API, so loading several of them is the planned lever (backlog 1.9).
 
 ## Data Sources
 
@@ -133,10 +141,24 @@ Identified by measurement, not assumption ([evidence](docs/evidence/api-explorat
 
 ## Architecture
 
+The diagram at the top shows the local stack. One daily run, orchestrated by
+Dagster, in three steps:
+
+| Step | Trigger | What it does |
+| --- | --- | --- |
+| **1. Ingest** | daily 06:00 Europe/Zurich, plus backfill on demand | Fetches fixtures, results, teams and standings; forecasts for matches ≤ 16 days ahead; missing club crests. Stores every answer unchanged in `raw` with an idempotent upsert per day |
+| **2. Transform** | after a successful ingest | SQL in one transaction: `raw` → typed `staging` → `curated` facts and dimensions, incl. point-in-time form and the weather status per match |
+| **3. Quality checks** | after the transformation | 18 checks stored in `meta.dq_results`; a CRITICAL failure fails the run, a WARNING stays visible |
+
+Colours in the diagram: grey = outside world (sources, consumers), blue =
+processing step, purple = storage and orchestration; dashed = control, not
+data. The source of the picture is [`docs/architecture.svg`](docs/architecture.svg)
+(plain SVG, readable in light and dark mode).
+
 * [Architecture v0.1](docs/architecture/architecture-v0.1.md) — the initial
   design with Mermaid diagrams for the conceptual, local and cloud views.
 * [Architecture Decision Records](docs/adr/README.md) — data sources,
-  orchestrator, raw storage.
+  orchestrator, raw storage, Champions League scope.
 * Architecture v0.2 (midterm) will record what implementation changed.
 
 ## Batch Ingestion Strategy
@@ -180,7 +202,7 @@ cd deng
 
 ./setup.sh                 # venv + install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 90 tests; the database ones skip without PostgreSQL
+make test                  # 96 tests; the database ones skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, no API key needed
@@ -218,6 +240,103 @@ Four schemas, separated by how far the data has been processed:
 ingestion date)**. A `UNIQUE` constraint on exactly that key plus
 `INSERT … ON CONFLICT DO UPDATE` is what makes reruns safe; a `payload_hash`
 over the canonical JSON shows whether the source actually changed that day.
+
+### Entity-relationship diagram (simplified)
+
+Keys and a few defining columns only; every column, grain and constraint is in
+[`docs/data-model.md`](docs/data-model.md). `staging` is left out: it is the
+typed copy of `raw`, connected by the transformations, not by foreign keys.
+
+**The data product** — `dim_team` in the middle, one fact table per question:
+
+```mermaid
+erDiagram
+    dim_team["curated.dim_team"] {
+        bigint team_id PK
+        text name
+        text crest_url
+    }
+    dim_venue["curated.dim_venue"] {
+        bigint team_id PK, FK
+        numeric latitude
+        numeric longitude
+    }
+    fact_match["curated.fact_match"] {
+        bigint match_id PK
+        bigint home_team_id FK
+        bigint away_team_id FK
+        timestamptz utc_kickoff
+        text outcome
+    }
+    fact_team_match_form["curated.fact_team_match_form"] {
+        bigint match_id PK, FK
+        bigint team_id PK, FK
+        int matches_considered
+        int points_last_5
+    }
+    fact_match_weather["curated.fact_match_weather"] {
+        bigint match_id PK, FK
+        text weather_status
+        numeric temperature_c
+    }
+    team_crests["raw.team_crests"] {
+        text crest_url PK
+        bytea image
+    }
+
+    dim_team ||--o{ fact_match : "home / away"
+    fact_match ||--|{ fact_team_match_form : "2 per match"
+    dim_team ||--o{ fact_team_match_form : "team_id"
+    fact_match ||--|| fact_match_weather : "1 per match"
+    dim_team ||--o| dim_venue : "home venue"
+    dim_venue ||..o{ fact_match_weather : "venue_team_id"
+    dim_team ||..o| team_crests : "crest_url"
+```
+
+**Run log and raw zone** — every raw row and every check result points to the
+run that wrote it:
+
+```mermaid
+erDiagram
+    direction LR
+    pipeline_runs["meta.pipeline_runs"] {
+        uuid run_id PK
+        date logical_date
+        text status
+    }
+    dq_results["meta.dq_results"] {
+        bigint dq_result_id PK
+        uuid run_id FK
+        bool passed
+    }
+    football_data["raw.football_data"] {
+        bigint raw_id PK
+        uuid run_id FK
+        jsonb payload
+    }
+    open_meteo["raw.open_meteo"] {
+        bigint raw_id PK
+        uuid run_id FK
+        jsonb payload
+    }
+    team_crests["raw.team_crests"] {
+        text crest_url PK
+        uuid run_id FK
+    }
+
+    pipeline_runs ||--o{ football_data : "run_id"
+    pipeline_runs ||--o{ open_meteo : "run_id"
+    pipeline_runs ||--o{ team_crests : "run_id"
+    pipeline_runs ||--o{ dq_results : "run_id"
+```
+
+How to read it: `||` exactly one, `o|` zero or one, `|{` one or many,
+`o{` zero or many. **Solid lines are foreign keys** enforced by PostgreSQL;
+**dashed lines are join keys without a constraint**, on purpose:
+`venue_team_id` - a club missing from `venues.csv` (e.g. new after the
+knockout draw) must not abort the weather run; its matches get `VENUE_UNKNOWN`
+and a WARNING check reports it. `crest_url` - a crest is optional and fetched
+after the team exists.
 
 DDL: [`sql/schema/`](sql/schema/) · transformations: [`sql/transform/`](sql/transform/) ·
 verification: [`sql/verify/`](sql/verify/).
@@ -362,7 +481,7 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
-* CI runs lint, 90 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 96 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -376,7 +495,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 90 tests: config, API client, source schema, loader, transformations, weather, crests, DQ, orchestration, app components | `90 passed` (or `50 passed, 40 skipped` without a database; the 9 orchestration tests need `make setup-orchestrator`) |
+| `make test` | 96 tests: config, API client, source schema, loader, transformations, weather, crests, DQ, orchestration, app components | `96 passed` (or `54 passed, 42 skipped` without a database; the 9 orchestration tests need `make setup-orchestrator`) |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log | `2/2 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | `17/18 checks passed`, exit 0 |
@@ -406,10 +525,13 @@ a test.
 make app           # http://localhost:8501   (or: make docker-app)
 ```
 
-Pick an upcoming fixture and see kick-off (Zurich time), venue, both teams'
-form as W/D/L badges with the number of matches behind it, previous meetings
-and recent results. Status chips at the top show data freshness and the latest
-data-quality result; the sidebar holds the details.
+**A preview of the data, not the product.** It shows what the pipeline holds
+for one upcoming fixture - the inputs a match-outcome model would get - and
+nothing it did not compute: kick-off (Zurich time), venue, both teams' form as
+W/D/L badges with the number of matches behind it, the weather state, previous
+meetings and recent results. Status chips at the top show data freshness and
+the latest data-quality result; the sidebar holds the details. It earns no
+points on its own; it makes the curated tables inspectable in a defence.
 
 **One page for desktop, iPhone and Android.** Instead of a native app, the
 viewer is a responsive web page: cards on a CSS grid that switch from two
@@ -512,7 +634,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │
 ├── app/                      # viewer over the curated tables (page + HTML components)
 ├── notebooks/                # exploration
-├── tests/                    # 90 tests: unit, contract, integration
+├── tests/                    # 96 tests: unit, contract, integration
 ├── data/sample/              # committed API payloads (fixtures + offline source)
 └── docs/
     ├── use-case.md · data-sources.md · data-model.md
@@ -549,7 +671,9 @@ not "the only one who understands it"):
 
 ## Authors
 
-* **Elias Martinelli** — <elias.martinelli@stud.hslu.ch>
-* **Noah Rodriguez** — <noah.rodriguez@stud.hslu.ch>
+| | Author | GitHub | E-mail |
+| --- | --- | --- | --- |
+| <img src="https://github.com/Elias-Martinelli.png?size=80" width="40" alt=""> | **Elias Martinelli** | [@Elias-Martinelli](https://github.com/Elias-Martinelli) | <elias.martinelli@stud.hslu.ch> |
+| <img src="https://github.com/Noah-Rod.png?size=80" width="40" alt=""> | **Noah Rodriguez** | [@Noah-Rod](https://github.com/Noah-Rod) | <noah.rodriguez@stud.hslu.ch> |
 
 HSLU, module DENG (Data Engineering), autumn semester 2026.

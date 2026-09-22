@@ -6,6 +6,9 @@
 # must be able to run this on a plain machine without pyenv, direnv or conda.
 # Override the interpreter with:  PYTHON=python3.12 ./setup.sh
 
+# Fail fast: -e stops at the first failing command, -u treats an unset
+# variable as an error (instead of an empty string), and -o pipefail makes a
+# pipeline fail if any part of it fails - not only the last command.
 set -euo pipefail
 
 MIN_VERSION="3.10"

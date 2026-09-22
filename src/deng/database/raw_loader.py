@@ -33,7 +33,11 @@ RECORD_LIST_KEYS = ("matches", "teams", "standings", "seasons", "resultSet")
 
 @dataclass
 class LoadResult:
-    """Outcome of loading a single payload."""
+    """Outcome of loading a single payload.
+
+    Exactly one of `inserted`, `updated`, `unchanged` is true: a new day, a
+    changed answer for a day already stored, or the identical answer again.
+    """
 
     endpoint: str
     inserted: bool
@@ -51,7 +55,11 @@ class LoadResult:
 
 
 class RawLoader:
-    """Writes API payloads into `raw.football_data`."""
+    """Writes API payloads into `raw.football_data`.
+
+    The loader never commits: the caller decides the transaction boundary, so a
+    whole run's payloads land together or not at all (see command_ingest).
+    """
 
     def __init__(self, connection: psycopg.Connection, source: str = "football-data.org") -> None:
         """Create a loader bound to an open connection."""
@@ -85,12 +93,28 @@ class RawLoader:
         payload_hash = hash_payload(payload)
         record_count = count_records(payload)
 
+        # Jsonb(...) wraps dicts so psycopg sends them as JSONB. request_params is
+        # compared as JSONB in the unique key, where {"a":1,"b":2} equals
+        # {"b":2,"a":1} - key order cannot create a false "new" row.
+
         with self.connection.cursor() as cursor:
             # `xmax = 0` is true for a freshly inserted row and non-zero for one
             # that was updated by the conflict clause. It is the cheapest way to
             # learn which branch fired without a second query.
+            #
+            # The CTE `previous` reads the hash stored *before* this statement:
+            # every part of one SQL statement sees the same snapshot, so it cannot
+            # see the row the INSERT is about to write. Comparing it with the new
+            # hash tells "the source changed today" (UPDATED) apart from "same
+            # answer again" (UNCHANGED) - in the same round trip.
             cursor.execute(
                 """
+                WITH previous AS (
+                    SELECT payload_hash
+                      FROM raw.football_data
+                     WHERE source = %s AND endpoint = %s
+                       AND request_params = %s AND ingestion_date = %s
+                )
                 INSERT INTO raw.football_data
                     (source, endpoint, request_params, request_url, ingestion_date,
                      run_id, payload, payload_hash, record_count)
@@ -104,9 +128,13 @@ class RawLoader:
                     run_id       = EXCLUDED.run_id,
                     ingested_at  = now()
                 RETURNING (xmax = 0) AS was_inserted,
-                          raw.football_data.payload_hash
+                          (SELECT payload_hash FROM previous) AS previous_hash
                 """,
                 (
+                    self.source,
+                    endpoint,
+                    Jsonb(request_params),
+                    ingestion_date,
                     self.source,
                     endpoint,
                     Jsonb(request_params),
@@ -121,11 +149,12 @@ class RawLoader:
             row = cursor.fetchone()
 
         was_inserted = bool(row[0])
+        unchanged = not was_inserted and row[1] == payload_hash
         result = LoadResult(
             endpoint=endpoint,
             inserted=was_inserted,
-            updated=not was_inserted,
-            unchanged=False,
+            updated=not was_inserted and not unchanged,
+            unchanged=unchanged,
             record_count=record_count,
             payload_hash=payload_hash,
         )
@@ -165,6 +194,9 @@ def hash_payload(payload: dict[str, Any]) -> str:
     Keys are sorted so that two semantically identical documents hash equally
     regardless of the order in which the API happened to serialise them.
     """
+    # separators without spaces and ensure_ascii=False: one canonical byte
+    # representation, so the hash depends on the content only - not on
+    # whitespace or on how non-ASCII names (Bodø, Fenerbahçe) are escaped.
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

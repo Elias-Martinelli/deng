@@ -19,6 +19,9 @@ new (`sql/transform/11x`), so reprocessing 10 September cannot roll the curated
 tables back from 20 September to 10 September.
 """
 
+# Unlike every other module, no `from __future__ import annotations` here:
+# Dagster inspects the type of the `context` parameter at import time and
+# rejects it when annotations are postponed strings.
 from collections.abc import Callable
 from datetime import date
 from typing import Any
@@ -132,10 +135,16 @@ def run_step(name: str, step: Callable[..., int], *args: Any, **kwargs: Any) -> 
 
 
 def _logical_date(context: AssetExecutionContext) -> date:
+    # The partition key ("2026-09-21") *is* the logical date: the bridge
+    # between Dagster's partitions and the `--date` of the CLI.
     return date.fromisoformat(context.partition_key)
 
 
 def _count(table: str, where: str = "", params: tuple[Any, ...] = ()) -> int:
+    # Row counts become asset metadata in the UI - a quick plausibility check
+    # per run ("fact_match 144") without opening psql. `table` only ever comes
+    # from the asset keys defined above, never from user input, so the
+    # f-string is safe; values go through `params`.
     with connect() as connection, connection.cursor() as cursor:
         cursor.execute(f"SELECT count(*) FROM {table} {where}", params)  # noqa: S608 - literals
         row = cursor.fetchone()

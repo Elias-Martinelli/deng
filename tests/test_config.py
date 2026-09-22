@@ -1,3 +1,14 @@
+"""Tests for the settings object (deng.config).
+
+Claims defended: defaults work without any configuration, the environment
+overrides them, the API key never shows up in a repr or log line, a missing
+key produces an actionable message, and the connection URL survives
+passwords with special characters.
+
+Test names are written as statements of the behaviour they prove - the same
+convention as in every test module of this repository.
+"""
+
 import pytest
 
 from deng.config import Settings
@@ -29,3 +40,12 @@ def test_missing_api_key_gives_actionable_error(clean_env):
     settings = Settings(_env_file=None)
     with pytest.raises(ValueError, match="FOOTBALL_DATA_API_KEY"):
         settings.require_football_api_key()
+
+
+def test_dsn_survives_special_characters_in_the_password(clean_env, monkeypatch):
+    from psycopg.conninfo import conninfo_to_dict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "p@ss:w/rd#1")
+    parsed = conninfo_to_dict(Settings(_env_file=None).postgres_dsn)
+    assert parsed["password"] == "p@ss:w/rd#1"
+    assert parsed["host"] == "localhost"

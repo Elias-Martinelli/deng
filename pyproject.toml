@@ -1,3 +1,6 @@
+# Package definition and tool configuration in one place (PEP 621).
+# `pip install -e ".[dev]"` installs the package plus the extras named in [].
+
 [build-system]
 requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
@@ -7,11 +10,16 @@ name = "deng"
 version = "0.1.0"
 description = "Champions League Match Intelligence Data Platform – HSLU DENG HS26 batch data pipeline"
 readme = "README.md"
+# 3.10 is what Ubuntu 22.04 LTS ships - the oldest interpreter a reviewer is
+# likely to have. CI tests 3.10 and 3.12.
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
   { name = "Elias Martinelli" },
 ]
+# Three runtime dependencies for the whole pipeline: HTTP, validated settings,
+# PostgreSQL. `psycopg[binary]` ships a compiled libpq, so no PostgreSQL client
+# libraries have to be installed on the machine.
 dependencies = [
   "requests>=2.32",
   "pydantic-settings>=2.5",
@@ -45,6 +53,8 @@ notebook = [
   "matplotlib>=3.9",
 ]
 
+# The src/ layout: the package lives in src/deng, so tests import the
+# *installed* package, not whatever happens to be in the working directory.
 [tool.hatch.build.targets.wheel]
 packages = ["src/deng"]
 
@@ -52,6 +62,7 @@ packages = ["src/deng"]
 testpaths = ["tests"]
 addopts = "-q"
 
+# ruff is linter and formatter in one tool (replaces flake8, isort, black).
 [tool.ruff]
 line-length = 100
 target-version = "py310"

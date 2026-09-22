@@ -29,6 +29,15 @@ from html import escape
 # Streamlit's light and dark theme alike.
 CSS = """
 <style>
+  /* How the layout adapts, in three mechanisms:
+     1. CSS grid: .cl-grid places the two form cards side by side.
+     2. Media queries: below 640 px (phones) the grid drops to one column and
+        paddings shrink; below 420 px (narrow phones) result rows put the date
+        on its own line.
+     3. clamp(min, preferred, max): font sizes scale with the viewport width
+        (vw) but never below or above a readable size.
+     rem = multiples of the root font size, so everything scales together. */
+
   /* 3.75rem clears Streamlit's fixed header bar; less and it covers the title. */
   .block-container { padding-top: 3.75rem; padding-bottom: 3rem; max-width: 1100px; }
   .cl-hero {
@@ -55,6 +64,7 @@ CSS = """
   .cl-mini { width: 1.5rem; height: 1.5rem; object-fit: contain; vertical-align: -.35rem;
     margin-right: .45rem; }
 
+  /* 1fr 1fr = two equal columns; the media query below turns it into one. */
   .cl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
   @media (max-width: 640px) {
     .cl-grid { grid-template-columns: 1fr; }
@@ -88,6 +98,7 @@ CSS = """
 
   .cl-list { border: 1px solid rgba(127,127,127,.25); border-radius: 14px;
     overflow: hidden; }
+  /* date | home | score | away - the score column sizes to its content. */
   .cl-row { display: grid; grid-template-columns: 4.6rem 1fr auto 1fr;
     align-items: center; gap: .5rem; padding: .55rem .8rem;
     border-top: 1px solid rgba(127,127,127,.15); font-size: .9rem; }
@@ -119,6 +130,9 @@ CSS = """
 """
 
 
+# frozen=True: these are value objects handed from the page to the render
+# functions; making them immutable rules out a render function changing data
+# another one later displays.
 @dataclass(frozen=True)
 class TeamForm:
     """One team's form going into a match, as the page shows it."""
@@ -316,6 +330,8 @@ def outcome_for(team_id: int, home_id: int, home_goals: int, away_goals: int) ->
     """W/D/L from one team's point of view."""
     if home_goals == away_goals:
         return "D"
+    # The team won if "home scored more" and "the team is the home side" are
+    # both true or both false (i.e. away side and away scored more).
     team_won = (home_goals > away_goals) == (team_id == home_id)
     return "W" if team_won else "L"
 

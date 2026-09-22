@@ -1,4 +1,5 @@
 -- Verification: did the pipeline actually run, and did it finish cleanly?
+-- Reads meta.pipeline_runs, the run log every command writes (see run_log.py).
 
 SELECT
     'at least one run recorded'                   AS check_name,
@@ -19,6 +20,9 @@ SELECT
 
 UNION ALL
 
+-- A run that was killed (container stopped, power loss) never reaches its
+-- UPDATE to SUCCESS/FAILED and stays RUNNING. No daily run takes an hour, so
+-- anything older than that is a crash that should be looked at.
 SELECT
     'no run left hanging in RUNNING for over an hour',
     count(*)::text,

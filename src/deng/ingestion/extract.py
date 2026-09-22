@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 # Free tier: 10 requests/minute. We pace ourselves rather than waiting for the
 # HTTP 429, and additionally react to the remaining-budget header (see `_pace`).
+# 60 s / 10 = 6 s per request; the extra 0.5 s absorbs clock differences between
+# us and the API's counter, so a full minute of requests never hits the limit.
 MIN_SECONDS_BETWEEN_REQUESTS = 6.5
 
 
@@ -111,8 +113,11 @@ def fetch_endpoints(
         ApiError: on a non-retryable error - the run must fail visibly.
         RetryableApiError: if the transient error persists after `max_attempts`.
     """
+    # A generator, not a list: each payload is handed to the loader as soon as it
+    # arrives, and an error on the third endpoint surfaces before a fourth
+    # request is spent. The caller's transaction still decides what is kept.
     for index, endpoint in enumerate(endpoints):
-        if index:
+        if index:  # no pause before the first request
             time.sleep(pace_seconds)
         path = endpoint.path.format(code=competition_code)
         response = _get_with_retry(client, path, endpoint.params, max_attempts, pace_seconds)
@@ -149,6 +154,8 @@ def _get_with_retry(
                 delay,
             )
             time.sleep(delay)
+            # Exponential back-off (6.5 s, 13 s, ...): a server that is struggling
+            # gets more room with every attempt instead of a burst of retries.
             delay *= 2
     raise AssertionError("unreachable")  # pragma: no cover
 
@@ -159,6 +166,8 @@ def _pace(response: ApiResponse, pace_seconds: float) -> None:
     reset = response.rate_limit.counter_reset_seconds
     if remaining is not None and remaining <= 1 and reset:
         logger.info("rate-limit budget exhausted, waiting %ss for the counter to reset", reset)
+        # +1 s so we arrive after the reset, not on it; capped at 65 s so a
+        # nonsensical header value cannot stall the run for hours.
         time.sleep(min(reset + 1, 65))
 
 

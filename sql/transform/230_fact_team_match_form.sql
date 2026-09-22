@@ -10,6 +10,17 @@
 -- matches_considered is frequently 0 or 1 - which is precisely why the column
 -- exists instead of silently presenting a 1-match form as "form".
 
+-- Why LEFT JOIN LATERAL and not a window function
+-- (`... ROWS BETWEEN 5 PRECEDING AND 1 PRECEDING`): a window counts *rows*, but
+-- the rule is about *time* - finished and kicked off before this match. A
+-- window would also count unfinished matches and could not skip them cleanly.
+-- LATERAL runs the look-back subquery once per appearance with that row's
+-- kick-off as the cut-off, which states the rule literally.
+--
+-- Cost: 288 appearances x one indexed look-back each - milliseconds. At 100x
+-- (many seasons, ~30 000 appearances) it stays linear in the number of
+-- appearances; an index on (team_id, utc_kickoff) would then be the first step.
+
 WITH appearances AS (
     -- One row per team per match: a match seen from each side.
     SELECT match_id, utc_kickoff, is_finished,
@@ -33,6 +44,10 @@ SELECT
     a.team_id,
     a.is_home,
     a.opponent_team_id,
+    -- No earlier match: the look-back returns nothing, so every figure is 0
+    -- and matches_considered = 0 says so. 0 rather than NULL keeps sums and
+    -- model features simple; the window size tells them apart from "0 goals
+    -- in five matches".
     COALESCE(w.matches_considered, 0),
     COALESCE(w.wins, 0),
     COALESCE(w.draws, 0),
@@ -40,7 +55,9 @@ SELECT
     COALESCE(w.goals_for, 0),
     COALESCE(w.goals_against, 0),
     COALESCE(w.goals_for, 0) - COALESCE(w.goals_against, 0),
-    COALESCE(w.wins, 0) * 3 + COALESCE(w.draws, 0),
+    COALESCE(w.wins, 0) * 3 + COALESCE(w.draws, 0),        -- league points: 3 / 1 / 0
+    -- Whole days of rest since the previous match (floor of the interval);
+    -- NULL when there was none - "no previous match" is not "0 days".
     CASE WHEN w.last_kickoff IS NOT NULL
          THEN EXTRACT(DAY FROM a.utc_kickoff - w.last_kickoff)::int END
 FROM appearances a
@@ -62,10 +79,13 @@ LEFT JOIN LATERAL (
            AND prior.utc_kickoff < a.utc_kickoff
            AND prior.goals_for IS NOT NULL
            AND prior.goals_against IS NOT NULL
+         -- the five most recent of those
          ORDER BY prior.utc_kickoff DESC
          LIMIT 5
     ) AS p
 ) AS w ON TRUE
+-- Recomputed for every match on every run, so a corrected score of an old match
+-- flows into the form of every later match automatically.
 ON CONFLICT (match_id, team_id) DO UPDATE SET
     is_home = EXCLUDED.is_home,
     opponent_team_id = EXCLUDED.opponent_team_id,

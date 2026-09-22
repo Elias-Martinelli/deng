@@ -28,7 +28,7 @@ from deng.database import PipelineRun, RawLoader, apply_sql_files, connect
 from deng.ingestion.crests import fetch_crests
 from deng.ingestion.extract import fetch_endpoints, read_sample_endpoints
 from deng.ingestion.football_data_client import ApiError, FootballDataClient
-from deng.ingestion.weather import ingest_weather
+from deng.ingestion.weather import ingest_weather, pipeline_today
 from deng.quality import run_checks
 from deng.transformation import (
     WEATHER_COUNTED_TABLES,
@@ -38,7 +38,13 @@ from deng.transformation import (
 
 logger = logging.getLogger(__name__)
 
+# Exit codes follow the Unix convention the orchestrator and CI rely on:
+#   0 success, 1 the step failed, 2 wrong usage (bad arguments).
+# A non-zero exit is what makes a failed run visible to Dagster, `make` and CI.
+
+# Name under which ingestion runs appear in meta.pipeline_runs.
 PIPELINE_NAME = "ingest_football_raw"
+DATE_HELP = "logical date (default: today in Europe/Zurich)"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -54,19 +60,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "init":
         return command_init()
     if args.command == "ingest":
-        return command_ingest(args.date or date.today(), from_samples=args.from_samples)
+        return command_ingest(args.date or pipeline_today(), from_samples=args.from_samples)
     if args.command == "backfill":
         return command_backfill(args.date_from, args.date_to, from_samples=args.from_samples)
     if args.command == "transform":
-        return command_transform(args.date or date.today())
+        return command_transform(args.date or pipeline_today())
     if args.command == "weather":
-        return command_weather(args.date or date.today(), from_samples=args.from_samples)
+        return command_weather(args.date or pipeline_today(), from_samples=args.from_samples)
     if args.command == "crests":
         return command_crests()
     if args.command == "dq":
         return command_dq()
     if args.command == "run":
-        return command_run(args.date or date.today(), from_samples=args.from_samples)
+        return command_run(args.date or pipeline_today(), from_samples=args.from_samples)
     if args.command == "verify":
         return command_verify()
     parser.print_help()
@@ -81,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("init", help="create schemas and tables (idempotent)")
 
     ingest = sub.add_parser("ingest", help="ingest raw payloads for one logical date")
-    ingest.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+    ingest.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
     ingest.add_argument(
         "--from-samples",
         action="store_true",
@@ -94,18 +100,18 @@ def build_parser() -> argparse.ArgumentParser:
     backfill.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
 
     transform = sub.add_parser("transform", help="raw -> staging -> curated for one logical date")
-    transform.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+    transform.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
 
     sub.add_parser("crests", help="fetch club crests that are not stored yet (incremental)")
 
     weather = sub.add_parser("weather", help="fetch and transform forecasts for one logical date")
-    weather.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+    weather.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
     weather.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
 
     sub.add_parser("dq", help="run the data-quality checks and persist the results")
 
     run = sub.add_parser("run", help="ingest, transform and check in one go")
-    run.add_argument("--date", type=date.fromisoformat, help="logical date (default: today)")
+    run.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
     run.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
 
     sub.add_parser("verify", help="run the verification queries and print the results")
@@ -132,6 +138,9 @@ def command_ingest(logical_date: date, from_samples: bool = False) -> int:
             API. Lets a reviewer exercise the pipeline without credentials.
     """
     settings = get_settings()
+    # `source` is part of the raw zone's unique key, so replayed samples live in
+    # their own rows and can never overwrite a real API answer for the same day
+    # (and vice versa). Staging takes the newest payload of the day.
     source_name = "football-data.org" if not from_samples else "football-data.org (sample)"
 
     if from_samples:
@@ -144,6 +153,8 @@ def command_ingest(logical_date: date, from_samples: bool = False) -> int:
             print(
                 "       or run with --from-samples to use the committed payloads.", file=sys.stderr
             )
+            # A configuration error, reported as exit 1 rather than a traceback;
+            # Dagster turns it into a non-retryable failure (run_step).
             return 1
         client = FootballDataClient(api_key=api_key, base_url=settings.football_data_base_url)
         responses = fetch_endpoints(client, settings.football_data_competition)
@@ -170,8 +181,15 @@ def command_ingest(logical_date: date, from_samples: bool = False) -> int:
                         f"  {endpoint.name:<12} {result.action:<9} "
                         f"records={result.record_count} hash={result.payload_hash[:12]}"
                     )
+                # One commit for all endpoints of the day: either the whole day's
+                # snapshot is stored or none of it. A half-stored day (teams but
+                # no matches) would let the transformation build an inconsistent
+                # curated state.
                 connection.commit()
             except ApiError:
+                # Covers RetryableApiError too (subclass). Roll back this day's
+                # partial writes, then re-raise so PipelineRun records FAILED
+                # and the orchestrator can decide whether to retry.
                 connection.rollback()
                 raise
 
@@ -240,7 +258,7 @@ def command_crests() -> int:
     WARNING check keeps it visible. Only a database error fails this step.
     """
     with connect() as connection:
-        with PipelineRun(connection, "fetch_crests", date.today()) as run:
+        with PipelineRun(connection, "fetch_crests", pipeline_today()) as run:
             result = fetch_crests(connection, run_id=run.run_id)
             run.add_counts(loaded=len(result.fetched))
     for team_id, reason in result.failed.items():
@@ -272,6 +290,9 @@ def command_dq(run_id=None) -> int:
 
 def command_run(logical_date: date, from_samples: bool = False) -> int:
     """Ingest, transform and check - the sequence the orchestrator schedules daily."""
+    # The order is a dependency chain, not a preference: transform reads what
+    # ingest stored, crests and weather read what transform built, and the
+    # checks judge the finished state. Each step stops the chain on failure.
     print(f"=== ingest {logical_date} ===")
     code = command_ingest(logical_date, from_samples=from_samples)
     if code != 0:
@@ -313,7 +334,7 @@ def command_backfill(date_from: date, date_to: date, from_samples: bool = False)
     """
     if date_from > date_to:
         print("ERROR: --from must not be after --to", file=sys.stderr)
-        return 2
+        return 2  # usage error, see the exit-code convention at the top
     current = date_from
     failures = 0
     while current <= date_to:
