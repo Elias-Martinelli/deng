@@ -202,10 +202,10 @@ understands it". Every pull request is reviewed by the other student.
 
 | Area | Owner | Reviewer |
 |---|---|---|
-| Football ingestion, API client, raw model | Elias Martinelli | Student B |
-| Weather ingestion, venue reference data | Student B | Elias Martinelli |
-| PostgreSQL schemas, SQL transformations, data quality | Student B | Elias Martinelli |
-| Orchestration, Docker Compose, Makefile, CI | Elias Martinelli | Student B |
+| Football ingestion, API client, raw model | Elias Martinelli | Noah Rodriguez |
+| Weather ingestion, venue reference data | Noah Rodriguez | Elias Martinelli |
+| PostgreSQL schemas, SQL transformations, data quality | Noah Rodriguez | Elias Martinelli |
+| Orchestration, Docker Compose, Makefile, CI | Elias Martinelli | Noah Rodriguez |
 | Terraform, GCS, BigQuery model, partitioning | shared – pair session, then split by table | – |
 | Documentation, architecture evolution, evidence | shared – each documents what they built | – |
 | Peer reviews of other teams | both, independently, then merged | – |

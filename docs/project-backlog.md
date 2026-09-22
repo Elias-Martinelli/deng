@@ -62,7 +62,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 3.2 | Raw tables (JSONB + metadata, unique key per source/endpoint/params/date) | MUST | MIDTERM | [x] `raw.football_data` |
 | 3.3 | Idempotent raw loader (`ON CONFLICT`) | MUST | MIDTERM | [x] `raw_loader.py`, evidence §2 |
 | 3.4 | Verification queries (`sql/verify/*.sql`) | MUST | MIDTERM | [x] 8 checks, `make verify` |
-| 3.5 | Grain documentation for every curated table | MUST | MIDTERM | [ ] |
+| 3.5 | Grain documentation for every curated table | MUST | MIDTERM | [x] `docs/data-model.md` + `COMMENT ON TABLE` |
 
 ## EPIC 4 – Docker
 
@@ -88,10 +88,10 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 6.1 | staging: typed `matches`, `teams`, `standings`, `weather_forecast` from raw JSONB | MUST | MIDTERM | [ ] |
-| 6.2 | curated `fact_match` (grain: one CL match) | MUST | MIDTERM | [ ] |
-| 6.3 | curated `fact_team_match_form` – last-5 form, home/away form, days since last match (point-in-time correct); must carry `matches_considered` because 11 of 36 clubs have no domestic data | MUST | MIDTERM | [ ] |
-| 6.4 | curated `dim_team`, `dim_venue` | MUST | MIDTERM | [ ] |
+| 6.1 | staging: typed `matches`, `teams`, `standings` from raw JSONB | MUST | MIDTERM | [x] `sql/transform/11x` (weather open) |
+| 6.2 | curated `fact_match` (grain: one CL match) | MUST | MIDTERM | [x] 144 rows, derived outcome |
+| 6.3 | curated `fact_team_match_form` – last-5 form, home/away form, days since last match (point-in-time correct); must carry `matches_considered` because 11 of 36 clubs have no domestic data | MUST | MIDTERM | [~] implemented on CL matches incl. leakage check; cross-competition form waits for 2.4 |
+| 6.4 | curated `dim_team` (+ `dim_venue` with the weather work) | MUST | MIDTERM | [x] `dim_team` incl. coverage flag |
 | 6.5 | curated `fact_match_snapshot` (grain: one upcoming match per snapshot date) with availability states | SHOULD | MIDTERM (basic) / FINAL (full) | [ ] |
 | 6.6 | `dim_date` | SHOULD | FINAL | [ ] |
 | 6.7 | Head-to-head aggregates | COULD | FINAL | [ ] |
@@ -100,9 +100,9 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 7.1 | SQL checks: not null, unique keys, home ≠ away, valid status, referential integrity, row count > 0 | MUST | MIDTERM | [ ] |
-| 7.2 | Plausibility: temperature range, goals ≥ 0, match date within season | SHOULD | MIDTERM | [ ] |
-| 7.3 | Results persisted in `meta.dq_results`; critical failures fail the run | MUST | MIDTERM | [~] table exists, `make verify` exits non-zero; writing results into the table open |
+| 7.1 | SQL checks: not null, unique keys, home ≠ away, valid status, referential integrity, row count > 0 | MUST | MIDTERM | [x] 12 checks in `quality/checks.py` |
+| 7.2 | Plausibility: goals in range (temperature with the weather work) | SHOULD | MIDTERM | [x] `goals_are_plausible` |
+| 7.3 | Results persisted in `meta.dq_results`; critical failures fail the run | MUST | MIDTERM | [x] persisted per run, CRITICAL exits non-zero |
 | 7.4 | Schema-drift handling: required-field validation with clear error, optional fields tolerant | MUST | MIDTERM | [ ] |
 | 7.5 | Same checks against BigQuery | MUST | FINAL | [ ] |
 
@@ -112,9 +112,9 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 |---|---|---|---|---|
 | 8.1 | Unit tests: config, API client | MUST | M1 | [x] 15 tests, CI |
 | 8.1b | Contract tests against the real samples (schema, keys, referential integrity) | SHOULD | M1 | [x] 13 tests in `tests/test_sample_payloads.py` |
-| 8.2 | Unit tests: parsing of sample payloads, transformations (pure SQL tested against Postgres in CI service) | MUST | MIDTERM | [ ] |
+| 8.2 | Tests for parsing and transformations against Postgres, also in CI | MUST | MIDTERM | [x] 16 transformation tests; CI has a Postgres service |
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
-| 8.4 | Data-quality check tests | SHOULD | MIDTERM | [ ] |
+| 8.4 | Data-quality check tests incl. a deliberately broken row | SHOULD | MIDTERM | [x] `test_a_critical_violation_is_detected` |
 | 8.5 | GitHub Actions: lint + tests on every push | SHOULD | M1 | [x] `.github/workflows/ci.yml` |
 
 ## EPIC 9 – Google Cloud Storage
@@ -146,14 +146,14 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 12.1 | Notebook/SQL: availability analysis from snapshots | SHOULD | FINAL | [ ] |
+| 12.1 | Notebook: exploration of the curated layer incl. independent leakage check | SHOULD | FINAL | [x] `notebooks/01_explore_curated_data.ipynb` |
 | 12.2 | Baseline HOME/DRAW/AWAY model with time-based split on snapshot features | COULD | FINAL | [ ] |
 
 ## EPIC 13 – Streamlit
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 13.1 | Fixture picker → match intelligence page reading curated tables only | COULD | FINAL | [ ] |
+| 13.1 | Fixture picker → match intelligence page reading curated tables only | COULD | FINAL | [x] `app/streamlit_app.py`, screenshot in evidence |
 
 ## EPIC 14 – Documentation and reproducibility
 
@@ -171,6 +171,8 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 ## Division of responsibilities
 
-See [Architecture v0.1 §6](architecture/architecture-v0.1.md#6-division-of-responsibilities-proposal).
+Elias Martinelli and Noah Rodriguez — see
+[README](../README.md#contributing-and-branch-strategy) and
+[Architecture v0.1 §6](architecture/architecture-v0.1.md#6-division-of-responsibilities-proposal).
 Rule: nobody merges their own pull request; the reviewer must be able to explain
 the change in the defence.

@@ -3,7 +3,7 @@
 # Pinned minor version so a rebuild in December produces the same interpreter as
 # today; slim rather than alpine because psycopg ships manylinux wheels that
 # alpine's musl cannot use, which would force a source build.
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm AS base
 
 # No .pyc files, unbuffered logs (so `docker compose logs` shows output live),
 # and pip without its version-check noise.
@@ -32,3 +32,18 @@ USER pipeline
 # arguments explains itself instead of doing something unexpected.
 ENTRYPOINT ["python", "-m", "deng.pipeline"]
 CMD ["--help"]
+
+# --- Streamlit viewer -------------------------------------------------------
+# A separate stage so the pipeline image stays small: a scheduled batch job has
+# no reason to carry a web framework.
+FROM base AS app
+USER root
+RUN pip install --no-cache-dir ".[app]"
+COPY app/ /app/app/
+RUN chown -R pipeline:pipeline /app
+USER pipeline
+EXPOSE 8501
+ENTRYPOINT ["streamlit", "run", "app/streamlit_app.py", \
+            "--server.address=0.0.0.0", "--server.port=8501", \
+            "--browser.gatherUsageStats=false"]
+CMD []

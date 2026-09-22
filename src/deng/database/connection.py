@@ -68,12 +68,13 @@ def apply_sql_files(connection: psycopg.Connection, directory: Path | None = Non
 
     Args:
         connection: An open connection.
-        directory: Folder to scan recursively; defaults to the repository's `sql/`.
+        directory: Folder to scan recursively; defaults to `sql/schema/` (DDL only -
+            the transformation and verification files are run by their own commands).
 
     Returns:
         The names of the files that were applied, in order.
     """
-    directory = directory or _find_sql_dir() / "raw"
+    directory = directory or _find_sql_dir() / "schema"
     files = sorted(p for p in directory.rglob("*.sql"))
     applied: list[str] = []
     with connection.cursor() as cursor:

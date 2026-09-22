@@ -4,110 +4,147 @@ HSLU · DENG – Data Engineering · HS26 · End-to-End Batch Data Pipeline
 
 [![CI](https://github.com/Elias-Martinelli/deng/actions/workflows/ci.yml/badge.svg)](https://github.com/Elias-Martinelli/deng/actions/workflows/ci.yml)
 
-> **Project status: Milestone 1 (initial pitch) – foundation.** The repository
-> contains the use case, data-source analysis, Architecture v0.1, decision
-> records, backlog and a tested Python skeleton (API client + configuration).
-> Ingestion into PostgreSQL, Docker Compose and orchestration follow for the
-> midterm. See [Project Status](#project-status).
+A reproducible daily batch pipeline that turns UEFA Champions League fixtures,
+results, standings and team data into a curated, point-in-time-correct
+pre-match dataset — served to a notebook, a Streamlit viewer and, later, to
+machine learning.
+
+```text
+football-data.org ──┐                                    ┌─ Jupyter notebook
+Open-Meteo *) ──────┼─► batch ingestion ─► RAW ─► STAGING ─► CURATED ─┼─ Streamlit viewer
+venues.csv *) ──────┘   (daily, idempotent)                          └─ Analytics / ML *)
+```
+
+`*)` planned — see [Project Status](#project-status).
+
+**Quick start** (no API key needed):
+
+```bash
+./setup.sh && make up && make init && make run-samples && make app
+```
+
+---
+
+## Table of contents
+
+[Overview](#project-overview) · [Problem](#problem-statement) · [End user](#end-user) ·
+[Data product](#data-product) · [Use case](#use-case) · [Data sources](#data-sources) ·
+[Data characteristics](#data-characteristics) · [Quality risks](#data-quality-risks) ·
+[Architecture](#architecture) · [Ingestion](#batch-ingestion-strategy) ·
+[Local development](#local-development) · [PostgreSQL](#postgresql) · [Docker](#docker) ·
+[Orchestration](#workflow-orchestration) · [Transformation](#transformation) ·
+[Data model](#data-model) · [Data quality](#data-quality) ·
+[Reproducibility](#reproducibility) · [Verification](#verification) ·
+[Notebook](#analytics--notebook) · [Streamlit](#streamlit-application) ·
+[Cloud](#google-cloud-architecture) · [Limitations](#known-limitations) ·
+[Status](#project-status) · [Contributing](#contributing-and-branch-strategy) ·
+[Authors](#authors)
+
+---
 
 ## Project Overview
 
-A reproducible **daily batch pipeline** that ingests UEFA Champions League
-fixtures, results, standings and team data from [football-data.org](https://www.football-data.org)
-and weather forecasts from [Open-Meteo](https://open-meteo.com), stores the raw
-payloads unchanged, and transforms them into curated, point-in-time-correct
-tables that describe **what is known about an upcoming match on a given day**.
+Information about an upcoming Champions League match is scattered across
+sources that update at different speeds: the fixture list is published months
+ahead, standings change after every matchday, weather forecasts only become
+meaningful two weeks out, and line-ups appear an hour before kick-off.
 
-```text
-football-data.org ─┐                       ┌─ Analytics / ML (leakage-free features)
-Open-Meteo ────────┼─► batch ingestion ─► RAW ─► STAGING ─► CURATED ─┤
-venues.csv ────────┘   (daily, orchestrated)                         └─ Streamlit viewer (optional)
-```
-
-Local (midterm): PostgreSQL in Docker Compose. Final: Google Cloud Storage raw
-zone + BigQuery, provisioned with Terraform. Full detail in
-[`docs/architecture/architecture-v0.1.md`](docs/architecture/architecture-v0.1.md).
+This platform ingests those sources on a schedule, keeps every raw payload,
+and derives curated tables that answer **what was known about a match at a
+given point in time** — the property that makes the data usable both for a
+pre-match overview and as leakage-free training data.
 
 ## Problem Statement
 
-Pre-match information is scattered over several sources with different update
-cadences (fixtures months ahead, standings after each matchday, weather only
-~16 days ahead, line-ups an hour before). Assembling a consistent overview – or a
-training set that does not leak future information – requires integrating these
-sources repeatedly and recording *when* each piece of information became
-available. Details: [`docs/use-case.md`](docs/use-case.md).
+Assembling a consistent pre-match picture means integrating several APIs
+repeatedly, reconciling their keys, and recording *when* each piece of
+information became available. Doing that by hand is error-prone; doing it in
+the frontend on every click throws away history and burns a shared rate limit.
+Details: [`docs/use-case.md`](docs/use-case.md).
 
 ## End User
 
-Football analysts and football-interested users who want a structured pre-match
-overview for an upcoming Champions League fixture; secondarily data scientists
-who need a leakage-free feature table.
+* **Primary:** football analysts and interested users who want a structured
+  pre-match overview of an upcoming fixture.
+* **Secondary:** data scientists who need a point-in-time-correct feature table
+  to train and evaluate match-outcome models.
 
 ## Data Product
 
-| Table | Grain (one row = …) | Purpose |
+| Table | One row represents | Status |
 |---|---|---|
-| `fact_match` | one Champions League match | fixture, venue, status, score |
-| `fact_team_match_form` | one team in one match | rolling form of the last 5 completed matches *before* that match |
-| `fact_match_snapshot` | one upcoming match on one pipeline run date | everything known that day incl. weather forecast and explicit availability states |
-| `dim_team`, `dim_venue`, `dim_date` | one team / venue / calendar day | descriptive attributes, coordinates, time zone |
+| `curated.fact_match` | one Champions League match | **implemented** |
+| `curated.fact_team_match_form` | one team's participation in one match, with its form going in | **implemented** |
+| `curated.dim_team` | one team | **implemented** |
+| `curated.fact_match_snapshot` | one upcoming match on one pipeline run date | planned (final) |
+| `curated.dim_venue`, `dim_date` | one venue / calendar day | planned (final) |
+
+Full definitions, keys and reasoning: [`docs/data-model.md`](docs/data-model.md).
 
 ## Use Case
 
-Select an upcoming fixture (e.g. *FC Barcelona vs Arsenal FC, 22 Oct 2026*) and
-obtain fixture details, venue, weather forecast, recent form, standings and
-head-to-head – all served from our curated tables, never from live API calls.
+Select an upcoming fixture — say *RC Lens vs Sporting CP, 13 Oct 2026* — and
+see the kick-off, venue, both teams' recent form (with the number of matches
+that form rests on), previous meetings and recent results. Everything is served
+from our own tables; the app makes no API calls.
+
 Secondary: analyse how many days before kick-off each attribute group becomes
-available, and train a baseline outcome model on snapshot features.
+available, and train a baseline HOME/DRAW/AWAY classifier on features that
+existed before the match.
 
 ## Data Sources
 
-| Source | Content | Access | Limits (free) |
+| Source | Content | Access | Limits (free tier) |
 |---|---|---|---|
-| football-data.org v4 | CL fixtures, results, standings, teams, referees, head-to-head | REST/JSON, `X-Auth-Token`, free registration | 10 requests/min; no line-ups/injuries/statistics; 11 of 36 clubs without domestic-league data |
-| Open-Meteo | 16-day forecast, historical archive | REST/JSON, no key | 10 000 calls/day; CC BY 4.0 |
-| `data/reference/venues.csv` (planned) | stadium coordinates and time zones | versioned in repo | maintained manually |
+| [football-data.org v4](https://www.football-data.org) | CL fixtures, results, standings, teams, referees, head-to-head | REST/JSON, `X-Auth-Token`, free registration | 10 requests/min; no line-ups, injuries or match statistics; 11 of 36 clubs without domestic-league data |
+| [Open-Meteo](https://open-meteo.com) *(planned)* | 16-day forecast, historical archive | REST/JSON, no key | 10 000 calls/day, CC BY 4.0 |
+| `data/reference/venues.csv` *(planned)* | stadium coordinates and time zones | versioned in this repo | maintained by hand |
 
-Full evaluation incl. rejected alternatives: [`docs/data-sources.md`](docs/data-sources.md),
-decision: [ADR-001](docs/adr/ADR-001-football-data-source.md) (ACCEPTED), measured
-findings from the live API: [`docs/evidence/api-exploration.md`](docs/evidence/api-exploration.md).
+Evaluation including rejected alternatives: [`docs/data-sources.md`](docs/data-sources.md).
+Decision: [ADR-001](docs/adr/ADR-001-football-data-source.md) (ACCEPTED).
+Measured behaviour of the live API: [`docs/evidence/api-exploration.md`](docs/evidence/api-exploration.md).
 
 ## Data Characteristics
 
-* Volume (measured 20 Sep 2026): 144 league-phase matches, 36 teams, 1 standings
-  table; knockout fixtures are added after the December draw. ≈ 60 API calls and
-  < 2 MB raw per daily run; < 1 GB raw per season. All 47 listed seasons together
-  are roughly 5 000–6 500 matches.
-* Format: nested JSON (football), columnar JSON time series (weather).
-* Keys: `match.id`, `team.id` (stable integers from football-data.org);
-  weather keyed by `(match_id, forecast_date)`.
-* Change behaviour: fixtures change kick-off time/status in place, and **new
-  fixtures appear mid-season** (knockout draw in December); scores are appended
-  once; forecasts are overwritten daily → raw payloads are kept per ingestion
-  date, and `lastUpdated` is a candidate incremental watermark.
+* **Volume** (measured 20 Sep 2026): 144 league-phase matches, 36 teams, one
+  standings table. ≈ 60 API calls and < 2 MB raw per daily run; < 1 GB per
+  season. All 47 listed seasons together are roughly 5 000–6 500 matches.
+* **Format:** nested JSON. Business keys are stable integers (`match.id`,
+  `team.id`, `season.id`).
+* **Change behaviour:** kick-off times and statuses change in place, scores are
+  appended once, and **new fixtures appear mid-season** — the knockout rounds
+  are drawn in December. This is the main argument for a scheduled daily batch
+  rather than a one-off load.
 
 ## Data Quality Risks
 
-Kick-off times `TBD` early in the season, postponed/rescheduled matches, neutral
-final venue, score corrections, teams without domestic-league data on the free
-tier, forecasts unavailable > 16 days ahead, missing venue coordinates for newly
-qualified clubs. Handling strategy: [`docs/data-sources.md` §5](docs/data-sources.md#5-availability-aware-ingestion--when-is-which-information-known).
+Identified by measurement, not assumption ([evidence](docs/evidence/api-exploration.md)):
+
+| Risk | Handling |
+|---|---|
+| `?status=SCHEDULED` returns rows stored as `TIMED` | upcoming matches are selected by `utc_kickoff`, never by the status string |
+| The API's own aggregates do not add up (`wins+draws+losses ≠ count`) | all form figures computed from individual match rows; a constraint and a check enforce that ours add up |
+| `standings.form` is always null | not used |
+| `odds` is a stub object with a marketing message | not parsed; validation checks for expected keys, not field presence |
+| 11 of 36 clubs have no domestic-league data | `dim_team.has_domestic_coverage`, and `matches_considered` on every form row |
+| `group` null since the 2024/25 format change | no group dimension modelled |
+| Matches rescheduled or postponed | full reload per day; the raw zone keeps each day's version |
 
 ## Architecture
 
-* [Architecture v0.1](docs/architecture/architecture-v0.1.md) – conceptual,
-  local/midterm and cloud/final views with Mermaid diagrams.
-* [Architecture Decision Records](docs/adr/README.md) – data sources,
+* [Architecture v0.1](docs/architecture/architecture-v0.1.md) — the initial
+  design with Mermaid diagrams for the conceptual, local and cloud views.
+* [Architecture Decision Records](docs/adr/README.md) — data sources,
   orchestrator, raw storage.
+* Architecture v0.2 (midterm) will record what implementation changed.
 
 ## Batch Ingestion Strategy
 
-One scheduled run per day (data changes a few times per day at most; forecast
-models update every 1–6 h). Each run: extract → store raw (immutable, per
-ingestion date) → transform → data-quality checks.
+One scheduled run per day. Each run: **extract → store raw → transform →
+data-quality checks**.
 
-Load strategy per endpoint — all **FULL** at this stage, justified in code next
-to the endpoint definitions ([`src/deng/ingestion/extract.py`](src/deng/ingestion/extract.py)):
+Load strategy per endpoint — all **FULL** at this stage, with the reasoning
+kept next to the code in [`src/deng/ingestion/extract.py`](src/deng/ingestion/extract.py):
 
 | Endpoint | Rows | Strategy | Why |
 |---|---|---|---|
@@ -116,223 +153,330 @@ to the endpoint definitions ([`src/deng/ingestion/extract.py`](src/deng/ingestio
 | `competitions/CL/standings` | 36 | FULL | changes every matchday, one request |
 | `competitions/CL/matches` | 144 | FULL | 212 KB in one request |
 
-Incremental loading via `lastUpdated` would need an extra request to discover
-what changed and would still miss matches the API *adds* mid-season (the
-knockout draw in December). A full reload of a small bounded payload is simpler,
-self-heals after a missed day, and costs one request. That reasoning stops
-holding once we ingest many seasons at once — then incremental *by season* is
-the plan (backlog 1.9).
+Incremental loading via `lastUpdated` would cost an extra request to discover
+what changed and would still miss matches the API *adds* mid-season. A full
+reload of a small bounded payload is simpler, self-heals after a missed day and
+costs one request. That stops being true once we ingest many seasons at once —
+then incremental *by season* is the plan (backlog 1.9).
 
-Requests are paced to stay under the free tier's 10/minute and react to the
-`X-Requests-Available-Minute` header. Transient failures (429, 5xx, network)
-retry with exponential back-off; 400/403/404 fail immediately, because repeating
-them cannot help and would spend the request budget.
+**Failure behaviour:** transient errors (429, 5xx, network) retry with
+exponential back-off; 400/403/404 fail immediately because repeating them
+cannot help and would spend the request budget. Requests are paced against the
+`X-Requests-Available-Minute` header. Every run is recorded in
+`meta.pipeline_runs`, failures included, with their error message.
 
 ## Local Development
+
+Requirements: **Python ≥ 3.10** (the version Ubuntu 22.04 LTS ships, so no
+upgrade is needed), `make`, and on Debian/Ubuntu/WSL the `python3-venv` package
+(`sudo apt install python3-venv`). Docker is needed for the containerised path.
 
 ```bash
 git clone https://github.com/Elias-Martinelli/deng.git
 cd deng
-make setup                     # venv + editable install + copies .env.example to .env
-source .venv/bin/activate
-# edit .env → FOOTBALL_DATA_API_KEY (free key: https://www.football-data.org/client/register)
-make test                      # unit tests, no network required
-make lint
-make explore                   # fetch small real samples into data/sample/ (needs the key)
+
+./setup.sh                 # venv + install + .env + self-check   (or: make setup)
+make doctor                # interpreter, dependencies, .env, API key
+make test                  # 56 tests; the database ones skip without PostgreSQL
+make up                    # PostgreSQL in Docker, waits until healthy
+make init                  # create schemas and tables (idempotent)
+make run-samples           # ingest + transform + data quality, no API key needed
+make verify                # verification queries
 ```
 
-Requirements: Python ≥ 3.11, `make`. Docker is required from the midterm on.
+`setup.sh` picks the newest interpreter ≥ 3.10 that can actually build a
+virtualenv and tells you which one it used; override with
+`make setup PYTHON=python3.12`. Activating the venv is optional — every `make`
+target uses `.venv` directly.
+
+With an API key (free registration at
+<https://www.football-data.org/client/register>), put it in `.env` and use the
+live path:
+
+```bash
+make explore               # fetch fresh sample payloads and profile the schema
+make run                   # ingest from the API + transform + data quality
+```
+
+`make help` lists every target.
 
 ## PostgreSQL
 
-Four schemas, separated by how much the data can be trusted:
+Four schemas, separated by how far the data has been processed:
 
-| Schema | Content | Status |
-|---|---|---|
-| `raw` | API payloads as received (JSONB) plus ingestion metadata | implemented |
-| `staging` | typed, flattened tables derived from raw | next sprint |
-| `curated` | facts and dimensions served to analytics and the app | next sprint |
-| `meta` | `pipeline_runs`, `dq_results` | implemented |
+| Schema | Content |
+|---|---|
+| `raw` | API payloads exactly as received (JSONB) plus ingestion metadata |
+| `staging` | typed, flattened tables — rebuildable from raw at any time |
+| `curated` | facts and dimensions: the data product |
+| `meta` | `pipeline_runs`, `dq_results` |
 
 `raw.football_data` holds **one row per (source, endpoint, request parameters,
-ingestion date)** — one API answer on one day. A `UNIQUE` constraint on exactly
-that key plus `INSERT ... ON CONFLICT DO UPDATE` is what makes reruns safe. The
-payload is stored unchanged; a `payload_hash` (sha256 over the canonical JSON)
-shows whether the source actually changed. DDL: [`sql/raw/`](sql/raw/).
+ingestion date)**. A `UNIQUE` constraint on exactly that key plus
+`INSERT … ON CONFLICT DO UPDATE` is what makes reruns safe; a `payload_hash`
+over the canonical JSON shows whether the source actually changed that day.
+
+DDL: [`sql/schema/`](sql/schema/) · transformations: [`sql/transform/`](sql/transform/) ·
+verification: [`sql/verify/`](sql/verify/).
 
 ## Docker
 
 ```bash
-make up              # PostgreSQL with a health check and a named volume
-make init            # create schemas and tables (idempotent)
-make ingest-samples  # ingest the committed payloads - no API key needed
-make verify          # verification queries; non-zero exit when a check fails
-make down            # stop (keeps the data); make reset also deletes the volume
+make up            # PostgreSQL with a health check and a named volume
+make docker-ingest # run the pipeline inside its own image
+make docker-app    # Streamlit viewer in a container → http://localhost:8501
+make down          # stop (keeps data);  make reset  also deletes the volume
 ```
 
-Two services on one network: `postgres`, and the `pipeline` image itself. The
-pipeline is a batch job, not a daemon, so it is started per run
-(`make docker-ingest` → `docker compose run --rm pipeline ...`) instead of being
-kept alive. The dependent service waits for the database's *health check*, not
-merely for the container to exist, so a cold start cannot fail with "connection
-refused".
+Three services on one network: `postgres`, the `pipeline` image and the `app`
+image. The pipeline is a batch job, not a daemon, so it runs per invocation via
+`docker compose run` rather than being kept alive. Dependent services wait for
+the database's *health check*, not merely for the container to exist, so a cold
+start cannot fail with "connection refused". The app is a second build stage,
+which keeps the pipeline image free of a web framework.
 
 ## Workflow Orchestration
 
-Candidate: Dagster (daily partitions ⇒ backfills and reruns per ingestion date).
-Evaluation and decision: [ADR-002](docs/adr/ADR-002-workflow-orchestrator.md).
-*(next sprint)* — the CLI it will call already exists and is parameterised by
-logical date, so scheduling is the only piece still missing:
+Candidate: Dagster, because daily partitions map one-to-one onto our ingestion
+dates. Evaluation: [ADR-002](docs/adr/ADR-002-workflow-orchestrator.md).
+*Still to be implemented* — the interface it will drive already exists and is
+parameterised by logical date:
 
 ```bash
-python -m deng.pipeline ingest --date 2026-09-18
+python -m deng.pipeline run --date 2026-09-18
 python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
 ```
 
+Reruns and backfills are therefore already testable without a scheduler, and
+the scheduler will not need its own copy of the logic.
+
 ## Transformation
 
-SQL transformations from `raw` → `staging` → `curated`, executed by the
-orchestrator. First justified transformations: `fact_match` and
-`fact_team_match_form` (rolling last-5 form computed only from matches finished
-*before* the match in question). *(midterm)*
+SQL files executed in order inside **one transaction**: either every curated
+table is consistent with the same staging state, or nothing changed and the
+previous data product is still there.
 
-## Google Cloud Architecture
+| Step | File | Produces |
+|---|---|---|
+| 1 | `110_staging_matches.sql` | `staging.matches` from raw JSONB |
+| 2 | `111_staging_teams.sql` | `staging.teams` |
+| 3 | `112_staging_standings.sql` | `staging.standings` (one snapshot per day) |
+| 4 | `210_dim_team.sql` | `curated.dim_team` incl. domestic-coverage flag |
+| 5 | `220_fact_match.sql` | `curated.fact_match` incl. derived outcome |
+| 6 | `230_fact_team_match_form.sql` | `curated.fact_team_match_form` |
 
-Ingestion writes raw JSON directly to a GCS bucket
-(`raw/source=…/endpoint=…/ingestion_date=…/run_id.json`); BigQuery loads staging
-tables from GCS and builds curated tables with `MERGE`. *(final)*
+Justification for the two non-trivial ones:
 
-## Terraform
+* **`fact_match`** derives `outcome` from the goals instead of copying the
+  API's `score.winner`, so the ML label can never contradict the numbers in its
+  own row, and derives `is_upcoming` from the kick-off time instead of the
+  status string, which the source uses inconsistently.
+* **`fact_team_match_form`** computes each team's last-5 form from matches
+  finished *strictly before* that match's kick-off. This directly serves the
+  use case (the app shows it, a model would train on it) and is the mechanism
+  that prevents data leakage.
 
-Provisions the GCS bucket, the BigQuery dataset, a service account and IAM
-bindings. *(final)*
-
-## Google Cloud Storage
-
-Raw data lake, Hive-style partitioned by source, endpoint and ingestion date. *(final)*
-
-## BigQuery
-
-Curated tables partitioned by `match_date` / `snapshot_date` and clustered by
-team/match ids – justification follows the expected query patterns
-("matches of team X in period Y", "snapshot of match Z N days before"). *(final)*
+The logic lives in `.sql` files rather than Python strings so it can be read,
+reviewed and run by hand in `psql` — and so the BigQuery versions are the same
+statements in a different dialect rather than a rewrite.
 
 ## Data Model
 
-Grains are listed under [Data Product](#data-product); a dedicated ADR with
-facts, dimensions and keys follows once the real schema is known.
+Grains, keys, facts and dimensions: [`docs/data-model.md`](docs/data-model.md).
+Every grain is also a `COMMENT ON TABLE` in the database, so the documentation
+cannot drift away from the schema.
 
 ## Data Quality
 
-Verification queries in [`sql/verify/`](sql/verify/) run via `make verify` and
-exit non-zero when a check fails, so the orchestrator can fail the run instead
-of reporting success on bad data. Implemented today: raw payloads present, all
-four endpoints ingested, no duplicate business keys, match payload non-empty,
-every raw row belongs to a recorded run, latest run succeeded, no run stuck in
-RUNNING. Row-level checks on the curated tables follow with the transformations.
+Twelve checks run after every transformation
+([`src/deng/quality/checks.py`](src/deng/quality/checks.py)) and are persisted
+to `meta.dq_results`, so "was the data good on 18 September?" is a query rather
+than an archaeology exercise in old logs.
 
-Evidence: [`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
+* **CRITICAL** failures fail the run: empty fact table, duplicate business
+  keys, matches lost between staging and curated, a team playing itself, a
+  finished match without an outcome, an outcome that disagrees with the goals,
+  a match without exactly two form rows, form counts that do not add up, form
+  built on matches that were not yet played, a team missing from `dim_team`.
+* **WARNING** failures are recorded and visible but do not stop the pipeline:
+  implausible scores, and how well populated the form window currently is
+  (early in a season most teams have fewer than three completed matches — real
+  and worth knowing, not a reason to discard the run).
+
+```bash
+make dq        # run the checks; non-zero exit on a CRITICAL failure
+```
 
 ## Reproducibility
 
-Everything a peer team needs is in this repository: `.env.example`, `Makefile`,
-pinned dependencies (`pyproject.toml`), CI running lint and tests on every push.
-Docker Compose and verification steps are added for the midterm and tested in a
-clean environment by the other team member before submission.
+Treated as a feature in its own right:
+
+* `setup.sh` / `make setup` need no pyenv, direnv or conda — only the standard
+  library's `venv`.
+* `--from-samples` runs the entire pipeline against committed payloads, so a
+  reviewer can reproduce every result **before registering an API key**.
+* CI runs lint, 56 tests and a two-run idempotency smoke test against a real
+  PostgreSQL, on Python 3.10 and 3.12.
+* Every number in [`docs/evidence/`](docs/evidence/) is console output from a
+  command in this README, not a description of one.
+
+Two environment bugs were found this way and fixed: `make` targets resolving
+`pytest` from `PATH` instead of the project venv, and interpreter detection
+accepting a `python3.12` whose `ensurepip` is missing.
 
 ## Verification
 
-Currently: `make test` (40 tests) and `make lint`. `make verify` with
-database checks follows with the midterm.
+| Command | Verifies | Expected |
+|---|---|---|
+| `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
+| `make test` | 56 tests: config, API client, source schema, loader, transformations, DQ | `56 passed` (or `28 passed, 28 skipped` without a database) |
+| `make lint` | formatting and static checks | `All checks passed!` |
+| `make verify` | raw zone, business keys, run log | `2/2 queries passed`, exit 0 |
+| `make dq` | curated-layer data quality | `11/12 checks passed`, exit 0 |
 
-## Analytics / Machine Learning
+Worked examples with real output:
+[`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
 
-Optional and last: availability analysis over snapshots; baseline HOME/DRAW/AWAY
-classifier with a time-based split on snapshot features only.
+## Analytics / Notebook
+
+[`notebooks/01_explore_curated_data.ipynb`](notebooks/01_explore_curated_data.ipynb)
+explores the curated layer: what is in the warehouse, the fixtures, the outcome
+distribution, form and its coverage, plus a query that **re-verifies the
+leakage guard independently** of the pipeline's own checks.
+
+```bash
+make setup-app     # installs the Streamlit and Jupyter extras
+make notebook      # JupyterLab with the project environment
+```
+
+Rule: exploration belongs in the notebook, pipeline logic in `src/` and `sql/`.
+If a query becomes part of the product, it moves into a transformation and gets
+a test.
 
 ## Streamlit Application
 
-Optional thin viewer over the curated tables (fixture picker → match
-intelligence). It never calls external APIs.
+```bash
+make app           # http://localhost:8501   (or: make docker-app)
+```
 
-## Architecture Evolution
+Pick an upcoming fixture and see kick-off, venue, both teams' form with the
+number of matches behind it, previous meetings and recent results. The sidebar
+shows pipeline freshness and the latest data-quality results.
 
-* v0.1 – initial pitch (this state): [`docs/architecture/architecture-v0.1.md`](docs/architecture/architecture-v0.1.md)
-* v0.2 – midterm: lessons learned, changed decisions *(to be written)*
-* final – complete cloud solution and evolution *(to be written)*
+**The app never calls an external API.** Selecting a fixture runs a SQL query
+against our curated tables. A frontend calling football-data.org on each click
+would be quicker to write and would make the pipeline pointless: no history, no
+reproducibility, no point-in-time correctness, and a rate limit shared with
+every visitor.
+
+## Google Cloud Architecture
+
+*Planned for the final submission.* Ingestion writes raw JSON straight to a GCS
+bucket (`raw/source=…/endpoint=…/ingestion_date=…/run_id.json`); BigQuery loads
+staging from GCS and builds curated tables with `MERGE`, partitioned by
+`match_date` / `snapshot_date` and clustered by team and match ids. Terraform
+provisions the bucket, the dataset, a service account and IAM bindings. The
+production path must not depend on local storage — the raw writer is already an
+abstraction for exactly that swap.
 
 ## Known Limitations
 
-* For **11 of the 36** league-phase clubs the free tier carries no domestic
-  league, so their form rests on Champions League matches alone. Form features
-  carry the number of matches behind them.
-* The API's own aggregates are inconsistent (`resultSet` win/draw/loss counts do
-  not sum to the match count; `standings.form` is null) → all form figures are
-  computed from individual match rows.
-* The competition format changed in 2024/25 (groups → single league phase), so
-  `group` is null for current seasons and populated for older ones.
-* No line-ups, injuries, player or match statistics → recorded as `NOT_AVAILABLE`.
-* Weather forecasts only ≤ 16 days ahead (reliable ≤ 7) → `NOT_YET_AVAILABLE`.
-* Venue coordinates come from a hand-maintained reference file.
-* The API is not reachable from every corporate/cloud network; run `make explore`
-  from a normal internet connection.
+Documented honestly, because hidden failures cost more than known ones:
+
+* **No line-ups, injuries, player or match statistics** on the free tier.
+* **11 of the 36 clubs** have no domestic-league coverage, so their form rests
+  on Champions League matches alone. Visible in the app and in the data.
+* **Form currently uses Champions League matches only** — team-level ingestion
+  across competitions is not implemented yet (backlog 2.4).
+* **Historical seasons are available but not ingested yet.** The API serves
+  them (verified); how many to load is an open decision (backlog 1.9).
+* **Backfill re-labels, it does not reconstruct.** The API always answers with
+  today's state, so a backfill for 17 September writes today's data under that
+  logical date. It recovers missed runs and enables re-processing; it does not
+  recover what the API would have said back then.
+* **Weather ingestion is not implemented yet**, so no weather appears in the
+  app despite being part of the use case.
+* **Docker Compose is written but only partially exercised** — see
+  [Project Status](#project-status).
+* The knockout fixtures do not exist until the December draw, so the fixture
+  list is currently the 144-match league phase.
 
 ## Project Status
 
 | Milestone | Deadline | Status |
 |---|---|---|
-| Milestone 1 – initial pitch | week 3 (pitch) | **complete** – use case, verified data sources, Architecture v0.1, ADRs, backlog |
-| Midterm – local pipeline | 22 Oct 2026 15:30 | in progress – ingestion, raw zone, Docker, reruns and backfills work; orchestrator and transformations open |
-| Final – cloud pipeline | 10 Dec 2026 20:00 | not started |
+| Milestone 1 — initial pitch | week 3 | **complete** — use case, verified sources, Architecture v0.1, ADRs, backlog |
+| Midterm — local pipeline | 22 Oct 2026, 15:30 | **largely complete** — ingestion, raw zone, transformations, curated model, data quality, reruns and backfills, Streamlit, notebook. Open: orchestrator, weather, Architecture v0.2, clean-environment test |
+| Final — cloud pipeline | 10 Dec 2026, 20:00 | not started |
 
-Rubric coverage: [`docs/rubric-checklist.md`](docs/rubric-checklist.md).
-
-## Project Backlog
-
-[`docs/project-backlog.md`](docs/project-backlog.md) – epics, MUST/SHOULD/COULD
-priorities, milestones, timeline and division of responsibilities.
+Rubric coverage: [`docs/rubric-checklist.md`](docs/rubric-checklist.md) ·
+Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 
 ## Repository Layout
 
 ```text
 .
 ├── README.md
-├── .env.example              # configuration template – copy to .env, never commit .env
-├── Makefile                  # setup · test · lint · format · explore
-├── pyproject.toml            # package metadata, dependencies, ruff/pytest config
-├── .github/workflows/ci.yml  # lint + tests on every push
-├── docker-compose.yml        # PostgreSQL + pipeline image on one network
-├── Dockerfile                # pinned, non-root pipeline image
+├── setup.sh                  # one-command setup (no pyenv/direnv/conda needed)
+├── Makefile                  # setup · test · up · run · verify · app · notebook
+├── docker-compose.yml        # postgres + pipeline + app on one network
+├── Dockerfile                # two stages: pipeline image, app image
+├── pyproject.toml            # dependencies and extras (dev / app / notebook)
+├── .env.example              # configuration template — copy to .env
+│
 ├── src/deng/
-│   ├── config.py             # validated settings from environment
-│   ├── pipeline.py           # CLI: init · ingest · backfill · verify
-│   ├── ingestion/
-│   │   ├── football_data_client.py
-│   │   └── extract.py        # which endpoints, which load strategy, and why
-│   └── database/
-│       ├── connection.py     # connections + DDL application
-│       ├── raw_loader.py     # idempotent upsert into the raw zone
-│       └── run_log.py        # meta.pipeline_runs context manager
-├── scripts/
-│   └── explore_football_api.py   # Phase-12 API exploration (writes data/sample/)
-├── tests/
+│   ├── config.py             # validated settings from the environment
+│   ├── pipeline.py           # CLI: init · ingest · transform · dq · run · backfill · verify
+│   ├── ingestion/            # API client + which endpoints and why
+│   ├── database/             # connections, idempotent raw loader, run log
+│   ├── transformation/       # ordered SQL execution in one transaction
+│   └── quality/              # the twelve data-quality checks
+│
 ├── sql/
-│   ├── raw/                  # schemas, meta tables, raw tables
-│   └── verify/               # verification queries (make verify)
-├── data/sample/              # small committed API samples (fixtures + offline source)
+│   ├── schema/               # DDL (applied by `make init`)
+│   ├── transform/            # raw → staging → curated
+│   └── verify/               # verification queries
+│
+├── app/streamlit_app.py      # viewer over the curated tables
+├── notebooks/                # exploration
+├── tests/                    # 56 tests: unit, contract, integration
+├── data/sample/              # committed API payloads (fixtures + offline source)
 └── docs/
-    ├── use-case.md
-    ├── data-sources.md
-    ├── rubric-checklist.md
-    ├── project-backlog.md
-    ├── architecture/architecture-v0.1.md
-    └── adr/
+    ├── use-case.md · data-sources.md · data-model.md
+    ├── rubric-checklist.md · project-backlog.md
+    ├── architecture/ · adr/ · evidence/
 ```
 
-Folders for `orchestration/`, `terraform/` and `app/` are created when the
-corresponding code arrives.
+## Contributing and Branch Strategy
+
+Two students, both responsible for the whole architecture.
+
+* `main` is always working: CI green, `make run-samples` succeeds.
+* Work happens on `feat/<topic>`, `fix/<topic>` or `docs/<topic>` branches.
+* Conventional commit messages: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`,
+  `ci:`, `chore:`. The body explains *why*, not what the diff already shows.
+* **Nobody merges their own pull request.** The reviewer must be able to
+  explain the change in the oral defence — that is the actual purpose of the
+  review, not style policing.
+* A change is done when it is implemented, tested, documented and its evidence
+  is reproducible.
+
+Division of responsibilities (ownership means "drives it and writes the docs",
+not "the only one who understands it"):
+
+| Area | Owner | Reviewer |
+|---|---|---|
+| Football ingestion, API client, raw model | Elias Martinelli | Noah Rodriguez |
+| Weather ingestion, venue reference data | Noah Rodriguez | Elias Martinelli |
+| Transformations, data model, data quality | Noah Rodriguez | Elias Martinelli |
+| Orchestration, Docker, Makefile, CI | Elias Martinelli | Noah Rodriguez |
+| Streamlit app and notebook | Noah Rodriguez | Elias Martinelli |
+| Terraform, GCS, BigQuery model | shared — paired session, then split by table | — |
+| Documentation and evidence | each documents what they built | — |
 
 ## Authors
 
-* Elias Martinelli
-* *Student B – to be added*
+* **Elias Martinelli** — <elias.martinelli@stud.hslu.ch>
+* **Noah Rodriguez** — <noah.rodriguez@stud.hslu.ch>
+
+HSLU, module DENG (Data Engineering), autumn semester 2026.

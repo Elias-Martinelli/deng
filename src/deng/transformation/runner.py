@@ -1,0 +1,115 @@
+"""Execute the SQL transformations in order.
+
+The logic lives in `.sql` files, not in Python strings. Three reasons: the
+files are readable and reviewable on their own, they can be run by hand in psql
+while debugging, and the BigQuery versions in the final architecture will be
+the same statements with a different dialect - a Python-generated query would
+have to be rewritten from scratch.
+
+The whole chain runs inside ONE transaction. Either every curated table is
+consistent with the same staging state, or nothing changed and the previous
+data product is still there. A half-transformed warehouse is worse than a
+slightly stale one.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
+
+import psycopg
+
+from deng.database.connection import _find_sql_dir
+
+logger = logging.getLogger(__name__)
+
+# Order matters: staging before curated, dimensions before the facts that
+# reference them, fact_match before the form table built on top of it.
+TRANSFORMATION_ORDER: tuple[str, ...] = (
+    "transform/110_staging_matches.sql",
+    "transform/111_staging_teams.sql",
+    "transform/112_staging_standings.sql",
+    "transform/210_dim_team.sql",
+    "transform/220_fact_match.sql",
+    "transform/230_fact_team_match_form.sql",
+)
+
+# Tables whose row counts are reported after a run.
+COUNTED_TABLES: tuple[str, ...] = (
+    "staging.matches",
+    "staging.teams",
+    "staging.standings",
+    "curated.dim_team",
+    "curated.fact_match",
+    "curated.fact_team_match_form",
+)
+
+
+@dataclass
+class TransformResult:
+    """What one transformation run did."""
+
+    logical_date: date
+    statements: list[tuple[str, int]] = field(default_factory=list)
+    row_counts: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def total_rows_written(self) -> int:
+        """Rows inserted or updated across all statements."""
+        return sum(count for _, count in self.statements)
+
+
+def run_transformations(
+    connection: psycopg.Connection,
+    logical_date: date,
+    order: tuple[str, ...] = TRANSFORMATION_ORDER,
+) -> TransformResult:
+    """Run every transformation for one logical date in a single transaction.
+
+    Args:
+        connection: Open connection. The caller must not have an open
+            transaction with uncommitted work it wants to keep separate.
+        logical_date: Which ingestion date to transform. Passed into the SQL as
+            `%(logical_date)s`, so a rerun for a past date reproduces that
+            date's result rather than today's.
+        order: The SQL files to execute, in order.
+
+    Returns:
+        A `TransformResult` with per-statement row counts and final table sizes.
+
+    Raises:
+        psycopg.Error: on any SQL failure - the whole transaction is rolled
+            back, leaving the previous curated state intact.
+    """
+    sql_dir = _find_sql_dir()
+    result = TransformResult(logical_date=logical_date)
+
+    try:
+        with connection.cursor() as cursor:
+            for relative in order:
+                path = sql_dir / relative
+                statement = path.read_text()
+                cursor.execute(statement, {"logical_date": logical_date})
+                affected = cursor.rowcount if cursor.rowcount is not None else 0
+                result.statements.append((relative, affected))
+                logger.info("%s -> %s rows", relative, affected)
+
+            for table in COUNTED_TABLES:
+                cursor.execute(f"SELECT count(*) FROM {table}")  # noqa: S608 - fixed literals
+                row = cursor.fetchone()
+                result.row_counts[table] = int(row[0]) if row else 0
+        connection.commit()
+    except psycopg.Error:
+        connection.rollback()
+        logger.exception("transformation failed for %s - rolled back", logical_date)
+        raise
+
+    return result
+
+
+def sql_files_present(sql_dir: Path | None = None, order: tuple[str, ...] = TRANSFORMATION_ORDER):
+    """Return the transformation files that are missing, for a setup self-check."""
+    base = sql_dir or _find_sql_dir()
+    return [name for name in order if not (base / name).exists()]
