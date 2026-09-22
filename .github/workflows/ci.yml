@@ -48,7 +48,9 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev]"
+        # The orchestrator extra too, so the Dagster definitions are loaded and
+        # tested in CI instead of being skipped.
+        run: pip install -e ".[dev,orchestrator]"
 
       - name: Lint
         run: |

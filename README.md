@@ -177,7 +177,7 @@ cd deng
 
 ./setup.sh                 # venv + install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 56 tests; the database ones skip without PostgreSQL
+make test                  # 65 tests; the database ones skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, no API key needed
@@ -228,27 +228,59 @@ make docker-app    # Streamlit viewer in a container → http://localhost:8501
 make down          # stop (keeps data);  make reset  also deletes the volume
 ```
 
-Three services on one network: `postgres`, the `pipeline` image and the `app`
-image. The pipeline is a batch job, not a daemon, so it runs per invocation via
-`docker compose run` rather than being kept alive. Dependent services wait for
+Services on one network: `postgres`, `dagster-webserver` and `dagster-daemon`
+(started by `docker compose up -d`), the `pipeline` image for manual runs and
+the `app` image (profile `app`). The pipeline is a batch job, not a daemon: the
+orchestrator runs it on schedule, and `docker compose run` runs it by hand. Dependent services wait for
 the database's *health check*, not merely for the container to exist, so a cold
 start cannot fail with "connection refused". The app is a second build stage,
 which keeps the pipeline image free of a web framework.
 
+> **Port 5432 already taken?** If PostgreSQL is also installed natively, it
+> keeps `localhost:5432` and host-side commands (`make init`, `make test`)
+> silently talk to *that* database instead of the container. Set
+> `POSTGRES_PORT=5433` in `.env` before `make up`. `ss -ltn | grep 5432` shows
+> whether something is listening.
+
+Executed end to end on an empty volume, including the three defects that the
+first real run exposed: [evidence §11](docs/evidence/local-pipeline-run.md#11-docker-compose-executed-21-september-2026).
+
 ## Workflow Orchestration
 
-Candidate: Dagster, because daily partitions map one-to-one onto our ingestion
-dates. Evaluation: [ADR-002](docs/adr/ADR-002-workflow-orchestrator.md).
-*Still to be implemented* — the interface it will drive already exists and is
-parameterised by logical date:
+**Dagster**, decided after a spike ([ADR-002](docs/adr/ADR-002-workflow-orchestrator.md)).
+One asset per table, one daily partition per logical date:
+
+```text
+raw/football_data ──► staging/{matches,teams,standings} ──► curated/{dim_team,fact_match,fact_team_match_form} ──► meta/dq_results
+      ingest                         transform (one transaction)                                         data quality
+```
+
+```bash
+make orchestrator          # PostgreSQL + Dagster webserver + daemon → http://localhost:3000
+make dagster-backfill FROM=2026-09-15 TO=2026-09-17   # one run per day, one at a time
+```
+
+* **Schedule:** `daily_pipeline_schedule`, 06:00 Europe/Zurich, active as soon
+  as the daemon runs. The 06:00 run ingests under *today's* date.
+* **Dependencies:** a failed ingest does not start the transform; a CRITICAL
+  data-quality failure fails the run, a WARNING shows up in the asset metadata.
+* **Retries:** only for transient errors (HTTP 429/5xx, network, database not
+  reachable): 3 attempts, 1 → 2 → 4 minutes. A 403, a missing API key or a
+  failed check fails at once - repeating it cannot change the answer.
+* **Reruns and backfills:** re-materialise any partition in the UI or with
+  `make dagster-backfill`. Safe because the raw load is an upsert and staging
+  never overwrites newer data with older.
+* **No API key?** Set `INGEST_SOURCE=samples` in `.env`; schedule and backfills
+  then replay the committed payloads.
+* **Without Docker:** `make setup-orchestrator && make dagster-dev`.
+
+The assets call the same functions as the CLI, so the manual path still works
+and is what the orchestrator runs:
 
 ```bash
 python -m deng.pipeline run --date 2026-09-18
 python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
 ```
-
-Reruns and backfills are therefore already testable without a scheduler, and
-the scheduler will not need its own copy of the logic.
 
 ## Transformation
 
@@ -315,7 +347,7 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
-* CI runs lint, 56 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 65 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -329,7 +361,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 56 tests: config, API client, source schema, loader, transformations, DQ | `56 passed` (or `28 passed, 28 skipped` without a database) |
+| `make test` | 65 tests: config, API client, source schema, loader, transformations, DQ, orchestration | `65 passed` (or `34 passed, 31 skipped` without a database; the 9 orchestration tests need `make setup-orchestrator`) |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log | `2/2 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | `11/12 checks passed`, exit 0 |
@@ -396,8 +428,6 @@ Documented honestly, because hidden failures cost more than known ones:
   recover what the API would have said back then.
 * **Weather ingestion is not implemented yet**, so no weather appears in the
   app despite being part of the use case.
-* **Docker Compose is written but only partially exercised** — see
-  [Project Status](#project-status).
 * The knockout fixtures do not exist until the December draw, so the fixture
   list is currently the 144-match league phase.
 
@@ -406,7 +436,7 @@ Documented honestly, because hidden failures cost more than known ones:
 | Milestone | Deadline | Status |
 |---|---|---|
 | Milestone 1 — initial pitch | week 3 | **complete** — use case, verified sources, Architecture v0.1, ADRs, backlog |
-| Midterm — local pipeline | 22 Oct 2026, 15:30 | **largely complete** — ingestion, raw zone, transformations, curated model, data quality, reruns and backfills, Streamlit, notebook. Open: orchestrator, weather, Architecture v0.2, clean-environment test |
+| Midterm — local pipeline | 22 Oct 2026, 15:30 | **largely complete** — ingestion, raw zone, transformations, curated model, data quality, Dagster orchestration, Docker Compose verified, Streamlit, notebook. Open: weather, raw validation, Architecture v0.2, clean-environment test |
 | Final — cloud pipeline | 10 Dec 2026, 20:00 | not started |
 
 Rubric coverage: [`docs/rubric-checklist.md`](docs/rubric-checklist.md) ·
@@ -419,8 +449,9 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── README.md
 ├── setup.sh                  # one-command setup (no pyenv/direnv/conda needed)
 ├── Makefile                  # setup · test · up · run · verify · app · notebook
-├── docker-compose.yml        # postgres + pipeline + app on one network
-├── Dockerfile                # two stages: pipeline image, app image
+├── docker-compose.yml        # postgres + Dagster + pipeline + app on one network
+├── Dockerfile                # three stages: pipeline, app, orchestrator
+├── orchestrator/             # Dagster instance + workspace config (DAGSTER_HOME)
 ├── pyproject.toml            # dependencies and extras (dev / app / notebook)
 ├── .env.example              # configuration template — copy to .env
 │
@@ -430,6 +461,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │   ├── ingestion/            # API client + which endpoints and why
 │   ├── database/             # connections, idempotent raw loader, run log
 │   ├── transformation/       # ordered SQL execution in one transaction
+│   ├── orchestration/        # Dagster assets, schedule, retry policy
 │   └── quality/              # the twelve data-quality checks
 │
 ├── sql/
@@ -439,7 +471,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │
 ├── app/streamlit_app.py      # viewer over the curated tables
 ├── notebooks/                # exploration
-├── tests/                    # 56 tests: unit, contract, integration
+├── tests/                    # 65 tests: unit, contract, integration
 ├── data/sample/              # committed API payloads (fixtures + offline source)
 └── docs/
     ├── use-case.md · data-sources.md · data-model.md

@@ -16,7 +16,7 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 | PostgreSQL locally | MIDTERM | DONE | `sql/raw/001..003`, `src/deng/database/` | 16 raw rows loaded and queried, evidence §1–§5 | staging + curated schemas |
 | Cloud storage + warehouse (GCS, BigQuery) in the final solution | FINAL | TODO | – | – | EPIC 9, 10 |
 | Transformations justified in README | MIDTERM | DONE | `sql/transform/`, README §Transformation | 6 steps, per-step justification; 16 tests | weather transformations |
-| Orchestration: schedule, dependencies, reruns, retries, backfills | MIDTERM | IN PROGRESS | retries + reruns + backfills implemented and evidenced | evidence §2, §3, §6 | scheduling via Dagster (ADR-002) |
+| Orchestration: schedule, dependencies, reruns, retries, backfills | MIDTERM | DONE | Dagster `daily_pipeline` + schedule, transient-only retries | evidence §2, §3, §6, §12; `tests/test_orchestration.py` | validate step (2.8), failure matrix (5.6) |
 | Terraform for GCP resources; no hard-coded secrets | FINAL | TODO | `.env.example`, `.gitignore` rules for tfstate/keys | secrets scan of repo clean | EPIC 11 |
 | Reproducibility: clone → README → run assessed stages | MIDTERM / FINAL | IN PROGRESS | `setup.sh`, `Makefile` (20 targets), `--from-samples` lets a reviewer run without an API key | `make test` in CI; evidence reproducible | clean-environment test on a second machine |
 | Repository: code, config, diagrams, setup, verification, known limitations | all | IN PROGRESS | `README.md`, `docs/architecture/`, `docs/use-case.md` §Limitations | – | keep current |
@@ -41,8 +41,8 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 |---|---|---|---|---|---|
 | Modular batch-ingestion script loading source data into storage (4 pts) | MIDTERM | DONE | client + extract + raw loader + CLI | evidence §1, 40 tests | weather source |
 | Local PostgreSQL with loaded, queryable data (2 pts) | MIDTERM | DONE | `raw.football_data`, `meta.pipeline_runs` | `make verify` 2/2 passed, evidence §5 | curated tables |
-| Docker Compose with required services on a common network (3 pts) | MIDTERM | IN PROGRESS | `docker-compose.yml`, `Dockerfile` | written with healthcheck, volume, non-root image | must be run on a machine with Docker; add orchestrator service |
-| Orchestrator runs and schedules ingestion, supports reruns/backfills (3 pts) | MIDTERM | IN PROGRESS | CLI parameterised by logical date; reruns and backfills proven | evidence §2, §3 | scheduler itself (ADR-002 spike) |
+| Docker Compose with required services on a common network (3 pts) | MIDTERM | DONE | `docker-compose.yml`, `Dockerfile` | executed on an empty volume: postgres, Dagster webserver + daemon, pipeline and app images (evidence §11, §12) | clean-environment test (4.4) |
+| Orchestrator runs and schedules ingestion, supports reruns/backfills (3 pts) | MIDTERM | DONE | Dagster in Compose, daily partitions, schedule RUNNING | evidence §12, ADR-002 | – |
 | ≥ 1 justified transformation supporting the use case | MIDTERM | DONE | `fact_match`, `fact_team_match_form` | point-in-time form; leakage guard tested | – |
 | Architecture v0.2 reflecting implementation experience | MIDTERM | TODO | – | – | 14.4 |
 | Complete setup, execution, verification instructions | MIDTERM | TODO | – | – | 14.5 |

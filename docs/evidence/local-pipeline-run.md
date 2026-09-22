@@ -275,3 +275,105 @@ Reads `curated.fact_match`, `curated.dim_team` and
 for the sidebar. No HTTP request leaves the app. The screenshot shows the
 one-match form window and the honest "no previous meeting in our data" notice
 rather than an invented head-to-head.
+
+## 11. Docker Compose, executed (21 September 2026)
+
+Docker 28.0.4, Compose v2.34.0 (Docker Desktop, WSL 2 integration). Until
+this run the Compose file had only been written, not executed - and executing it
+found three defects that no unit test could have caught:
+
+| Defect | Symptom | Fix |
+|---|---|---|
+| `pipeline` service built without `target` | Compose built the *last* Dockerfile stage, the Streamlit image: `make docker-ingest` failed with `streamlit run … No such option '--from-samples'` | stage renamed to `pipeline`, `target: pipeline` in Compose |
+| `docker-ingest` skipped the DDL | `relation "meta.pipeline_runs" does not exist` on a fresh volume | target runs `init` first (idempotent) |
+| sample payloads not in the container | `FileNotFoundError: …/data/sample/football-data/competition.json` | `./data/sample` mounted read-only, like `./sql` |
+
+After the fixes, on an empty volume:
+
+```text
+$ make up                       → PostgreSQL is healthy.
+$ make docker-ingest            → applied 5 SQL file(s) … ingest for 2026-09-21: OK
+                                  (4 payloads INSERTED, 144 matches)
+$ docker compose run --rm pipeline transform
+                                  curated.fact_match 144 rows
+                                  curated.fact_team_match_form 288 rows
+$ docker compose run --rm pipeline verify
+                                  verification: 2/2 queries passed
+$ make docker-app               → GET /_stcore/health → ok
+```
+
+The viewer was also rendered headless inside its container
+(`streamlit.testing.v1.AppTest`): no exception, no error element, a fixture
+picker with 126 upcoming matches and populated metrics - i.e. it reads the
+containerised database, not just "the server is up". The same run surfaced a
+deprecation (`use_container_width`), replaced by `width="stretch"` with
+Streamlit pinned to the verified range `>=1.64,<2`.
+
+**Trap found on the way:** a natively installed PostgreSQL on the host already
+listened on `localhost:5432`. Docker Desktop still started the container, but
+host-side commands (`make init`, `pytest`) then talked to the *native* database
+while the containers used their own. Everything looks green, against two
+different databases. The README now says to set `POSTGRES_PORT` to a free port
+in that case.
+
+## 12. Dagster orchestration (21 September 2026)
+
+Spike for [ADR-002](../adr/ADR-002-workflow-orchestrator.md), run in Docker
+Compose on the stack from §11 with `INGEST_SOURCE=samples`.
+
+**Stack:**
+
+```text
+$ make orchestrator
+deng-postgres            Up (healthy)
+deng-dagster-webserver   Up (healthy)       http://localhost:3000
+deng-dagster-daemon      Up (healthy)       dagster-daemon liveness-check
+
+$ dagster schedule list
+Schedule: daily_pipeline_schedule [RUNNING]
+Cron Schedule: 0 6 * * *
+```
+
+**Backfill over three days** (`dagster job backfill -j daily_pipeline --from
+2026-09-15 --to 2026-09-17`), then a **rerun** of 2026-09-16. Dagster's run
+table and our own run log agree:
+
+```text
+ status  | partition  | created  | updated
+ SUCCESS | 2026-09-15 | 10:58:46 | 10:59:00
+ SUCCESS | 2026-09-16 | 10:58:46 | 10:59:10      ← runs queued together,
+ SUCCESS | 2026-09-17 | 10:58:47 | 10:59:18        executed one after another
+ SUCCESS | 2026-09-16 | …        | …             ← rerun
+
+ pipeline_name       | logical_date | status  | rows_extracted | rows_loaded
+ transform_curated   | 2026-09-17   | SUCCESS |              0 |         504
+ ingest_football_raw | 2026-09-17   | SUCCESS |            228 |           4
+ transform_curated   | 2026-09-16   | SUCCESS |              0 |         504
+ …
+ transform_curated   | 2026-09-21   | SUCCESS |              0 |         684
+
+raw rows for 2026-09-16 after the rerun: 4        (unchanged - idempotent)
+CRITICAL data-quality failures:          0
+```
+
+The 504 vs. 684 rows are the stale-data guard at work: transforming an *older*
+date than the one already in staging skips exactly the 144 match rows and 36
+team rows that would otherwise be overwritten with older values (684 − 504 =
+180). A backfill therefore cannot roll the data product back in time.
+
+`make dagster-backfill FROM=2026-09-18 TO=2026-09-19` → both partitions SUCCESS.
+`make dagster-dev` (no Docker) served the UI on port 3000.
+
+**Tests** (`tests/test_orchestration.py`, 9 tests): definitions load with one
+asset per table; the 06:00 tick on 21 Sep targets partition `2026-09-21`;
+transient errors propagate to the retry policy, permanent ones become
+`Failure(allow_retries=False)`; a full run builds 144 / 288 rows; rerunning a
+partition keeps 4 raw rows; a run without an API key fails **without** a retry
+event and without starting the transform.
+
+**Found on the way:** the `connection` test fixture emptied raw and meta but
+not staging and curated. After a `make run-samples` (today's date in staging),
+`test_rerun_for_an_older_date_does_not_overwrite_newer_data` failed - a
+reviewer following the README in order would have hit it. The fixture now
+empties every pipeline table; the full suite (65) passes directly after
+`make run-samples`.

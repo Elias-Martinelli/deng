@@ -1,0 +1,26 @@
+# Dagster instance configuration for the Compose stack (DAGSTER_HOME).
+#
+# Storage: run history, event logs and schedule state go into the project's
+# PostgreSQL rather than Dagster's default SQLite files. Two reasons: the
+# webserver and the daemon are separate containers and must see the same state,
+# and `docker compose down -v` then resets orchestrator and data together.
+# Dagster's tables land in the `public` schema; our own data lives in
+# raw/staging/curated/meta, so the two cannot collide.
+storage:
+  postgres:
+    postgres_db:
+      hostname: {env: POSTGRES_HOST}
+      port: {env: POSTGRES_PORT}
+      username: {env: POSTGRES_USER}
+      password: {env: POSTGRES_PASSWORD}
+      db_name: {env: POSTGRES_DB}
+
+# One run at a time. Every run ends in the same curated tables, and a backfill
+# of 20 days would otherwise start 20 concurrent transformations that block
+# each other on the same rows. Queued runs execute in submission order.
+concurrency:
+  runs:
+    max_concurrent_runs: 1
+
+telemetry:
+  enabled: false

@@ -9,9 +9,9 @@
     python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
     python -m deng.pipeline verify                    run the verification queries
 
-The orchestrator added in the next sprint calls exactly these entry points, so
-what runs under a scheduler is the same code a reviewer can run by hand. Nothing
-here knows about the orchestrator.
+The Dagster assets (`deng.orchestration`) call exactly these entry points, so
+what runs under the scheduler is the same code a reviewer can run by hand.
+Nothing here knows about the orchestrator.
 """
 
 from __future__ import annotations

@@ -27,8 +27,17 @@ dev = [
 # pipeline image stays small and a reviewer who only runs the pipeline does not
 # install Streamlit and Jupyter.
 app = [
-  "streamlit>=1.38",
+  # >=1.64: the version verified in the container; `width="stretch"` replaces the
+  # removed `use_container_width`. <2 guards against the next breaking release.
+  "streamlit>=1.64,<2",
   "pandas>=2.2",
+]
+# The orchestrator (ADR-002). Pinned to one minor release because Dagster's
+# APIs move quickly between minors; dagster-postgres versions in lockstep.
+orchestrator = [
+  "dagster>=1.13,<1.14",
+  "dagster-webserver>=1.13,<1.14",
+  "dagster-postgres>=0.29,<0.30",
 ]
 notebook = [
   "jupyterlab>=4.2",
