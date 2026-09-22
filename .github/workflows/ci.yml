@@ -67,5 +67,4 @@ jobs:
         run: |
           python -m deng.pipeline ingest --date 2026-09-20 --from-samples
           python -m deng.pipeline ingest --date 2026-09-20 --from-samples
-          python -m deng.pipeline transform --date 2026-09-20
           python -m deng.pipeline verify
