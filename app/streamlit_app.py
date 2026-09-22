@@ -11,6 +11,12 @@ no reproducibility, no history, no point-in-time correctness, and a rate limit
 shared with every visitor.
 
 Run it with:  make app        (or: streamlit run app/streamlit_app.py)
+
+How Streamlit executes this file - the key to everything below: on *every*
+interaction (picking another fixture) the whole script runs again from top to
+bottom. There are no callbacks and no page state beyond the widgets' values.
+That is why the database access is cached: without it, every click would
+reconnect and re-run every query.
 """
 
 from __future__ import annotations
@@ -26,6 +32,8 @@ import streamlit as st
 # installing the package first.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+# `components` lives next to this file; `streamlit run` puts the script's own
+# directory on sys.path, which makes this plain import work.
 from components import (  # noqa: E402
     CSS,
     MatchWeather,
@@ -55,12 +63,21 @@ st.set_page_config(
     # Diagnostics live in the sidebar; on a phone it would cover the page.
     initial_sidebar_state="collapsed",
 )
+# unsafe_allow_html: Streamlit escapes HTML by default. We allow it only for
+# markup built in components.py, where every value from the data is escaped -
+# the "unsafe" part is therefore under our control, never raw API text.
 st.markdown(CSS, unsafe_allow_html=True)
 
 
 @st.cache_resource
 def get_connection() -> psycopg.Connection:
-    """One pooled connection for the session."""
+    """One database connection, shared by all reruns and visitors of this app process.
+
+    cache_resource (not cache_data): a connection is a live object that must be
+    reused, not copied. autocommit=True because the app only reads - without it
+    every query would leave a transaction open ("idle in transaction") and hold
+    back PostgreSQL's cleanup of old row versions.
+    """
     return psycopg.connect(get_settings().postgres_dsn, autocommit=True)
 
 
@@ -71,6 +88,10 @@ def query(sql: str, params: tuple | None = None) -> pd.DataFrame:
     Cached for a minute: the underlying data changes once a day, so re-querying
     on every widget interaction would only add latency.
     """
+    # cache_data keys the cache on (sql, params): the same fixture picked twice
+    # within a minute is answered from memory. Values are always bound as
+    # parameters (%s), never formatted into the SQL - no injection, even though
+    # they originate from a widget.
     with get_connection().cursor() as cursor:
         cursor.execute(sql, params)
         columns = [c.name for c in cursor.description or []]
@@ -79,6 +100,8 @@ def query(sql: str, params: tuple | None = None) -> pd.DataFrame:
 
 def data_is_available() -> bool:
     """True when the curated layer holds matches."""
+    # Also catches "relation does not exist" on a fresh database, so a reviewer
+    # who starts the app before the pipeline sees instructions, not a traceback.
     try:
         return int(query("SELECT count(*) AS n FROM curated.fact_match").iloc[0]["n"]) > 0
     except psycopg.Error:
@@ -159,6 +182,9 @@ runs = query(
      ORDER BY finished_at DESC LIMIT 5
     """
 )
+# "The latest check run" = all rows with the newest checked_at. This works
+# because run_checks writes one run's results in one transaction, where now()
+# is constant - see the comment at the end of quality/checks.py.
 dq = query(
     """
     SELECT check_name, severity, passed, observed
