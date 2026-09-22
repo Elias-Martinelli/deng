@@ -35,7 +35,7 @@ PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 .PHONY: help setup setup-app test test-integration lint format explore doctor clean \
         up down logs ps psql init ingest ingest-samples transform dq run run-samples \
         backfill verify docker-ingest docker-app reset app notebook \
-        setup-orchestrator orchestrator dagster-dev dagster-backfill venues
+        setup-orchestrator orchestrator dagster-dev dagster-backfill venues docker-ready
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-19s %s\n", $$1, $$2}'
@@ -93,10 +93,15 @@ explore:  ## API exploration: fetch small samples from football-data.org (needs 
 
 # --- Docker environment -----------------------------------------------------
 
+# Every target that needs the Docker daemon depends on this one: it starts
+# Docker Desktop (WSL, macOS) when it is not running and waits until it answers.
+docker-ready:  ## Make sure Docker is running (starts Docker Desktop on WSL/macOS if needed)
+	@scripts/ensure_docker.sh
+
 # `up -d` returns as soon as the container exists, not when the database accepts
 # connections. The loop polls Docker's health status (defined by the healthcheck
 # in docker-compose.yml) for up to 60 s, so the next command cannot race it.
-up:  ## Start PostgreSQL and wait until it is healthy
+up: docker-ready  ## Start PostgreSQL and wait until it is healthy
 	docker compose up -d postgres
 	@echo "waiting for PostgreSQL to become healthy..."
 	@for i in $$(seq 1 30); do \
@@ -111,14 +116,14 @@ down:  ## Stop the containers (keeps the data volume)
 reset:  ## Stop the containers AND delete all data
 	docker compose down -v
 
-logs:  ## Follow the PostgreSQL logs
+logs: docker-ready  ## Follow the PostgreSQL logs
 	docker compose logs -f postgres
 
-ps:  ## Show container status
+ps: docker-ready  ## Show container status
 	docker compose ps
 
 # $${VAR:-default}: the shell's "value or default" - works with or without .env.
-psql:  ## Open a psql shell in the database container
+psql: docker-ready  ## Open a psql shell in the database container
 	docker compose exec postgres psql -U $${POSTGRES_USER:-deng} -d $${POSTGRES_DB:-cl_intelligence}
 
 # --- Pipeline ---------------------------------------------------------------
@@ -152,11 +157,11 @@ backfill:  ## Re-ingest raw data for a date range: make backfill FROM=2026-09-01
 verify:  ## Run the verification queries; non-zero exit when a check fails
 	$(PY) -m deng.pipeline verify
 
-docker-ingest:  ## Run init + ingestion inside the container image (proves the image works)
+docker-ingest: docker-ready  ## Run init + ingestion inside the container image (proves the image works)
 	docker compose run --rm pipeline init
 	docker compose run --rm pipeline ingest --from-samples
 
-docker-app:  ## Start the Streamlit viewer in a container on http://localhost:8501
+docker-app: docker-ready  ## Start the Streamlit viewer in a container on http://localhost:8501
 	docker compose --profile app up -d --build app
 
 test-integration:  ## Run only the tests that need PostgreSQL
@@ -167,7 +172,7 @@ test-integration:  ## Run only the tests that need PostgreSQL
 setup-orchestrator:  ## Install the Dagster extra into .venv (for dagster-dev and its tests)
 	$(VENV)/bin/pip install -e ".[dev,orchestrator]"
 
-orchestrator:  ## Start PostgreSQL + Dagster (webserver, daemon); UI on http://localhost:3000
+orchestrator: docker-ready  ## Start PostgreSQL + Dagster (webserver, daemon); UI on http://localhost:3000
 	docker compose up -d --build postgres dagster-webserver dagster-daemon
 	@echo "Dagster UI: http://localhost:$${DAGSTER_PORT:-3000}"
 
@@ -176,7 +181,7 @@ orchestrator:  ## Start PostgreSQL + Dagster (webserver, daemon); UI on http://l
 dagster-dev:  ## Run Dagster locally without Docker (needs setup-orchestrator and a reachable PostgreSQL)
 	mkdir -p .dagster && DAGSTER_HOME=$(CURDIR)/.dagster $(VENV)/bin/dagster dev -m deng.orchestration.definitions
 
-dagster-backfill:  ## Backfill through Dagster: make dagster-backfill FROM=2026-09-15 TO=2026-09-17
+dagster-backfill: docker-ready  ## Backfill through Dagster: make dagster-backfill FROM=2026-09-15 TO=2026-09-17
 	docker compose exec dagster-webserver dagster job backfill -j daily_pipeline \
 		--from $(FROM) --to $(TO) -w /opt/dagster/dagster_home/workspace.yaml --noprompt
 
