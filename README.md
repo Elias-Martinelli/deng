@@ -9,13 +9,10 @@ results, standings and team data into a curated, point-in-time-correct
 pre-match dataset — served to a notebook, a Streamlit viewer and, later, to
 machine learning.
 
-```text
-football-data.org ──┐                                    ┌─ Jupyter notebook
-Open-Meteo *) ──────┼─► batch ingestion ─► RAW ─► STAGING ─► CURATED ─┼─ Streamlit viewer
-venues.csv *) ──────┘   (daily, idempotent)                          └─ Analytics / ML *)
-```
+![Data pipeline architecture](docs/architecture.svg)
 
-`*)` planned — see [Project Status](#project-status).
+How the pieces fit: [Architecture](#architecture) · what is done and what is
+not: [Project Status](#project-status).
 
 **Quick start** (no API key needed):
 
@@ -133,10 +130,24 @@ Identified by measurement, not assumption ([evidence](docs/evidence/api-explorat
 
 ## Architecture
 
+The diagram at the top shows the local stack. One daily run, orchestrated by
+Dagster, in three steps:
+
+| Step | Trigger | What it does |
+| --- | --- | --- |
+| **1. Ingest** | daily 06:00 Europe/Zurich, plus backfill on demand | Fetches fixtures, results, teams and standings; forecasts for matches ≤ 16 days ahead; missing club crests. Stores every answer unchanged in `raw` with an idempotent upsert per day |
+| **2. Transform** | after a successful ingest | SQL in one transaction: `raw` → typed `staging` → `curated` facts and dimensions, incl. point-in-time form and the weather status per match |
+| **3. Quality checks** | after the transformation | 18 checks stored in `meta.dq_results`; a CRITICAL failure fails the run, a WARNING stays visible |
+
+Colours in the diagram: grey = outside world (sources, consumers), blue =
+processing step, purple = storage and orchestration; dashed = control, not
+data. The source of the picture is [`docs/architecture.svg`](docs/architecture.svg)
+(plain SVG, readable in light and dark mode).
+
 * [Architecture v0.1](docs/architecture/architecture-v0.1.md) — the initial
   design with Mermaid diagrams for the conceptual, local and cloud views.
 * [Architecture Decision Records](docs/adr/README.md) — data sources,
-  orchestrator, raw storage.
+  orchestrator, raw storage, Champions League scope.
 * Architecture v0.2 (midterm) will record what implementation changed.
 
 ## Batch Ingestion Strategy
@@ -646,7 +657,9 @@ not "the only one who understands it"):
 
 ## Authors
 
-* **Elias Martinelli** — <elias.martinelli@stud.hslu.ch>
-* **Noah Rodriguez** — <noah.rodriguez@stud.hslu.ch>
+| | Author | GitHub | E-mail |
+| --- | --- | --- | --- |
+| <img src="https://github.com/Elias-Martinelli.png?size=80" width="40" alt=""> | **Elias Martinelli** | [@Elias-Martinelli](https://github.com/Elias-Martinelli) | <elias.martinelli@stud.hslu.ch> |
+| <img src="https://github.com/Noah-Rod.png?size=80" width="40" alt=""> | **Noah Rodriguez** | [@Noah-Rod](https://github.com/Noah-Rod) | <noah.rodriguez@stud.hslu.ch> |
 
 HSLU, module DENG (Data Engineering), autumn semester 2026.
