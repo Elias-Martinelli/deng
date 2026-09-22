@@ -20,7 +20,10 @@ SELECT
     m.match_id,
     m.season_id,
     m.utc_kickoff,
-    m.utc_kickoff::date,
+    -- The UTC calendar day, explicitly: a bare ::date would use the session's
+    -- time zone (UTC in the container, often Europe/Zurich on a laptop) and
+    -- give a late kick-off a different date depending on where the job runs.
+    (m.utc_kickoff AT TIME ZONE 'UTC')::date,
     m.stage,
     m.matchday,
     m.status,

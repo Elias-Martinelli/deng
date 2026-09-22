@@ -241,3 +241,27 @@ def test_a_critical_violation_is_detected(connection, transformed, run_id):
     failed = {r.check.name for r in results if not r.passed}
     assert "outcome_matches_the_goals" in failed
     assert any(r.is_blocking and r.check.severity == CRITICAL for r in results)
+
+
+def test_match_date_is_the_utc_day_whatever_the_session_time_zone(connection, run_id, all_samples):
+    """UTC+14: every evening kick-off is 'tomorrow' locally - match_date must not follow."""
+    loader = RawLoader(connection)
+    for endpoint, payload in all_samples.items():
+        loader.load(
+            run_id=run_id,
+            endpoint=endpoint,
+            request_params={},
+            request_url=f"https://api.football-data.org/v4/{endpoint}",
+            payload=payload,
+            ingestion_date=LOGICAL_DATE,
+        )
+    connection.commit()
+    with connection.cursor() as cursor:
+        cursor.execute("SET TIME ZONE 'Pacific/Kiritimati'")
+    run_transformations(connection, LOGICAL_DATE)
+    shifted = scalar(
+        connection,
+        "SELECT count(*) FROM curated.fact_match "
+        "WHERE match_date <> (utc_kickoff AT TIME ZONE 'UTC')::date",
+    )
+    assert shifted == 0
