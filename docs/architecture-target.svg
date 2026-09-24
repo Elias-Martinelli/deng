@@ -85,28 +85,28 @@
   <text class="s" x="640" y="176" text-anchor="middle">the same SQL files</text>
   <text class="s" x="640" y="192" text-anchor="middle">raw → staging → curated</text>
 
-  <rect class="box plat" x="860" y="130" width="140" height="74" rx="10"/>
-  <text class="h" x="930" y="156" text-anchor="middle">Data product</text>
-  <text class="s" x="930" y="176" text-anchor="middle">dashboard today</text>
-  <text class="s" x="930" y="192" text-anchor="middle">model later</text>
+  <rect class="box plat" x="876" y="130" width="126" height="74" rx="10"/>
+  <text class="h" x="939" y="156" text-anchor="middle">Data product</text>
+  <text class="s" x="939" y="176" text-anchor="middle">dashboard today</text>
+  <text class="s" x="939" y="192" text-anchor="middle">model later</text>
 
   <!-- Cloud row -->
   <rect class="box cloud" x="392" y="92" width="150" height="62" rx="10"/>
   <text class="h" x="467" y="116" text-anchor="middle">Data lake</text>
   <text class="s" x="467" y="135" text-anchor="middle">GCS bucket, raw objects</text>
 
-  <rect class="box cloud" x="742" y="92" width="150" height="62" rx="10"/>
-  <text class="h" x="817" y="116" text-anchor="middle">Warehouse</text>
-  <text class="s" x="817" y="135" text-anchor="middle">BigQuery, partitioned</text>
+  <rect class="box cloud" x="740" y="92" width="128" height="62" rx="10"/>
+  <text class="h" x="804" y="116" text-anchor="middle">Warehouse</text>
+  <text class="s" x="804" y="135" text-anchor="middle">BigQuery</text>
 
   <!-- Local row -->
   <rect class="box local" x="392" y="256" width="150" height="62" rx="10"/>
   <text class="h" x="467" y="280" text-anchor="middle">Local storage</text>
   <text class="s" x="467" y="299" text-anchor="middle">PostgreSQL, raw schema</text>
 
-  <rect class="box local" x="742" y="256" width="150" height="62" rx="10"/>
-  <text class="h" x="817" y="280" text-anchor="middle">Curated tables</text>
-  <text class="s" x="817" y="299" text-anchor="middle">same models, PostgreSQL</text>
+  <rect class="box local" x="740" y="256" width="128" height="62" rx="10"/>
+  <text class="h" x="804" y="280" text-anchor="middle">Curated tables</text>
+  <text class="s" x="804" y="299" text-anchor="middle">same models</text>
 
   <!-- Flows -->
   <path class="flow" d="M174,167 L202,167"/>
@@ -114,10 +114,10 @@
   <path class="lflow" d="M364,180 L390,272"/>
   <path class="cflow" d="M542,123 L558,150"/>
   <path class="lflow" d="M542,272 L558,186"/>
-  <path class="cflow" d="M720,150 L740,123"/>
-  <path class="lflow" d="M720,186 L740,272"/>
-  <path class="cflow" d="M892,123 L930,128"/>
-  <path class="lflow" d="M892,272 L930,206"/>
+  <path class="cflow" d="M720,150 L738,123"/>
+  <path class="lflow" d="M720,186 L738,272"/>
+  <path class="cflow" d="M868,123 L874,146"/>
+  <path class="lflow" d="M868,272 L874,192"/>
 
   <!-- Platform row -->
   <rect class="box plat" x="24" y="398" width="180" height="66" rx="10"/>
@@ -147,7 +147,7 @@
 
   <path class="ctrl" d="M114,398 L284,208"/>
   <path class="ctrl" d="M312,398 L467,322"/>
-  <path class="ctrl" d="M510,398 L790,160"/>
+  <path class="ctrl" d="M510,398 L740,160"/>
 
   <text class="s" x="24" y="496">One ingestion, one set of SQL files, two destinations: the cloud path is a different target, not a second pipeline.</text>
 </svg>
