@@ -33,7 +33,8 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from deng.config import get_settings  # noqa: E402
-from deng.ingestion.football_data_client import ApiError, FootballDataClient  # noqa: E402
+from deng.sources.football_data import FootballDataClient
+from deng.sources.http import ApiError  # noqa: E402
 
 SAMPLE_DIR = Path("data/sample/football-data")
 

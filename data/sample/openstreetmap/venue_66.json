@@ -1,0 +1,21 @@
+{
+ "place_id": 277074037,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 99403577,
+ "lat": "53.4631096",
+ "lon": "-2.2913865",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.6301750545123449,
+ "addresstype": "leisure",
+ "name": "Old Trafford",
+ "display_name": "Old Trafford, Sir Matt Busby Way, Wharfside, Stretford, Trafford, Greater Manchester, England, M16 0RA, United Kingdom",
+ "boundingbox": [
+  "53.4621149",
+  "53.4641501",
+  "-2.2933575",
+  "-2.2894270"
+ ]
+}

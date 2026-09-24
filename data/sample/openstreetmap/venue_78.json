@@ -1,0 +1,21 @@
+{
+ "place_id": 293986259,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 458731140,
+ "lat": "40.4360102",
+ "lon": "-3.5996990",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5163897801264064,
+ "addresstype": "leisure",
+ "name": "Riyadh Air Metropolitano",
+ "display_name": "Riyadh Air Metropolitano, Avenida 26 de Abril, Rosas, San Blas - Canillejas, Madrid, Comunidad de Madrid, 28022, España",
+ "boundingbox": [
+  "40.4344364",
+  "40.4376961",
+  "-3.6016919",
+  "-3.5980068"
+ ]
+}

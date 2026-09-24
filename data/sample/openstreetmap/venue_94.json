@@ -1,0 +1,21 @@
+{
+ "place_id": 293871249,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 21875758,
+ "lat": "39.9442083",
+ "lon": "-0.1034046",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5030392764316368,
+ "addresstype": "leisure",
+ "name": "Estadio de la Cerámica",
+ "display_name": "Estadio de la Cerámica, Carrer Blasco Ibáñez, Vila-real, la Plana Baixa, Castelló / Castellón, Comunitat Valenciana, 12540, España",
+ "boundingbox": [
+  "39.9433336",
+  "39.9450234",
+  "-0.1045861",
+  "-0.1022808"
+ ]
+}

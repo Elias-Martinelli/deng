@@ -32,13 +32,15 @@ import psycopg
 from dagster import AssetExecutionContext
 
 from deng import pipeline
+from deng.clock import pipeline_today
 from deng.config import get_settings
 from deng.database import PipelineRun, connect
-from deng.ingestion.crests import fetch_crests
-from deng.ingestion.football_data_client import ApiError, RetryableApiError
-from deng.ingestion.odds import ingest_odds, match_events
-from deng.ingestion.weather import ingest_weather, pipeline_today
 from deng.quality import run_checks
+from deng.sources import openstreetmap
+from deng.sources.club_crests import fetch_crests
+from deng.sources.http import ApiError, RetryableApiError
+from deng.sources.open_meteo import ingest_weather
+from deng.sources.the_odds_api import ingest_odds
 from deng.transformation import (
     ODDS_COUNTED_TABLES,
     ODDS_CURATED_ORDER,
@@ -47,6 +49,7 @@ from deng.transformation import (
     WEATHER_TRANSFORMATION_ORDER,
     run_transformations,
 )
+from deng.transformation.odds_matching import match_events
 
 # The 2026/27 league phase starts in mid-September; the first partition sits
 # before it so that the whole season is backfillable.
@@ -94,13 +97,16 @@ DIM_VENUE = dg.AssetKey(["curated", "dim_venue"])
 FACT_MATCH_WEATHER = dg.AssetKey(["curated", "fact_match_weather"])
 FACT_MATCH_PREDICTION = dg.AssetKey(["curated", "fact_match_prediction"])
 RAW_ODDS = dg.AssetKey(["raw", "odds_api"])
+RAW_OSM = dg.AssetKey(["raw", "osm_venues"])
+STAGING_VENUES = dg.AssetKey(["staging", "venues"])
 STAGING_BOOKMAKER_ODDS = dg.AssetKey(["staging", "bookmaker_odds"])
 STAGING_ODDS_EVENT_MATCH = dg.AssetKey(["staging", "odds_event_match"])
 FACT_BOOKMAKER_ODDS = dg.AssetKey(["curated", "fact_bookmaker_odds"])
 
 WEATHER_SPECS: tuple[dg.AssetSpec, ...] = (
+    dg.AssetSpec(STAGING_VENUES, deps=[RAW_OSM], group_name="staging"),
     dg.AssetSpec(STAGING_WEATHER, deps=[RAW_WEATHER], group_name="staging"),
-    dg.AssetSpec(DIM_VENUE, deps=[DIM_TEAM], group_name="curated"),
+    dg.AssetSpec(DIM_VENUE, deps=[STAGING_VENUES, DIM_TEAM], group_name="curated"),
     dg.AssetSpec(
         FACT_MATCH_WEATHER, deps=[STAGING_WEATHER, DIM_VENUE, FACT_MATCH], group_name="curated"
     ),
@@ -225,7 +231,7 @@ def curated_model(context: AssetExecutionContext):
 
 @dg.asset(
     key=TEAM_CRESTS,
-    deps=[DIM_TEAM],
+    deps=[RAW],
     partitions_def=daily_partitions,
     retry_policy=TRANSIENT_RETRY,
     group_name="raw",
@@ -247,8 +253,41 @@ def team_crests(context: AssetExecutionContext) -> dg.MaterializeResult:
 
 
 @dg.asset(
+    key=RAW_OSM,
+    deps=[RAW],
+    partitions_def=daily_partitions,
+    retry_policy=TRANSIENT_RETRY,
+    group_name="raw",
+    kinds={"postgres"},
+    description=(
+        "Stadium coordinates from OpenStreetMap, one stored answer per club. Fetched once per "
+        "club, not daily: stadiums do not move."
+    ),
+)
+def raw_osm_venues(context: AssetExecutionContext) -> dg.MaterializeResult:
+    """Look up the stadiums we have not asked about yet."""
+    settings = get_settings()
+    logical_date = _logical_date(context)
+    with connect(settings) as connection:
+        with PipelineRun(connection, "ingest_osm_venues", logical_date) as run:
+            try:
+                stored = openstreetmap.ingest(
+                    connection,
+                    logical_date,
+                    run.run_id,
+                    from_samples=settings.ingest_source == "samples",
+                )
+            except TRANSIENT_ERRORS:
+                raise
+            except ApiError as exc:
+                raise dg.Failure(description=f"venues: {exc}", allow_retries=False) from exc
+            run.add_counts(loaded=stored)
+    return dg.MaterializeResult(metadata={"stored": stored})
+
+
+@dg.asset(
     key=RAW_WEATHER,
-    deps=[FACT_MATCH],
+    deps=[RAW, RAW_OSM],
     partitions_def=daily_partitions,
     retry_policy=TRANSIENT_RETRY,
     group_name="raw",
@@ -314,7 +353,7 @@ def weather_model(context: AssetExecutionContext):
 
 @dg.asset(
     key=RAW_ODDS,
-    deps=[FACT_MATCH],
+    deps=[RAW],
     retry_policy=TRANSIENT_RETRY,
     group_name="raw",
     kinds={"postgres"},
@@ -442,7 +481,13 @@ def data_quality(context: AssetExecutionContext) -> dg.MaterializeResult:
 daily_pipeline = dg.define_asset_job(
     name="daily_pipeline",
     selection=dg.AssetSelection.assets(
-        raw_football_data, curated_model, team_crests, raw_open_meteo, weather_model, data_quality
+        raw_football_data,
+        curated_model,
+        team_crests,
+        raw_osm_venues,
+        raw_open_meteo,
+        weather_model,
+        data_quality,
     ),
     partitions_def=daily_partitions,
     description="ingest -> transform -> crests -> weather -> data quality for one logical date.",
@@ -490,6 +535,7 @@ defs = dg.Definitions(
         raw_football_data,
         curated_model,
         team_crests,
+        raw_osm_venues,
         raw_open_meteo,
         weather_model,
         raw_odds_api,

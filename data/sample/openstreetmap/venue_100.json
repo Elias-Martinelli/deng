@@ -1,0 +1,21 @@
+{
+ "place_id": 80481902,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "node",
+ "osm_id": 324815671,
+ "lat": "41.9387659",
+ "lon": "12.4581340",
+ "category": "highway",
+ "type": "motorway_junction",
+ "place_rank": 30,
+ "importance": 8.896238651097914e-05,
+ "addresstype": "highway",
+ "name": "Stadio Olimpico;Ponte Milvio",
+ "display_name": "Stadio Olimpico;Ponte Milvio, Via del Foro Italico, Ponte Milvio, Municipio Roma XV, Roma, Roma Capitale, Lazio, 00194, Italia",
+ "boundingbox": [
+  "41.9387159",
+  "41.9388159",
+  "12.4580840",
+  "12.4581840"
+ ]
+}

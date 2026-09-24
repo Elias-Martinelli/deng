@@ -1,0 +1,21 @@
+{
+ "place_id": 421050874,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 1507411898,
+ "lat": "40.4530437",
+ "lon": "-3.6881970",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5868678467637894,
+ "addresstype": "leisure",
+ "name": "Bernabéu",
+ "display_name": "Bernabéu, Acceso Parking, Hispanoamérica, Chamartín, Madrid, Comunidad de Madrid, 28020, España",
+ "boundingbox": [
+  "40.4520252",
+  "40.4540635",
+  "-3.6896611",
+  "-3.6867628"
+ ]
+}

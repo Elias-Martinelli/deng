@@ -1,0 +1,21 @@
+{
+ "place_id": 83345104,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 34607291,
+ "lat": "41.3808806",
+ "lon": "2.1228182",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.6177829406602852,
+ "addresstype": "leisure",
+ "name": "Spotify Camp Nou",
+ "display_name": "Spotify Camp Nou, Avinguda de Joan XXIII, la Maternitat, la Maternitat i Sant Ramon, les Corts, Barcelona, Barcelonès, Barcelona, Catalunya, 08028, España",
+ "boundingbox": [
+  "41.3799311",
+  "41.3818403",
+  "2.1216867",
+  "2.1239343"
+ ]
+}

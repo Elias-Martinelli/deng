@@ -1,0 +1,21 @@
+{
+ "place_id": 59664721,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 342828509,
+ "lat": "41.1033690",
+ "lon": "28.9909522",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.4857419571472126,
+ "addresstype": "leisure",
+ "name": "RAMS Park",
+ "display_name": "RAMS Park, Metin Oktay Caddesi, Huzur Mahallesi, Sarıyer, İstanbul, Marmara Bölgesi, 34485, Türkiye",
+ "boundingbox": [
+  "41.1022729",
+  "41.1044837",
+  "28.9895388",
+  "28.9923639"
+ ]
+}

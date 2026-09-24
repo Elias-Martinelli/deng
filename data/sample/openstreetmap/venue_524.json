@@ -1,0 +1,21 @@
+{
+ "place_id": 97999778,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 53559935,
+ "lat": "48.8413634",
+ "lon": "2.2530693",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.6270070805755692,
+ "addresstype": "leisure",
+ "name": "Parc des Princes",
+ "display_name": "Parc des Princes, 24, Rue du Commandant Guilbaud, Quartier d'Auteuil, Paris 16e Arrondissement, Paris, Île-de-France, France métropolitaine, 75016, France",
+ "boundingbox": [
+  "48.8402390",
+  "48.8425068",
+  "2.2515309",
+  "2.2545664"
+ ]
+}

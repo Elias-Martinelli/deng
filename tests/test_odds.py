@@ -4,15 +4,17 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from deng.ingestion.football_data_client import ApiError, RetryableApiError
-from deng.ingestion.odds import (
-    Fixture,
+from deng.sources.http import ApiError, RetryableApiError
+from deng.sources.the_odds_api import (
     OddsRequest,
     Quota,
     fetch_odds,
-    normalise,
     plan_fetch,
     read_samples,
+)
+from deng.transformation.odds_matching import (
+    Fixture,
+    normalise,
     resolve_event,
     similarity,
 )
