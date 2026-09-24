@@ -96,6 +96,40 @@ DAILY_ENDPOINTS: tuple[Endpoint, ...] = (
 )
 
 
+def season_endpoints(seasons: list[str]) -> tuple[Endpoint, ...]:
+    """The extra endpoints for past seasons: their matches and their clubs.
+
+    A past season is one question per endpoint and never changes again, so it is
+    fetched once and not every day. `?season=2023` is part of the raw zone's key,
+    so a season answer is its own row next to today's.
+
+    Only matches and teams: the matches are the training data, the clubs are
+    needed so those matches can be joined to a team. The league table of a
+    finished season is not fetched - nothing reads it.
+    """
+    extra: list[Endpoint] = []
+    for season in seasons:
+        extra.append(
+            Endpoint(
+                name=f"matches {season}",
+                path="competitions/{code}/matches",
+                params={"season": season},
+                load_strategy="ONCE",
+                rationale="A finished season never changes; fetched once as training data.",
+            )
+        )
+        extra.append(
+            Endpoint(
+                name=f"teams {season}",
+                path="competitions/{code}/teams",
+                params={"season": season},
+                load_strategy="ONCE",
+                rationale="The clubs of that season, so its matches can be joined to a team.",
+            )
+        )
+    return tuple(extra)
+
+
 def fetch_endpoints(
     client: FootballDataClient,
     competition_code: str,
@@ -426,7 +460,10 @@ def ingest(
             api_key=settings.require_football_api_key(),
             base_url=settings.football_data_base_url,
         )
-        responses = fetch_endpoints(client, settings.football_data_competition)
+        # The current season always without a season parameter - it is the row
+        # every daily transformation expects - plus one request per past season.
+        endpoints = DAILY_ENDPOINTS + season_endpoints(settings.football_data_season_list)
+        responses = fetch_endpoints(client, settings.football_data_competition, endpoints)
 
     result = IngestResult()
     loader = RawLoader(connection, source=source_name)

@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     football_data_api_key: SecretStr = Field(default=SecretStr(""))
     football_data_base_url: str = "https://api.football-data.org/v4"
     football_data_competition: str = "CL"
+    # Past seasons to fetch once, comma-separated start years ("2023,2024").
+    # Empty means "only the current season", which is what a daily run needs.
+    # The training data for a model lives here: one season is one request.
+    football_data_seasons: str = ""
 
     # --- Open-Meteo --------------------------------------------------------
     open_meteo_forecast_url: str = "https://api.open-meteo.com/v1/forecast"
@@ -94,6 +98,11 @@ class Settings(BaseSettings):
     gcp_region: str = "europe-west6"
     gcs_raw_bucket: str = ""
     bigquery_dataset: str = "cl_intelligence"
+
+    @property
+    def football_data_season_list(self) -> list[str]:
+        """The past seasons to fetch, as a clean list of start years."""
+        return [part.strip() for part in self.football_data_seasons.split(",") if part.strip()]
 
     @property
     def postgres_dsn(self) -> str:
