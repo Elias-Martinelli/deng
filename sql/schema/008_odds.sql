@@ -174,9 +174,12 @@ CREATE INDEX IF NOT EXISTS fact_bookmaker_odds_match_idx
 -- Views for consumers. Dropped and recreated (not CREATE OR REPLACE) so a
 -- column change here applies on the next `make init` instead of failing.
 -- --------------------------------------------------------------------------
-DROP VIEW IF EXISTS curated.odds_comparison_latest;
-DROP VIEW IF EXISTS curated.bookmaker_odds_latest;
-DROP VIEW IF EXISTS curated.match_prediction_latest;
+-- CASCADE because curated.model_features (011) reads two of these views; the
+-- next file recreates it. Without CASCADE, re-applying the DDL would fail as
+-- soon as anything depends on them.
+DROP VIEW IF EXISTS curated.odds_comparison_latest CASCADE;
+DROP VIEW IF EXISTS curated.bookmaker_odds_latest CASCADE;
+DROP VIEW IF EXISTS curated.match_prediction_latest CASCADE;
 
 -- The newest quote per match, bookmaker and market, plus whether the newest
 -- fetch overall still showed it. A quote the latest fetch no longer carries

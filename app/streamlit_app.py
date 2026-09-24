@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 # `components` lives next to this file; `streamlit run` puts the script's own
 # directory on sys.path, which makes this plain import work.
+import dataset_view
 import odds_view  # noqa: E402
 from components import (  # noqa: E402
     CSS,
@@ -164,7 +165,11 @@ def result_rows(frame: pd.DataFrame) -> list[ResultRow]:
 # Page
 # --------------------------------------------------------------------------
 
-st.markdown(title("⚽ Champions League Match Intelligence"), unsafe_allow_html=True)
+st.markdown(title("⚽ Champions League Match Data"), unsafe_allow_html=True)
+st.caption(
+    "An analysis dashboard for the data a match-outcome model would be trained on. "
+    "Everything shown is read from the curated tables; this page makes no API call."
+)
 
 if not data_is_available():
     st.error(
@@ -221,6 +226,19 @@ with st.sidebar:
         "This app makes no API calls - bookmaker odds too are fetched by the pipeline, under "
         "its credit budget; reloading this page never spends one."
     )
+
+# --- What the pipeline holds for a model -----------------------------------
+dataset_view.render(query)
+
+# --- One match in detail: the same features, for a single row ---------------
+st.markdown(
+    section(
+        "One match in detail",
+        "The same data as above, for a single match - what a model would see as one row, "
+        "and what a person can sanity-check against their own knowledge of the fixture.",
+    ),
+    unsafe_allow_html=True,
+)
 
 # --- Fixture picker --------------------------------------------------------
 fixtures = query(

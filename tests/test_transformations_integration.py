@@ -267,3 +267,35 @@ def test_match_date_is_the_utc_day_whatever_the_session_time_zone(connection, ru
         "WHERE match_date <> (utc_kickoff AT TIME ZONE 'UTC')::date",
     )
     assert shifted == 0
+
+
+def test_model_features_is_one_row_per_match_with_its_label(connection, transformed):
+    """The view a model would read: one row per match, label only once played."""
+    matches = scalar(connection, "SELECT count(*) FROM curated.fact_match")
+    assert scalar(connection, "SELECT count(*) FROM curated.model_features") == matches
+
+    # The label is the result, so it exists exactly for the played matches.
+    assert (
+        scalar(
+            connection,
+            "SELECT count(*) FROM curated.model_features WHERE is_finished AND outcome IS NULL",
+        )
+        == 0
+    )
+    assert (
+        scalar(
+            connection,
+            "SELECT count(*) FROM curated.model_features WHERE NOT is_finished AND outcome IS NOT NULL",
+        )
+        == 0
+    )
+
+    # Every match carries both sides' form window, even when it is empty.
+    assert (
+        scalar(
+            connection,
+            "SELECT count(*) FROM curated.model_features "
+            "WHERE home_form_matches IS NULL OR away_form_matches IS NULL",
+        )
+        == 0
+    )
