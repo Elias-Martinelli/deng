@@ -81,7 +81,7 @@
 
   <rect class="box store" x="440" y="236" width="180" height="74" rx="10"/>
   <text class="h" x="530" y="264" text-anchor="middle">Staging · Curated</text>
-  <text class="s" x="530" y="286" text-anchor="middle">typed tables, facts, dimensions</text>
+  <text class="s" x="530" y="286" text-anchor="middle">typed tables, facts</text>
 
   <rect class="box edge" x="680" y="236" width="180" height="74" rx="10"/>
   <text class="h" x="770" y="264" text-anchor="middle">Dashboard · Model</text>
@@ -103,22 +103,22 @@
   <!-- Orchestrator -->
   <rect class="box store" x="20" y="236" width="150" height="74" rx="10"/>
   <text class="h" x="95" y="264" text-anchor="middle">Dagster</text>
-  <text class="s" x="95" y="286" text-anchor="middle">schedule · retries · backfill</text>
-  <path class="ctrl" d="M95,236 L95,175 L198,140"/>
+  <text class="s" x="95" y="286" text-anchor="middle">schedule · retries</text>
+  <path class="ctrl" d="M170,268 L186,268 L186,150 L198,134"/>
 
   <!-- Captions -->
   <text class="cap" x="20" y="366">1 · Ingest</text>
-  <text class="s" x="20" y="388">Asks each source and stores the answer unchanged,</text>
-  <text class="s" x="20" y="406">one row per source, question and day. A rerun of the</text>
-  <text class="s" x="20" y="424">same day overwrites that row, so it is always safe.</text>
+  <text class="s" x="20" y="388">Asks each source, stores the answer</text>
+  <text class="s" x="20" y="406">unchanged: one row per source, question</text>
+  <text class="s" x="20" y="424">and day. A rerun overwrites that row.</text>
 
   <text class="cap" x="360" y="366">2 · Transform</text>
-  <text class="s" x="360" y="388">Numbered SQL files, in order, in one transaction:</text>
-  <text class="s" x="360" y="406">raw to typed staging to curated facts. Features use</text>
-  <text class="s" x="360" y="424">only what was known before kick-off.</text>
+  <text class="s" x="360" y="388">Numbered SQL files, in order, in one</text>
+  <text class="s" x="360" y="406">transaction. Features use only what was</text>
+  <text class="s" x="360" y="424">known before the kick-off they describe.</text>
 
   <text class="cap" x="700" y="366">3 · Data product</text>
-  <text class="s" x="700" y="388">One row per match, per team in a match, per</text>
-  <text class="s" x="700" y="406">forecast. Read by the dashboard today and by a</text>
+  <text class="s" x="700" y="388">One row per match, and per team in a match.</text>
+  <text class="s" x="700" y="406">Read by the dashboard today and by a</text>
   <text class="s" x="700" y="424">match-outcome model later.</text>
 </svg>
