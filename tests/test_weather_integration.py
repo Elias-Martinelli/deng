@@ -9,8 +9,9 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from deng.database import RawLoader
-from deng.ingestion.football_data_client import ApiError
-from deng.ingestion.weather import ingest_weather
+from deng.sources import openstreetmap
+from deng.sources.football_data import ApiError
+from deng.sources.open_meteo import ingest_weather
 from deng.transformation import (
     WEATHER_COUNTED_TABLES,
     WEATHER_TRANSFORMATION_ORDER,
@@ -78,6 +79,9 @@ def football(connection, run_id, all_samples):
         )
     connection.commit()
     run_transformations(connection, FOOTBALL_DATE)
+    # The stadium coordinates come from the OpenStreetMap source, which stores
+    # the committed answers in the raw zone - the weather plan reads them there.
+    openstreetmap.ingest(connection, FOOTBALL_DATE, run_id, from_samples=True)
     with connection.cursor() as cursor:
         cursor.execute(
             "TRUNCATE raw.open_meteo, staging.weather_forecast, curated.fact_match_weather"

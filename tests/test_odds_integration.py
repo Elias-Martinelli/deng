@@ -11,9 +11,9 @@ import pytest
 
 from deng.config import Settings
 from deng.database import RawLoader
-from deng.ingestion.odds import ingest_odds, match_events
-from deng.ingestion.weather import load_venues
 from deng.quality import run_checks
+from deng.sources import openstreetmap
+from deng.sources.the_odds_api import ingest_odds
 from deng.transformation import (
     ODDS_COUNTED_TABLES,
     ODDS_CURATED_ORDER,
@@ -22,6 +22,7 @@ from deng.transformation import (
     WEATHER_TRANSFORMATION_ORDER,
     run_transformations,
 )
+from deng.transformation.odds_matching import match_events
 
 pytestmark = pytest.mark.postgres
 
@@ -53,7 +54,9 @@ def football(connection, run_id, all_samples):
         )
     connection.commit()
     run_transformations(connection, FOOTBALL_DATE)
-    load_venues(connection)
+    # The OpenStreetMap source stores the committed answers; the weather chain
+    # turns them into staging.venues, exactly as in a real run.
+    openstreetmap.ingest(connection, FOOTBALL_DATE, run_id, from_samples=True)
     run_transformations(
         connection,
         FOOTBALL_DATE,

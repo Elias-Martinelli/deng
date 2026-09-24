@@ -1,0 +1,21 @@
+{
+ "place_id": 421776494,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "relation",
+ "osm_id": 18413487,
+ "lat": "48.2187901",
+ "lon": "11.6236227",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.59035299116976,
+ "addresstype": "leisure",
+ "name": "Allianz Arena.",
+ "display_name": "Allianz Arena., 5, Werner-Heisenberg-Allee, Fröttmaning, Schwabing-Freimann, München, Bayern, 80939, Deutschland",
+ "boundingbox": [
+  "48.2175818",
+  "48.2199981",
+  "11.6230777",
+  "11.6263278"
+ ]
+}

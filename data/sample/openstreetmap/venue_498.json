@@ -1,0 +1,21 @@
+{
+ "place_id": 297519557,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 657418772,
+ "lat": "38.7612024",
+ "lon": "-9.1607832",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5471520800209528,
+ "addresstype": "leisure",
+ "name": "Estádio José Alvalade",
+ "display_name": "Estádio José Alvalade, Rua Professor Fernando da Fonseca, Lumiar, Lisboa, 1501-806, Portugal",
+ "boundingbox": [
+  "38.7602399",
+  "38.7621667",
+  "-9.1620058",
+  "-9.1595602"
+ ]
+}

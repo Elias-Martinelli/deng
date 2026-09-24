@@ -1,0 +1,21 @@
+{
+ "place_id": 287760186,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 547707192,
+ "lat": "41.1618235",
+ "lon": "-8.5837492",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5445107211321055,
+ "addresstype": "leisure",
+ "name": "Estádio do Dragão",
+ "display_name": "Estádio do Dragão, Via Futebol Clube do Porto, Corujeira, Campanhã, Porto, 4350-415, Portugal",
+ "boundingbox": [
+  "41.1604826",
+  "41.1631092",
+  "-8.5854872",
+  "-8.5820102"
+ ]
+}

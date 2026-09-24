@@ -1,0 +1,21 @@
+{
+ "place_id": 421029093,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "node",
+ "osm_id": 13972564169,
+ "lat": "50.6127141",
+ "lon": "3.1278339",
+ "category": "highway",
+ "type": "bus_stop",
+ "place_rank": 30,
+ "importance": 6.686121919580404e-05,
+ "addresstype": "highway",
+ "name": "Stade Pierre Mauroy",
+ "display_name": "Stade Pierre Mauroy, Boulevard de Tournai, Hôtel-de-Ville, Saint-Sauveur, Villeneuve-d'Ascq, Lille, Nord, Hauts-de-France, France métropolitaine, 59491, France",
+ "boundingbox": [
+  "50.6126641",
+  "50.6127641",
+  "3.1277839",
+  "3.1278839"
+ ]
+}

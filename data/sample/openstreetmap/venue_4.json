@@ -1,0 +1,21 @@
+{
+ "place_id": 114479084,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 17235929,
+ "lat": "51.4924922",
+ "lon": "7.4518549",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5715868571005471,
+ "addresstype": "leisure",
+ "name": "SIGNAL IDUNA PARK",
+ "display_name": "SIGNAL IDUNA PARK, 50, Strobelallee, Innenstadt West, Dortmund, Nordrhein-Westfalen, 44139, Deutschland",
+ "boundingbox": [
+  "51.4914304",
+  "51.4937248",
+  "7.4502781",
+  "7.4533988"
+ ]
+}

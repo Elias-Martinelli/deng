@@ -1,16 +1,19 @@
 """Command-line entry point of the local pipeline.
 
     python -m deng.pipeline init                      prepare the schemas
-    python -m deng.pipeline ingest                    ingest for today
-    python -m deng.pipeline ingest --date 2026-09-18  ingest for one logical date
-    python -m deng.pipeline transform                 raw -> staging -> curated
-    python -m deng.pipeline crests                    fetch club crests not stored yet
-    python -m deng.pipeline weather                   forecasts for matches <= 16 days ahead
-    python -m deng.pipeline odds                      bookmaker odds, if the budget rules allow
+    python -m deng.pipeline ingest                    ask all five sources, store the answers
+    python -m deng.pipeline ingest --only weather     ask a single source
+    python -m deng.pipeline transform                 raw -> staging -> curated (all of it)
     python -m deng.pipeline dq                        data-quality checks
     python -m deng.pipeline run                       ingest + transform + dq in one go
     python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
     python -m deng.pipeline verify                    run the verification queries
+
+Three commands carry the pipeline, in this order: **ingest** asks every source
+and stores the answers unchanged; **transform** builds every table from those
+answers with SQL; **dq** judges the result. Nothing in ingest reads a table
+that transform built - that is what lets the whole product be rebuilt from the
+raw zone without asking an API again.
 
 The Dagster assets (`deng.orchestration`) call exactly these entry points, so
 what runs under the scheduler is the same code a reviewer can run by hand.
@@ -24,13 +27,10 @@ import logging
 import sys
 from datetime import date, timedelta
 
+from deng.clock import pipeline_today
 from deng.config import get_settings
-from deng.database import PipelineRun, RawLoader, apply_sql_files, connect
-from deng.ingestion.crests import fetch_crests
-from deng.ingestion.extract import fetch_endpoints, read_sample_endpoints
-from deng.ingestion.football_data_client import ApiError, FootballDataClient
-from deng.ingestion.odds import ingest_odds, match_events
-from deng.ingestion.weather import ingest_weather, pipeline_today
+from deng.database import PipelineRun, apply_sql_files, connect
+from deng.ingestion import runner
 from deng.quality import run_checks
 from deng.transformation import (
     ODDS_COUNTED_TABLES,
@@ -40,6 +40,7 @@ from deng.transformation import (
     WEATHER_TRANSFORMATION_ORDER,
     run_transformations,
 )
+from deng.transformation.odds_matching import match_events
 
 logger = logging.getLogger(__name__)
 
@@ -65,17 +66,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "init":
         return command_init()
     if args.command == "ingest":
-        return command_ingest(args.date or pipeline_today(), from_samples=args.from_samples)
+        return command_ingest(
+            args.date or pipeline_today(), from_samples=args.from_samples, only=args.only
+        )
     if args.command == "backfill":
         return command_backfill(args.date_from, args.date_to, from_samples=args.from_samples)
     if args.command == "transform":
         return command_transform(args.date or pipeline_today())
-    if args.command == "weather":
-        return command_weather(args.date or pipeline_today(), from_samples=args.from_samples)
-    if args.command == "crests":
-        return command_crests()
-    if args.command == "odds":
-        return command_odds(from_samples=args.from_samples, force=args.force)
     if args.command == "dq":
         return command_dq()
     if args.command == "run":
@@ -93,12 +90,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("init", help="create schemas and tables (idempotent)")
 
-    ingest = sub.add_parser("ingest", help="ingest raw payloads for one logical date")
+    ingest = sub.add_parser("ingest", help="ask every source and store the answers (raw zone)")
     ingest.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
     ingest.add_argument(
         "--from-samples",
         action="store_true",
-        help="use the committed sample payloads instead of calling the API (no key needed)",
+        help="use the committed sample payloads instead of calling the APIs (no key needed)",
+    )
+    ingest.add_argument(
+        "--only",
+        choices=runner.SOURCE_NAMES,
+        help="ingest a single source instead of all of them",
     )
 
     backfill = sub.add_parser("backfill", help="re-run ingestion for a range of logical dates")
@@ -106,24 +108,8 @@ def build_parser() -> argparse.ArgumentParser:
     backfill.add_argument("--to", dest="date_to", type=date.fromisoformat, required=True)
     backfill.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
 
-    transform = sub.add_parser("transform", help="raw -> staging -> curated for one logical date")
+    transform = sub.add_parser("transform", help="raw -> staging -> curated (all sources)")
     transform.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
-
-    sub.add_parser("crests", help="fetch club crests that are not stored yet (incremental)")
-
-    weather = sub.add_parser("weather", help="fetch and transform forecasts for one logical date")
-    weather.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
-    weather.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
-
-    odds = sub.add_parser(
-        "odds", help="fetch bookmaker odds if the budget rules allow, then transform"
-    )
-    odds.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
-    odds.add_argument(
-        "--force",
-        action="store_true",
-        help="fetch now regardless of the watch window and interval (still not into the reserve)",
-    )
 
     sub.add_parser("dq", help="run the data-quality checks and persist the results")
 
@@ -143,192 +129,90 @@ def command_init() -> int:
     return 0
 
 
-def command_ingest(logical_date: date, from_samples: bool = False) -> int:
-    """Fetch every daily endpoint and store the payloads in the raw zone.
+def command_ingest(logical_date: date, from_samples: bool = False, only: str | None = None) -> int:
+    """Ask every source and store every answer in the raw zone.
 
-    One run row is written per execution. Every payload is loaded with the
-    idempotent upsert, so a second run for the same date updates in place.
+    Nothing is transformed here. That is the point: after this command the raw
+    zone holds today's answers of all five sources, and the transformation can
+    be re-run from them any time without asking an API again.
 
     Args:
         logical_date: The date this run is responsible for.
-        from_samples: Read the committed sample payloads instead of calling the
-            API. Lets a reviewer exercise the pipeline without credentials.
+        from_samples: Replay the committed sample answers instead of calling the
+            APIs, so a reviewer can run the pipeline without credentials.
+        only: Run a single source (see `--only`), all of them by default.
     """
     settings = get_settings()
-    # `source` is part of the raw zone's unique key, so replayed samples live in
-    # their own rows and can never overwrite a real API answer for the same day
-    # (and vice versa). Staging takes the newest payload of the day.
-    source_name = "football-data.org" if not from_samples else "football-data.org (sample)"
+    try:
+        with connect(settings) as connection:
+            context = runner.Context(connection, logical_date, settings, from_samples)
+            results = runner.ingest_all(context, only=only)
+    except ValueError as exc:  # a missing API key, reported without a traceback
+        print(f"ERROR: {exc}", file=sys.stderr)
+        print("       or run with --from-samples to use the committed answers.", file=sys.stderr)
+        return 1
 
-    if from_samples:
-        responses = read_sample_endpoints(settings.football_data_competition)
-    else:
-        try:
-            api_key = settings.require_football_api_key()
-        except ValueError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            print(
-                "       or run with --from-samples to use the committed payloads.", file=sys.stderr
-            )
-            # A configuration error, reported as exit 1 rather than a traceback;
-            # Dagster turns it into a non-retryable failure (run_step).
-            return 1
-        client = FootballDataClient(api_key=api_key, base_url=settings.football_data_base_url)
-        responses = fetch_endpoints(client, settings.football_data_competition)
-
-    with connect(settings) as connection:
-        with PipelineRun(connection, PIPELINE_NAME, logical_date) as run:
-            loader = RawLoader(connection, source=source_name)
-            try:
-                for endpoint, response in responses:
-                    result = loader.load(
-                        run_id=run.run_id,
-                        endpoint=endpoint.path.format(code=settings.football_data_competition),
-                        request_params=endpoint.params,
-                        request_url=response.url,
-                        payload=response.payload,
-                        ingestion_date=logical_date,
-                    )
-                    run.add_counts(
-                        extracted=result.record_count or 0,
-                        loaded=1 if result.inserted else 0,
-                        updated=1 if result.updated else 0,
-                    )
-                    print(
-                        f"  {endpoint.name:<12} {result.action:<9} "
-                        f"records={result.record_count} hash={result.payload_hash[:12]}"
-                    )
-                # One commit for all endpoints of the day: either the whole day's
-                # snapshot is stored or none of it. A half-stored day (teams but
-                # no matches) would let the transformation build an inconsistent
-                # curated state.
-                connection.commit()
-            except ApiError:
-                # Covers RetryableApiError too (subclass). Roll back this day's
-                # partial writes, then re-raise so PipelineRun records FAILED
-                # and the orchestrator can decide whether to retry.
-                connection.rollback()
-                raise
-
+    for result in results:
+        print(f"  {result.source:<20} {result.summary}")
+        for line in result.lines or []:
+            print(f"      {line}")
     print(f"ingest for {logical_date}: OK")
     return 0
 
 
 def command_transform(logical_date: date) -> int:
-    """Run the SQL transformations for one logical date."""
+    """Build every table from the raw zone: staging, then curated.
+
+    Three transactions, because two of them depend on the one before:
+
+    1. football   raw -> staging.{matches,teams,standings} -> curated facts,
+       the team form and the baseline forecast;
+    2. weather    the stored OpenStreetMap answers -> staging.venues, the
+       forecasts -> curated.fact_match_weather;
+    3. odds       the stored bookmaker answers -> staging, then the event
+       matcher (Python) pairs them with our fixtures, then curated.
+
+    Each transaction either lands completely or not at all, so the tables are
+    never half-built.
+    """
     with connect() as connection:
         with PipelineRun(connection, "transform_curated", logical_date) as run:
-            result = run_transformations(connection, logical_date)
-            run.add_counts(loaded=result.total_rows_written)
-    for name, affected in result.statements:
-        print(f"  {name:<44} {affected:>6} rows")
-    print()
-    for table, count in result.row_counts.items():
-        print(f"  {table:<32} {count:>6} rows")
-    print(f"transform for {logical_date}: OK")
-    return 0
+            football = run_transformations(connection, logical_date)
+            run.add_counts(loaded=football.total_rows_written)
 
-
-def command_weather(logical_date: date, from_samples: bool = False) -> int:
-    """Fetch forecasts for matches inside the horizon, then build the weather tables.
-
-    Runs after the football transformation: which matches need a forecast is
-    read from curated.fact_match. The transformation runs even when nothing was
-    fetched, because every match still gets its weather status.
-    """
-    settings = get_settings()
-    with connect(settings) as connection:
-        with PipelineRun(connection, "ingest_weather", logical_date) as run:
-            result = ingest_weather(
-                connection,
-                logical_date,
-                run.run_id,
-                settings.open_meteo_forecast_url,
-                from_samples=from_samples,
-            )
-            run.add_counts(loaded=len(result.stored))
-        print(f"  weather {result.summary}")
         with PipelineRun(connection, "transform_weather", logical_date) as run:
-            transformed = run_transformations(
+            weather = run_transformations(
                 connection,
                 logical_date,
                 order=WEATHER_TRANSFORMATION_ORDER,
                 counted=WEATHER_COUNTED_TABLES,
             )
-            run.add_counts(loaded=transformed.total_rows_written)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT weather_status, count(*) FROM curated.fact_match_weather "
-                "GROUP BY 1 ORDER BY 1"
+            run.add_counts(loaded=weather.total_rows_written)
+
+        with PipelineRun(connection, "transform_odds", logical_date) as run:
+            staged = run_transformations(
+                connection, logical_date, order=ODDS_STAGING_ORDER, counted=()
             )
-            for status, count in cursor.fetchall():
-                print(f"  {status:<18} {count:>4} matches")
-    print(f"weather for {logical_date}: OK")
-    return 0
+            matched, unmatched = match_events(connection)
+            odds = run_transformations(
+                connection,
+                logical_date,
+                order=ODDS_CURATED_ORDER,
+                counted=ODDS_COUNTED_TABLES,
+            )
+            run.add_counts(loaded=staged.total_rows_written + odds.total_rows_written)
 
-
-def command_crests() -> int:
-    """Store missing club crests. Best effort: failures are reported, not fatal.
-
-    Returns 0 even when single downloads fail - a missing crest is a cosmetic
-    gap the viewer covers with the team code, and the `every_team_has_a_crest`
-    WARNING check keeps it visible. Only a database error fails this step.
-    """
-    with connect() as connection:
-        with PipelineRun(connection, "fetch_crests", pipeline_today()) as run:
-            result = fetch_crests(connection, run_id=run.run_id)
-            run.add_counts(loaded=len(result.fetched))
-    for team_id, reason in result.failed.items():
-        print(f"  team {team_id}: {reason}")
-    print(f"crests: {result.summary}")
-    return 0
-
-
-def command_odds(from_samples: bool = False, force: bool = False, best_effort: bool = False) -> int:
-    """Fetch bookmaker odds when the budget rules allow, then build the odds tables.
-
-    The fetch decision (daily baseline, interval inside the watch window, quota
-    reserve) is taken here in the pipeline and nowhere else: the app only reads
-    tables, so reloading it can never spend a credit. The transformation runs
-    even when nothing was fetched, so a fetch that was stored but not yet
-    staged (e.g. after a crash) is picked up.
-
-    Args:
-        from_samples: Replay the committed sample fetches (no key needed).
-        force: Fetch regardless of window and interval.
-        best_effort: Report an API failure and return 0 instead of 1 - used by
-            `run`, where a third-party odds outage must not fail the football
-            pipeline. The failed run is still recorded in meta.pipeline_runs.
-    """
-    settings = get_settings()
-    today = pipeline_today()
-    try:
-        with connect(settings) as connection:
-            with PipelineRun(connection, "ingest_odds", today) as run:
-                result = ingest_odds(
-                    connection, run.run_id, settings, from_samples=from_samples, force=force
-                )
-                run.add_counts(extracted=result.event_count, loaded=1 if result.inserted else 0)
-            with PipelineRun(connection, "transform_odds", today) as run:
-                staged = run_transformations(
-                    connection, today, order=ODDS_STAGING_ORDER, counted=()
-                )
-                result.events_matched, result.events_unmatched = match_events(connection)
-                curated = run_transformations(
-                    connection, today, order=ODDS_CURATED_ORDER, counted=ODDS_COUNTED_TABLES
-                )
-                run.add_counts(loaded=staged.total_rows_written + curated.total_rows_written)
-    except ApiError as exc:
-        # Covers RetryableApiError too. The PipelineRun above already recorded
-        # the failure with this message.
-        print(f"ERROR: odds fetch failed: {exc}", file=sys.stderr)
-        return 0 if best_effort else 1
-    print(f"  odds {result.summary}")
-    for label in result.events_unmatched:
-        print(f"  unmatched event: {label} - add an alias to bookmaker_team_aliases.csv")
-    for table, count in curated.row_counts.items():
-        print(f"  {table:<32} {count:>6} rows")
-    print("odds: OK")
+    for result in (football, weather, odds):
+        for name, affected in result.statements:
+            print(f"  {name:<44} {affected:>6} rows")
+    print()
+    for result in (football, weather, odds):
+        for table, count in result.row_counts.items():
+            print(f"  {table:<32} {count:>6} rows")
+    print(f"  bookmaker events matched: {matched}, unmatched: {len(unmatched)}")
+    for label in unmatched:
+        print(f"    unmatched: {label} - add an alias to bookmaker_team_aliases.csv")
+    print(f"transform for {logical_date}: OK")
     return 0
 
 
@@ -354,11 +238,7 @@ def command_dq(run_id=None) -> int:
 
 
 def command_run(logical_date: date, from_samples: bool = False) -> int:
-    """Ingest, transform and check - the sequence the orchestrator schedules daily."""
-    # The order is a dependency chain, not a preference: transform reads what
-    # ingest stored, crests, weather and odds read what transform built, and the
-    # checks judge the finished state. Each step stops the chain on failure -
-    # except crests and odds, which are best effort (third-party extras).
+    """Ingest every source, then transform, then check - the daily sequence."""
     print(f"=== ingest {logical_date} ===")
     code = command_ingest(logical_date, from_samples=from_samples)
     if code != 0:
@@ -368,17 +248,6 @@ def command_run(logical_date: date, from_samples: bool = False) -> int:
     code = command_transform(logical_date)
     if code != 0:
         return code
-
-    print("\n=== crests ===")
-    command_crests()
-
-    print(f"\n=== weather {logical_date} ===")
-    code = command_weather(logical_date, from_samples=from_samples)
-    if code != 0:
-        return code
-
-    print("\n=== odds ===")
-    command_odds(from_samples=from_samples, best_effort=True)
 
     print("\n=== data quality ===")
     code = command_dq()

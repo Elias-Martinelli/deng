@@ -12,7 +12,6 @@ import pytest
 
 dg = pytest.importorskip("dagster", reason="orchestrator extra not installed")
 
-from deng.ingestion.football_data_client import ApiError, RetryableApiError  # noqa: E402
 from deng.orchestration.definitions import (  # noqa: E402
     PARTITIONS_START,
     daily_partitions,
@@ -20,6 +19,7 @@ from deng.orchestration.definitions import (  # noqa: E402
     refresh_cron,
     run_step,
 )
+from deng.sources.http import ApiError, RetryableApiError  # noqa: E402
 
 
 def test_definitions_load_with_one_asset_per_table():
@@ -34,6 +34,8 @@ def test_definitions_load_with_one_asset_per_table():
         "curated/fact_team_match_form",
         "meta/dq_results",
         "raw/team_crests",
+        "raw/osm_venues",
+        "staging/venues",
         "raw/open_meteo",
         "staging/weather_forecast",
         "curated/dim_venue",
@@ -101,7 +103,7 @@ def test_run_step_fails_on_a_non_zero_exit_code():
 @pytest.fixture(autouse=True)
 def _no_crest_downloads(monkeypatch):
     """Keep the job tests offline: the crest step is tested on its own."""
-    from deng.ingestion.crests import CrestResult
+    from deng.sources.club_crests import CrestResult
 
     monkeypatch.setattr(
         "deng.orchestration.definitions.fetch_crests", lambda connection: CrestResult()

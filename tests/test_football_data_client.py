@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
-from deng.ingestion.football_data_client import (
+from deng.sources.football_data import (
     ApiError,
     FootballDataClient,
     RateLimitInfo,

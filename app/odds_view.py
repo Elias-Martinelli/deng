@@ -2,7 +2,7 @@
 
 Kept apart from the page script so the page stays a readable sequence of
 sections. Everything shown here is read from the curated tables; the odds
-were fetched by the pipeline (`deng.ingestion.odds`) under its budget rules.
+were fetched by the pipeline (`deng.sources.the_odds_api`) under its budget rules.
 Nothing on this page can trigger a request to The Odds API - a reload runs SQL.
 
 Two timestamps are always shown separately: when the model forecast was

@@ -1,0 +1,21 @@
+{
+ "place_id": 76110550,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 218520505,
+ "lat": "45.4782003",
+ "lon": "9.1239640",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.6217187420070487,
+ "addresstype": "leisure",
+ "name": "Stadio Giuseppe Meazza",
+ "display_name": "Stadio Giuseppe Meazza, Piazzale Angelo Moratti, Quartiere Harar, San Siro, Municipio 7, Milano, Lombardia, 20151, Italia",
+ "boundingbox": [
+  "45.4767104",
+  "45.4793577",
+  "9.1223239",
+  "9.1256104"
+ ]
+}

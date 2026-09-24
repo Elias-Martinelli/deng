@@ -1,0 +1,21 @@
+{
+ "place_id": 132585209,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 4882812,
+ "lat": "50.0675695",
+ "lon": "14.4715052",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.4764095519313583,
+ "addresstype": "leisure",
+ "name": "Fortuna Arena",
+ "display_name": "Fortuna Arena, 1540/2a, U Slavie, Vršovice, Praha 10, obvod Praha 10, Praha, 100 00, Česko",
+ "boundingbox": [
+  "50.0665382",
+  "50.0683542",
+  "14.4704327",
+  "14.4725767"
+ ]
+}

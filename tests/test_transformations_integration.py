@@ -10,9 +10,9 @@ from datetime import date, timedelta
 import pytest
 
 from deng.database import RawLoader
-from deng.ingestion.weather import load_venues
 from deng.quality import run_checks
 from deng.quality.checks import CRITICAL
+from deng.sources import openstreetmap
 from deng.transformation import (
     WEATHER_COUNTED_TABLES,
     WEATHER_TRANSFORMATION_ORDER,
@@ -43,7 +43,9 @@ def transformed(connection, run_id, all_samples):
         )
     connection.commit()
     result = run_transformations(connection, LOGICAL_DATE)
-    load_venues(connection)
+    # The OpenStreetMap source stores the committed answers; 305 turns them
+    # into staging.venues, exactly as in a real run.
+    openstreetmap.ingest(connection, LOGICAL_DATE, run_id, from_samples=True)
     run_transformations(
         connection, LOGICAL_DATE, order=WEATHER_TRANSFORMATION_ORDER, counted=WEATHER_COUNTED_TABLES
     )

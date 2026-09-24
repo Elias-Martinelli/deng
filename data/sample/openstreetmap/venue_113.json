@@ -1,0 +1,21 @@
+{
+ "place_id": 80068407,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 22790881,
+ "lat": "40.8279773",
+ "lon": "14.1928890",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5232183774663921,
+ "addresstype": "leisure",
+ "name": "Stadio Diego Armando Maradona",
+ "display_name": "Stadio Diego Armando Maradona, Via Luigi Tansillo, Rione Lauro, Fuorigrotta, Municipalità 10, Napoli, Campania, 80125, Italia",
+ "boundingbox": [
+  "40.8266750",
+  "40.8292563",
+  "14.1915134",
+  "14.1942711"
+ ]
+}
