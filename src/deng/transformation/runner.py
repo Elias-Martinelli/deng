@@ -34,6 +34,7 @@ TRANSFORMATION_ORDER: tuple[str, ...] = (
     "transform/210_dim_team.sql",
     "transform/220_fact_match.sql",
     "transform/230_fact_team_match_form.sql",
+    "transform/240_fact_match_prediction.sql",
 )
 
 # The weather chain runs as a second, separate transaction: its input (the
@@ -51,6 +52,19 @@ WEATHER_COUNTED_TABLES: tuple[str, ...] = (
     "curated.fact_match_weather",
 )
 
+# The odds chain runs in two transactions with the event matcher (Python, see
+# deng.ingestion.odds.match_events) in between: staging unpacks the fetches,
+# the matcher resolves bookmaker events to fixtures, and only then can the
+# curated change history be built per match.
+ODDS_STAGING_ORDER: tuple[str, ...] = ("transform/410_staging_bookmaker_odds.sql",)
+ODDS_CURATED_ORDER: tuple[str, ...] = ("transform/420_fact_bookmaker_odds.sql",)
+
+ODDS_COUNTED_TABLES: tuple[str, ...] = (
+    "staging.bookmaker_odds",
+    "staging.odds_event_match",
+    "curated.fact_bookmaker_odds",
+)
+
 # Tables whose row counts are reported after a run.
 COUNTED_TABLES: tuple[str, ...] = (
     "staging.matches",
@@ -59,6 +73,7 @@ COUNTED_TABLES: tuple[str, ...] = (
     "curated.dim_team",
     "curated.fact_match",
     "curated.fact_team_match_form",
+    "curated.fact_match_prediction",
 )
 
 

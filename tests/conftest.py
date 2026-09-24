@@ -72,7 +72,9 @@ def connection():
             "staging.matches, staging.teams, staging.standings, "
             "curated.dim_team, curated.fact_match, curated.fact_team_match_form, "
             "raw.open_meteo, staging.weather_forecast, curated.dim_venue, "
-            "curated.fact_match_weather CASCADE"
+            "curated.fact_match_weather, raw.odds_api, staging.bookmaker_odds, "
+            "staging.odds_event_match, curated.fact_match_prediction, "
+            "curated.fact_bookmaker_odds CASCADE"
         )
     conn.commit()
     yield conn
@@ -136,6 +138,7 @@ SETTINGS_ENV_PREFIXES = (
     "GCS_",
     "BIGQUERY_",
     "LOCAL_RAW_",
+    "ODDS_",
 )
 
 

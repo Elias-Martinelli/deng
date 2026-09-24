@@ -103,6 +103,15 @@ def main() -> int:
             "         Free key: https://www.football-data.org/client/register"
         )
         warnings += 1
+    if settings.odds_api_key.get_secret_value():
+        print(f"[{OK}] ODDS_API_KEY is set")
+    else:
+        print(
+            f"[{WARN}] ODDS_API_KEY not set – the odds step skips itself; 'make run-samples' "
+            "replays committed sample fetches.\n"
+            "         Free key: https://the-odds-api.com"
+        )
+        warnings += 1
     print(
         f"[{OK}] settings load: competition={settings.football_data_competition}, "
         f"postgres={settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}"

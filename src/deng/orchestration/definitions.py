@@ -3,6 +3,7 @@
     raw.football_data -> staging.{matches,teams,standings} -> curated.*  --+
     curated.dim_team   -> raw.team_crests                                  +--> meta.dq_results
     curated.fact_match -> raw.open_meteo -> staging/curated weather      --+
+    curated.fact_match -> raw.odds_api   -> staging/curated odds   (own job, every N minutes)
 
 Every asset is one of our tables, and every partition is one logical date: the
 `ingestion_date` in the raw zone, the `%(logical_date)s` the transformations
@@ -35,9 +36,13 @@ from deng.config import get_settings
 from deng.database import PipelineRun, connect
 from deng.ingestion.crests import fetch_crests
 from deng.ingestion.football_data_client import ApiError, RetryableApiError
-from deng.ingestion.weather import ingest_weather
+from deng.ingestion.odds import ingest_odds, match_events
+from deng.ingestion.weather import ingest_weather, pipeline_today
 from deng.quality import run_checks
 from deng.transformation import (
+    ODDS_COUNTED_TABLES,
+    ODDS_CURATED_ORDER,
+    ODDS_STAGING_ORDER,
     WEATHER_COUNTED_TABLES,
     WEATHER_TRANSFORMATION_ORDER,
     run_transformations,
@@ -87,6 +92,11 @@ RAW_WEATHER = dg.AssetKey(["raw", "open_meteo"])
 STAGING_WEATHER = dg.AssetKey(["staging", "weather_forecast"])
 DIM_VENUE = dg.AssetKey(["curated", "dim_venue"])
 FACT_MATCH_WEATHER = dg.AssetKey(["curated", "fact_match_weather"])
+FACT_MATCH_PREDICTION = dg.AssetKey(["curated", "fact_match_prediction"])
+RAW_ODDS = dg.AssetKey(["raw", "odds_api"])
+STAGING_BOOKMAKER_ODDS = dg.AssetKey(["staging", "bookmaker_odds"])
+STAGING_ODDS_EVENT_MATCH = dg.AssetKey(["staging", "odds_event_match"])
+FACT_BOOKMAKER_ODDS = dg.AssetKey(["curated", "fact_bookmaker_odds"])
 
 WEATHER_SPECS: tuple[dg.AssetSpec, ...] = (
     dg.AssetSpec(STAGING_WEATHER, deps=[RAW_WEATHER], group_name="staging"),
@@ -105,6 +115,23 @@ MODEL_SPECS: tuple[dg.AssetSpec, ...] = (
     dg.AssetSpec(DIM_TEAM, deps=[STAGING_TEAMS], group_name="curated"),
     dg.AssetSpec(FACT_MATCH, deps=[STAGING_MATCHES, DIM_TEAM], group_name="curated"),
     dg.AssetSpec(FACT_TEAM_MATCH_FORM, deps=[FACT_MATCH], group_name="curated"),
+    dg.AssetSpec(
+        FACT_MATCH_PREDICTION, deps=[FACT_MATCH, FACT_TEAM_MATCH_FORM], group_name="curated"
+    ),
+)
+
+# The odds tables are not partitioned by day: a quote belongs to the minute it
+# was fetched, and the job that builds them runs every few minutes. They live
+# in their own job for that reason - a partitioned job cannot mix in
+# unpartitioned assets - and read fact_match across all its partitions.
+ODDS_SPECS: tuple[dg.AssetSpec, ...] = (
+    dg.AssetSpec(STAGING_BOOKMAKER_ODDS, deps=[RAW_ODDS], group_name="staging"),
+    dg.AssetSpec(
+        STAGING_ODDS_EVENT_MATCH, deps=[STAGING_BOOKMAKER_ODDS, FACT_MATCH], group_name="staging"
+    ),
+    dg.AssetSpec(
+        FACT_BOOKMAKER_ODDS, deps=[STAGING_ODDS_EVENT_MATCH, FACT_MATCH], group_name="curated"
+    ),
 )
 
 
@@ -286,8 +313,98 @@ def weather_model(context: AssetExecutionContext):
 
 
 @dg.asset(
+    key=RAW_ODDS,
+    deps=[FACT_MATCH],
+    retry_policy=TRANSIENT_RETRY,
+    group_name="raw",
+    kinds={"postgres"},
+    description=(
+        "One fetch of every bookmaker's 1X2 odds from The Odds API - if the budget rules "
+        "allow: once a day, and every ODDS_REFRESH_MINUTES while a watched match is within "
+        "ODDS_WATCH_HOURS_BEFORE_KICKOFF; never below ODDS_QUOTA_RESERVE credits."
+    ),
+)
+def raw_odds_api(context: AssetExecutionContext) -> dg.MaterializeResult:
+    """Apply the budget rules and, if they allow, spend one credit and store the answer."""
+    settings = get_settings()
+    with connect(settings) as connection:
+        with PipelineRun(connection, "ingest_odds", pipeline_today()) as run:
+            try:
+                result = ingest_odds(
+                    connection,
+                    run.run_id,
+                    settings,
+                    from_samples=settings.ingest_source == "samples",
+                )
+            except TRANSIENT_ERRORS:
+                raise
+            except ApiError as exc:
+                raise dg.Failure(description=f"odds: {exc}", allow_retries=False) from exc
+            run.add_counts(extracted=result.event_count, loaded=1 if result.inserted else 0)
+    plan = result.plan
+    if plan is not None and not plan.fetch:
+        context.log.info("odds fetch skipped: %s", plan.reason)
+    return dg.MaterializeResult(
+        metadata={
+            "fetched": bool(plan.fetch) if plan else False,
+            "note": plan.reason if plan else "",
+            "events": result.event_count,
+            "credits_remaining": result.quota.remaining
+            if result.quota.remaining is not None
+            else -1,
+        }
+    )
+
+
+@dg.multi_asset(
+    specs=ODDS_SPECS,
+    retry_policy=TRANSIENT_RETRY,
+    can_subset=False,
+    description=(
+        "Unpack the fetches, resolve bookmaker events to fixtures, build the odds change "
+        "history per match."
+    ),
+)
+def odds_model(context: AssetExecutionContext):
+    """Staging, event matching and the curated change history - always, even without a fetch."""
+    try:
+        with connect() as connection:
+            with PipelineRun(connection, "transform_odds", pipeline_today()) as run:
+                staged = run_transformations(
+                    connection, pipeline_today(), order=ODDS_STAGING_ORDER, counted=()
+                )
+                matched, unmatched = match_events(connection)
+                curated = run_transformations(
+                    connection,
+                    pipeline_today(),
+                    order=ODDS_CURATED_ORDER,
+                    counted=ODDS_COUNTED_TABLES,
+                )
+                run.add_counts(loaded=staged.total_rows_written + curated.total_rows_written)
+    except TRANSIENT_ERRORS:
+        raise
+    except Exception as exc:
+        raise dg.Failure(description=f"odds transform: {exc}", allow_retries=False) from exc
+    for label in unmatched:
+        context.log.warning("odds event not resolved: %s", label)
+    for spec in ODDS_SPECS:
+        table = ".".join(spec.key.path)
+        yield dg.MaterializeResult(
+            asset_key=spec.key,
+            metadata={"row_count": _count(table), "events_matched": matched},
+        )
+
+
+@dg.asset(
     key=DQ_RESULTS,
-    deps=[FACT_MATCH, FACT_TEAM_MATCH_FORM, DIM_TEAM, TEAM_CRESTS, FACT_MATCH_WEATHER],
+    deps=[
+        FACT_MATCH,
+        FACT_TEAM_MATCH_FORM,
+        FACT_MATCH_PREDICTION,
+        DIM_TEAM,
+        TEAM_CRESTS,
+        FACT_MATCH_WEATHER,
+    ],
     partitions_def=daily_partitions,
     retry_policy=TRANSIENT_RETRY,
     group_name="quality",
@@ -340,6 +457,34 @@ daily_schedule = dg.build_schedule_from_partitioned_job(
     default_status=dg.DefaultScheduleStatus.RUNNING,
 )
 
+
+def refresh_cron(minutes: int) -> str:
+    """A cron expression that fires every `minutes` (whole hours above 59)."""
+    if minutes < 60:
+        return f"*/{minutes} * * * *"
+    return f"0 */{max(1, round(minutes / 60))} * * *"
+
+
+odds_refresh = dg.define_asset_job(
+    name="odds_refresh",
+    selection=dg.AssetSelection.assets(raw_odds_api, odds_model),
+    description=(
+        "Fetch bookmaker odds if the budget rules allow, then rebuild the odds tables. "
+        "Runs every ODDS_REFRESH_MINUTES; most ticks decide not to spend a credit."
+    ),
+)
+
+# The tick interval is the *upper bound* of the fetch frequency: the asset
+# itself decides on every tick whether a credit may be spent (daily baseline,
+# watch window, quota reserve). Changing ODDS_REFRESH_MINUTES needs a reload
+# of the code location, like every definition.
+odds_refresh_schedule = dg.ScheduleDefinition(
+    job=odds_refresh,
+    cron_schedule=refresh_cron(get_settings().odds_refresh_minutes),
+    execution_timezone=TIMEZONE,
+    default_status=dg.DefaultScheduleStatus.RUNNING,
+)
+
 defs = dg.Definitions(
     assets=[
         raw_football_data,
@@ -347,8 +492,10 @@ defs = dg.Definitions(
         team_crests,
         raw_open_meteo,
         weather_model,
+        raw_odds_api,
+        odds_model,
         data_quality,
     ],
-    jobs=[daily_pipeline],
-    schedules=[daily_schedule],
+    jobs=[daily_pipeline, odds_refresh],
+    schedules=[daily_schedule, odds_refresh_schedule],
 )

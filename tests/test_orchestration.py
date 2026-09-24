@@ -17,6 +17,7 @@ from deng.orchestration.definitions import (  # noqa: E402
     PARTITIONS_START,
     daily_partitions,
     defs,
+    refresh_cron,
     run_step,
 )
 
@@ -37,7 +38,22 @@ def test_definitions_load_with_one_asset_per_table():
         "staging/weather_forecast",
         "curated/dim_venue",
         "curated/fact_match_weather",
+        "curated/fact_match_prediction",
+        "raw/odds_api",
+        "staging/bookmaker_odds",
+        "staging/odds_event_match",
+        "curated/fact_bookmaker_odds",
     }
+
+
+def test_odds_refresh_runs_on_its_own_unpartitioned_job():
+    # A partitioned job cannot carry unpartitioned assets, and a quote belongs
+    # to a minute, not a day - hence the second job and its interval schedule.
+    job = defs.resolve_job_def("odds_refresh")
+    assert job.partitions_def is None
+    assert defs.resolve_schedule_def("odds_refresh_schedule").cron_schedule == "*/15 * * * *"
+    assert refresh_cron(5) == "*/5 * * * *"
+    assert refresh_cron(120) == "0 */2 * * *"
 
 
 def test_partitions_start_before_the_league_phase():

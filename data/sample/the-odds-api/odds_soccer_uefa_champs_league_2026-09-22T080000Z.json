@@ -1,0 +1,1953 @@
+[
+ {
+  "id": "39ca258896b70d41b9a9910cef39ccf0",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-13T16:45:00Z",
+  "home_team": "Lens",
+  "away_team": "Sporting Lisbon",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Lens",
+        "price": 2.04
+       },
+       {
+        "name": "Draw",
+        "price": 3.25
+       },
+       {
+        "name": "Sporting Lisbon",
+        "price": 4.44
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Lens",
+        "price": 1.98
+       },
+       {
+        "name": "Draw",
+        "price": 3.2
+       },
+       {
+        "name": "Sporting Lisbon",
+        "price": 4.35
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Lens",
+        "price": 1.96
+       },
+       {
+        "name": "Draw",
+        "price": 3.12
+       },
+       {
+        "name": "Sporting Lisbon",
+        "price": 4.27
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Lens",
+        "price": 1.92
+       },
+       {
+        "name": "Draw",
+        "price": 3.06
+       },
+       {
+        "name": "Sporting Lisbon",
+        "price": 4.1
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c433dcfdf2a4078edb025ebb81e5fa79",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-13T16:45:00Z",
+  "home_team": "Sabah",
+  "away_team": "Slavia Prague",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Sabah",
+        "price": 2.85
+       },
+       {
+        "name": "Draw",
+        "price": 3.83
+       },
+       {
+        "name": "Slavia Prague",
+        "price": 2.38
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Sabah",
+        "price": 2.76
+       },
+       {
+        "name": "Draw",
+        "price": 3.76
+       },
+       {
+        "name": "Slavia Prague",
+        "price": 2.33
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Sabah",
+        "price": 2.72
+       },
+       {
+        "name": "Draw",
+        "price": 3.62
+       },
+       {
+        "name": "Slavia Prague",
+        "price": 2.28
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Sabah",
+        "price": 2.66
+       },
+       {
+        "name": "Draw",
+        "price": 3.62
+       },
+       {
+        "name": "Slavia Prague",
+        "price": 2.25
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "f4561a690edfec53a657d4c87a3edb24",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-13T19:00:00Z",
+  "home_team": "Inter Milan",
+  "away_team": "Club Brugge",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Inter Milan",
+        "price": 3.33
+       },
+       {
+        "name": "Draw",
+        "price": 3.53
+       },
+       {
+        "name": "Club Brugge",
+        "price": 2.22
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Inter Milan",
+        "price": 3.31
+       },
+       {
+        "name": "Draw",
+        "price": 3.43
+       },
+       {
+        "name": "Club Brugge",
+        "price": 2.17
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Inter Milan",
+        "price": 3.16
+       },
+       {
+        "name": "Draw",
+        "price": 3.36
+       },
+       {
+        "name": "Club Brugge",
+        "price": 2.1
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Inter Milan",
+        "price": 3.13
+       },
+       {
+        "name": "Draw",
+        "price": 3.36
+       },
+       {
+        "name": "Club Brugge",
+        "price": 2.09
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "fa8bc433b95e4b5217939d57e25c99a5",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-13T19:00:00Z",
+  "home_team": "Galatasaray",
+  "away_team": "Barcelona",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Galatasaray",
+        "price": 1.93
+       },
+       {
+        "name": "Draw",
+        "price": 5.0
+       },
+       {
+        "name": "Barcelona",
+        "price": 3.29
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Galatasaray",
+        "price": 1.91
+       },
+       {
+        "name": "Draw",
+        "price": 4.84
+       },
+       {
+        "name": "Barcelona",
+        "price": 3.27
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Galatasaray",
+        "price": 1.85
+       },
+       {
+        "name": "Draw",
+        "price": 4.83
+       },
+       {
+        "name": "Barcelona",
+        "price": 3.2
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "16c82c3c9c008a3488fcac6b7c03750e",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-13T19:00:00Z",
+  "home_team": "Atletico Madrid",
+  "away_team": "Manchester United",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Atletico Madrid",
+        "price": 3.18
+       },
+       {
+        "name": "Draw",
+        "price": 3.37
+       },
+       {
+        "name": "Manchester United",
+        "price": 2.33
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Atletico Madrid",
+        "price": 3.14
+       },
+       {
+        "name": "Draw",
+        "price": 3.29
+       },
+       {
+        "name": "Manchester United",
+        "price": 2.26
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Atletico Madrid",
+        "price": 3.07
+       },
+       {
+        "name": "Draw",
+        "price": 3.28
+       },
+       {
+        "name": "Manchester United",
+        "price": 2.18
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Atletico Madrid",
+        "price": 3.02
+       },
+       {
+        "name": "Draw",
+        "price": 3.21
+       },
+       {
+        "name": "Manchester United",
+        "price": 2.19
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "f67f0459a9ea1c6471031b2c1f8a94a8",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-13T19:00:00Z",
+  "home_team": "Arsenal",
+  "away_team": "Lille",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Arsenal",
+        "price": 1.66
+       },
+       {
+        "name": "Draw",
+        "price": 3.5
+       },
+       {
+        "name": "Lille",
+        "price": 6.72
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Arsenal",
+        "price": 1.62
+       },
+       {
+        "name": "Draw",
+        "price": 3.36
+       },
+       {
+        "name": "Lille",
+        "price": 6.66
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Arsenal",
+        "price": 1.59
+       },
+       {
+        "name": "Draw",
+        "price": 3.35
+       },
+       {
+        "name": "Lille",
+        "price": 6.41
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Arsenal",
+        "price": 1.58
+       },
+       {
+        "name": "Draw",
+        "price": 3.27
+       },
+       {
+        "name": "Lille",
+        "price": 6.42
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a9a046a787efa6c7853c41475119f1ad",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-13T19:00:00Z",
+  "home_team": "Viking",
+  "away_team": "Bayern Munich",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Viking",
+        "price": 2.39
+       },
+       {
+        "name": "Draw",
+        "price": 4.25
+       },
+       {
+        "name": "Bayern Munich",
+        "price": 2.62
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Viking",
+        "price": 2.3
+       },
+       {
+        "name": "Draw",
+        "price": 4.14
+       },
+       {
+        "name": "Bayern Munich",
+        "price": 2.59
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Viking",
+        "price": 2.26
+       },
+       {
+        "name": "Draw",
+        "price": 4.02
+       },
+       {
+        "name": "Bayern Munich",
+        "price": 2.56
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Viking",
+        "price": 2.21
+       },
+       {
+        "name": "Draw",
+        "price": 4.03
+       },
+       {
+        "name": "Bayern Munich",
+        "price": 2.46
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "295c0fa7a67e0cbc16e1f694539f00e9",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-13T19:00:00Z",
+  "home_team": "RB Leipzig",
+  "away_team": "PSV Eindhoven",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "RB Leipzig",
+        "price": 2.33
+       },
+       {
+        "name": "Draw",
+        "price": 3.51
+       },
+       {
+        "name": "PSV Eindhoven",
+        "price": 3.12
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "RB Leipzig",
+        "price": 2.28
+       },
+       {
+        "name": "Draw",
+        "price": 3.36
+       },
+       {
+        "name": "PSV Eindhoven",
+        "price": 3.06
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "RB Leipzig",
+        "price": 2.25
+       },
+       {
+        "name": "Draw",
+        "price": 3.39
+       },
+       {
+        "name": "PSV Eindhoven",
+        "price": 2.98
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "RB Leipzig",
+        "price": 2.21
+       },
+       {
+        "name": "Draw",
+        "price": 3.25
+       },
+       {
+        "name": "PSV Eindhoven",
+        "price": 2.92
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "8271aa2e9fde1a1a2337c6a967774940",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-13T19:00:00Z",
+  "home_team": "Villarreal",
+  "away_team": "Napoli",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Villarreal",
+        "price": 1.69
+       },
+       {
+        "name": "Draw",
+        "price": 3.65
+       },
+       {
+        "name": "Napoli",
+        "price": 5.58
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Villarreal",
+        "price": 1.68
+       },
+       {
+        "name": "Draw",
+        "price": 3.58
+       },
+       {
+        "name": "Napoli",
+        "price": 5.37
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Villarreal",
+        "price": 1.63
+       },
+       {
+        "name": "Draw",
+        "price": 3.53
+       },
+       {
+        "name": "Napoli",
+        "price": 5.31
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Villarreal",
+        "price": 1.63
+       },
+       {
+        "name": "Draw",
+        "price": 3.43
+       },
+       {
+        "name": "Napoli",
+        "price": 5.13
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "68a4bf8d950129a6e56c7dd772a5887c",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-14T16:45:00Z",
+  "home_team": "LASK Linz",
+  "away_team": "Liverpool",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "LASK Linz",
+        "price": 3.15
+       },
+       {
+        "name": "Draw",
+        "price": 3.58
+       },
+       {
+        "name": "Liverpool",
+        "price": 2.27
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "LASK Linz",
+        "price": 3.1
+       },
+       {
+        "name": "Draw",
+        "price": 3.58
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "LASK Linz",
+        "price": 3.06
+       },
+       {
+        "name": "Draw",
+        "price": 3.5
+       },
+       {
+        "name": "Liverpool",
+        "price": 2.13
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "LASK Linz",
+        "price": 2.96
+       },
+       {
+        "name": "Draw",
+        "price": 3.43
+       },
+       {
+        "name": "Liverpool",
+        "price": 2.13
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "80a6e6638ccebde548637055f4f0168a",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-14T16:45:00Z",
+  "home_team": "Feyenoord",
+  "away_team": "Como",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Feyenoord",
+        "price": 2.25
+       },
+       {
+        "name": "Draw",
+        "price": 3.36
+       },
+       {
+        "name": "Como",
+        "price": 3.31
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Feyenoord",
+        "price": 2.24
+       },
+       {
+        "name": "Draw",
+        "price": 3.34
+       },
+       {
+        "name": "Como",
+        "price": 3.22
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Feyenoord",
+        "price": 2.18
+       },
+       {
+        "name": "Draw",
+        "price": 3.3
+       },
+       {
+        "name": "Como",
+        "price": 3.12
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Feyenoord",
+        "price": 2.14
+       },
+       {
+        "name": "Draw",
+        "price": 3.25
+       },
+       {
+        "name": "Como",
+        "price": 3.12
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "24685f88a0ba5e4f8086b84c1db03817",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-14T19:00:00Z",
+  "home_team": "Roma",
+  "away_team": "Real Madrid",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Roma",
+        "price": 2.11
+       },
+       {
+        "name": "Draw",
+        "price": 3.76
+       },
+       {
+        "name": "Real Madrid",
+        "price": 3.33
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Roma",
+        "price": 2.09
+       },
+       {
+        "name": "Draw",
+        "price": 3.72
+       },
+       {
+        "name": "Real Madrid",
+        "price": 3.29
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Roma",
+        "price": 2.0
+       },
+       {
+        "name": "Draw",
+        "price": 3.59
+       },
+       {
+        "name": "Real Madrid",
+        "price": 3.22
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Roma",
+        "price": 2.01
+       },
+       {
+        "name": "Draw",
+        "price": 3.56
+       },
+       {
+        "name": "Real Madrid",
+        "price": 3.15
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "f727e568971e1619d0145088f80137f1",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-14T19:00:00Z",
+  "home_team": "Manchester City",
+  "away_team": "Paris Saint Germain",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Manchester City",
+        "price": 1.74
+       },
+       {
+        "name": "Draw",
+        "price": 4.08
+       },
+       {
+        "name": "Paris Saint Germain",
+        "price": 5.13
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Manchester City",
+        "price": 1.71
+       },
+       {
+        "name": "Draw",
+        "price": 4.03
+       },
+       {
+        "name": "Paris Saint Germain",
+        "price": 5.11
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Manchester City",
+        "price": 1.66
+       },
+       {
+        "name": "Draw",
+        "price": 3.86
+       },
+       {
+        "name": "Paris Saint Germain",
+        "price": 4.96
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-22T07:41:12Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-22T07:41:12Z",
+      "outcomes": [
+       {
+        "name": "Manchester City",
+        "price": 1.64
+       },
+       {
+        "name": "Draw",
+        "price": 3.81
+       },
+       {
+        "name": "Paris Saint Germain",
+        "price": 4.91
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "7591d2b0ded632e3a45c44bbeea265a1",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-14T19:00:00Z",
+  "home_team": "Bodo/Glimt",
+  "away_team": "Borussia Dortmund",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Bodo/Glimt",
+        "price": 2.63
+       },
+       {
+        "name": "Draw",
+        "price": 3.96
+       },
+       {
+        "name": "Borussia Dortmund",
+        "price": 2.45
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Bodo/Glimt",
+        "price": 2.58
+       },
+       {
+        "name": "Draw",
+        "price": 3.94
+       },
+       {
+        "name": "Borussia Dortmund",
+        "price": 2.42
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Bodo/Glimt",
+        "price": 2.54
+       },
+       {
+        "name": "Draw",
+        "price": 3.87
+       },
+       {
+        "name": "Borussia Dortmund",
+        "price": 2.36
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Bodo/Glimt",
+        "price": 2.46
+       },
+       {
+        "name": "Draw",
+        "price": 3.79
+       },
+       {
+        "name": "Borussia Dortmund",
+        "price": 2.28
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "454e4e8ec59588ae2e7e3e35bca0f25c",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-14T19:00:00Z",
+  "home_team": "Aston Villa",
+  "away_team": "Fenerbahce",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Aston Villa",
+        "price": 1.82
+       },
+       {
+        "name": "Draw",
+        "price": 3.81
+       },
+       {
+        "name": "Fenerbahce",
+        "price": 4.34
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Aston Villa",
+        "price": 1.77
+       },
+       {
+        "name": "Draw",
+        "price": 3.77
+       },
+       {
+        "name": "Fenerbahce",
+        "price": 4.19
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Aston Villa",
+        "price": 1.76
+       },
+       {
+        "name": "Draw",
+        "price": 3.69
+       },
+       {
+        "name": "Fenerbahce",
+        "price": 4.12
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Aston Villa",
+        "price": 1.73
+       },
+       {
+        "name": "Draw",
+        "price": 3.6
+       },
+       {
+        "name": "Fenerbahce",
+        "price": 4.12
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "1866e86f622ad8ac11b2579c322ee55b",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-14T19:00:00Z",
+  "home_team": "Real Betis",
+  "away_team": "FC Porto",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Real Betis",
+        "price": 1.72
+       },
+       {
+        "name": "Draw",
+        "price": 4.5
+       },
+       {
+        "name": "FC Porto",
+        "price": 4.07
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Real Betis",
+        "price": 1.69
+       },
+       {
+        "name": "Draw",
+        "price": 4.5
+       },
+       {
+        "name": "FC Porto",
+        "price": 3.98
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Real Betis",
+        "price": 1.68
+       },
+       {
+        "name": "Draw",
+        "price": 4.4
+       },
+       {
+        "name": "FC Porto",
+        "price": 3.96
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Real Betis",
+        "price": 1.64
+       },
+       {
+        "name": "Draw",
+        "price": 4.32
+       },
+       {
+        "name": "FC Porto",
+        "price": 3.93
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "f8adfcc0450c8d400969f5e88872f25a",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-14T19:00:00Z",
+  "home_team": "Shakhtar Donetsk",
+  "away_team": "AEK Athens",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Shakhtar Donetsk",
+        "price": 1.92
+       },
+       {
+        "name": "Draw",
+        "price": 5.14
+       },
+       {
+        "name": "AEK Athens",
+        "price": 3.2
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Shakhtar Donetsk",
+        "price": 1.89
+       },
+       {
+        "name": "Draw",
+        "price": 5.01
+       },
+       {
+        "name": "AEK Athens",
+        "price": 3.11
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Shakhtar Donetsk",
+        "price": 1.85
+       },
+       {
+        "name": "Draw",
+        "price": 4.89
+       },
+       {
+        "name": "AEK Athens",
+        "price": 3.03
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Shakhtar Donetsk",
+        "price": 1.81
+       },
+       {
+        "name": "Draw",
+        "price": 4.8
+       },
+       {
+        "name": "AEK Athens",
+        "price": 2.99
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "0a155e0ae46f16b94aad49d131d10e5b",
+  "sport_key": "soccer_uefa_champs_league",
+  "sport_title": "UEFA Champions League",
+  "commence_time": "2026-10-14T19:00:00Z",
+  "home_team": "Slovan Bratislava",
+  "away_team": "VfB Stuttgart",
+  "bookmakers": [
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Slovan Bratislava",
+        "price": 3.21
+       },
+       {
+        "name": "Draw",
+        "price": 5.34
+       },
+       {
+        "name": "VfB Stuttgart",
+        "price": 1.83
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betsson",
+    "title": "Betsson",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Slovan Bratislava",
+        "price": 3.21
+       },
+       {
+        "name": "Draw",
+        "price": 5.29
+       },
+       {
+        "name": "VfB Stuttgart",
+        "price": 1.8
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "williamhill",
+    "title": "William Hill",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Slovan Bratislava",
+        "price": 3.12
+       },
+       {
+        "name": "Draw",
+        "price": 5.05
+       },
+       {
+        "name": "VfB Stuttgart",
+        "price": 1.75
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "onexbet",
+    "title": "1xBet",
+    "last_update": "2026-09-21T11:32:05Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-21T11:32:05Z",
+      "outcomes": [
+       {
+        "name": "Slovan Bratislava",
+        "price": 3.07
+       },
+       {
+        "name": "Draw",
+        "price": 4.97
+       },
+       {
+        "name": "VfB Stuttgart",
+        "price": 1.76
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

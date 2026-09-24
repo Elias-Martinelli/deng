@@ -64,11 +64,29 @@ client throttles on `X-Requests-Available-Minute`.
 | Fallback strategy | archive API for post-match actuals; missing forecast ⇒ `NOT_YET_AVAILABLE` | – | – |
 | Verdict | **RECOMMENDED** – no key, generous limits, forecast + archive from one provider | rejected (card, small limit) | rejected (no forecast) |
 
+## 2b. Bookmaker odds – candidates
+
+Needed for the model-versus-market view in the app; decision in
+[ADR-005](adr/ADR-005-bookmaker-odds-source.md).
+
+| Criterion | **The Odds API** (chosen) | API-Football odds | football-data.org odds |
+|---|---|---|---|
+| API / URL | `https://api.the-odds-api.com/v4/sports/soccer_uefa_champs_league/odds` | `/odds?fixture=&bookmaker=` | `odds` field on `/matches` |
+| Authentication | `apiKey` query parameter, free registration | free registration | paid add-on |
+| Free tier | **500 credits/month**; one credit per region × market per request; all sports, most bookmakers | 100 requests/day, one request per fixture and bookmaker | stub message only |
+| Content | every upcoming event of the competition with every bookmaker of a region (~25 in `eu`), bookmaker key + name, `last_update` per bookmaker and market, h2h/spreads/totals | per fixture | – |
+| Data format | JSON array of events; decimal or American odds | JSON | – |
+| Rate limit | credit budget only; `x-requests-remaining` / `x-requests-used` / `x-requests-last` headers; HTTP 401 when exhausted | 100/day | – |
+| Licence | free plan for personal/evaluation use | evaluation | – |
+| Known limitations | budget: 15-minute polling around the clock costs ~2 900/month, so the pipeline polls only in a window before watched matches; bookmakers spell club names their own way (aliases needed); h2h only covers regular time | daily budget spent by one matchday | not data |
+| Verdict | **RECOMMENDED** – one request per fetch for the whole competition, named bookmakers, own timestamps | rejected – per-fixture-and-bookmaker requests do not fit a matchday into 100/day | rejected |
+
 ## 3. Reference data (maintained in the repository)
 
 | Dataset | File | Purpose | Source |
 |---|---|---|---|
 | Venues | `data/reference/venues.csv` | stadium, latitude, longitude, time zone and OSM reference for the 36 league-phase clubs; joins clubs to weather coordinates | OpenStreetMap via `make venues`, plausibility-checked, flagged rows reviewed by hand ([evidence](evidence/weather.md#2-venues-why-the-apis-venue-fields-could-not-be-geocoded-blindly)); ODbL |
+| Bookmaker team aliases | `data/reference/bookmaker_team_aliases.csv` | how bookmaker feeds spell the 36 clubs ("Bayern Munich", "Inter Milan"); joins odds events to fixtures together with the kick-off time | maintained by hand; a WARNING check names every event that still fails to resolve |
 
 Small, versioned and reviewable – preferable to geocoding at run time, which
 would introduce a third external dependency into every run. Generated rather

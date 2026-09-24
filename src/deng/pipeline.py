@@ -6,6 +6,7 @@
     python -m deng.pipeline transform                 raw -> staging -> curated
     python -m deng.pipeline crests                    fetch club crests not stored yet
     python -m deng.pipeline weather                   forecasts for matches <= 16 days ahead
+    python -m deng.pipeline odds                      bookmaker odds, if the budget rules allow
     python -m deng.pipeline dq                        data-quality checks
     python -m deng.pipeline run                       ingest + transform + dq in one go
     python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
@@ -28,9 +29,13 @@ from deng.database import PipelineRun, RawLoader, apply_sql_files, connect
 from deng.ingestion.crests import fetch_crests
 from deng.ingestion.extract import fetch_endpoints, read_sample_endpoints
 from deng.ingestion.football_data_client import ApiError, FootballDataClient
+from deng.ingestion.odds import ingest_odds, match_events
 from deng.ingestion.weather import ingest_weather, pipeline_today
 from deng.quality import run_checks
 from deng.transformation import (
+    ODDS_COUNTED_TABLES,
+    ODDS_CURATED_ORDER,
+    ODDS_STAGING_ORDER,
     WEATHER_COUNTED_TABLES,
     WEATHER_TRANSFORMATION_ORDER,
     run_transformations,
@@ -69,6 +74,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_weather(args.date or pipeline_today(), from_samples=args.from_samples)
     if args.command == "crests":
         return command_crests()
+    if args.command == "odds":
+        return command_odds(from_samples=args.from_samples, force=args.force)
     if args.command == "dq":
         return command_dq()
     if args.command == "run":
@@ -107,6 +114,16 @@ def build_parser() -> argparse.ArgumentParser:
     weather = sub.add_parser("weather", help="fetch and transform forecasts for one logical date")
     weather.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
     weather.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
+
+    odds = sub.add_parser(
+        "odds", help="fetch bookmaker odds if the budget rules allow, then transform"
+    )
+    odds.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
+    odds.add_argument(
+        "--force",
+        action="store_true",
+        help="fetch now regardless of the watch window and interval (still not into the reserve)",
+    )
 
     sub.add_parser("dq", help="run the data-quality checks and persist the results")
 
@@ -267,6 +284,54 @@ def command_crests() -> int:
     return 0
 
 
+def command_odds(from_samples: bool = False, force: bool = False, best_effort: bool = False) -> int:
+    """Fetch bookmaker odds when the budget rules allow, then build the odds tables.
+
+    The fetch decision (daily baseline, interval inside the watch window, quota
+    reserve) is taken here in the pipeline and nowhere else: the app only reads
+    tables, so reloading it can never spend a credit. The transformation runs
+    even when nothing was fetched, so a fetch that was stored but not yet
+    staged (e.g. after a crash) is picked up.
+
+    Args:
+        from_samples: Replay the committed sample fetches (no key needed).
+        force: Fetch regardless of window and interval.
+        best_effort: Report an API failure and return 0 instead of 1 - used by
+            `run`, where a third-party odds outage must not fail the football
+            pipeline. The failed run is still recorded in meta.pipeline_runs.
+    """
+    settings = get_settings()
+    today = pipeline_today()
+    try:
+        with connect(settings) as connection:
+            with PipelineRun(connection, "ingest_odds", today) as run:
+                result = ingest_odds(
+                    connection, run.run_id, settings, from_samples=from_samples, force=force
+                )
+                run.add_counts(extracted=result.event_count, loaded=1 if result.inserted else 0)
+            with PipelineRun(connection, "transform_odds", today) as run:
+                staged = run_transformations(
+                    connection, today, order=ODDS_STAGING_ORDER, counted=()
+                )
+                result.events_matched, result.events_unmatched = match_events(connection)
+                curated = run_transformations(
+                    connection, today, order=ODDS_CURATED_ORDER, counted=ODDS_COUNTED_TABLES
+                )
+                run.add_counts(loaded=staged.total_rows_written + curated.total_rows_written)
+    except ApiError as exc:
+        # Covers RetryableApiError too. The PipelineRun above already recorded
+        # the failure with this message.
+        print(f"ERROR: odds fetch failed: {exc}", file=sys.stderr)
+        return 0 if best_effort else 1
+    print(f"  odds {result.summary}")
+    for label in result.events_unmatched:
+        print(f"  unmatched event: {label} - add an alias to bookmaker_team_aliases.csv")
+    for table, count in curated.row_counts.items():
+        print(f"  {table:<32} {count:>6} rows")
+    print("odds: OK")
+    return 0
+
+
 def command_dq(run_id=None) -> int:
     """Run the data-quality checks; non-zero exit when a CRITICAL check fails."""
     with connect() as connection:
@@ -291,8 +356,9 @@ def command_dq(run_id=None) -> int:
 def command_run(logical_date: date, from_samples: bool = False) -> int:
     """Ingest, transform and check - the sequence the orchestrator schedules daily."""
     # The order is a dependency chain, not a preference: transform reads what
-    # ingest stored, crests and weather read what transform built, and the
-    # checks judge the finished state. Each step stops the chain on failure.
+    # ingest stored, crests, weather and odds read what transform built, and the
+    # checks judge the finished state. Each step stops the chain on failure -
+    # except crests and odds, which are best effort (third-party extras).
     print(f"=== ingest {logical_date} ===")
     code = command_ingest(logical_date, from_samples=from_samples)
     if code != 0:
@@ -310,6 +376,9 @@ def command_run(logical_date: date, from_samples: bool = False) -> int:
     code = command_weather(logical_date, from_samples=from_samples)
     if code != 0:
         return code
+
+    print("\n=== odds ===")
+    command_odds(from_samples=from_samples, best_effort=True)
 
     print("\n=== data quality ===")
     code = command_dq()

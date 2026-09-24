@@ -126,6 +126,27 @@ CSS = """
   .cl-ok { border-color: rgba(30,142,62,.6); }
   .cl-bad { border-color: rgba(217,48,37,.7); }
   .cl-warn { border-color: rgba(242,153,0,.8); }
+
+  /* Model vs. market: one card per bookmaker, a compact 4-column table each. */
+  .cl-odds-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: .9rem; }
+  .cl-odds-head { display: flex; justify-content: space-between; align-items: baseline;
+    gap: .5rem; flex-wrap: wrap; margin-bottom: .2rem; }
+  .cl-odds-book { font-weight: 700; font-size: 1.05rem; }
+  .cl-odds-times { font-size: .78rem; opacity: .75; margin-bottom: .5rem; line-height: 1.5; }
+  .cl-odds-table { width: 100%; border-collapse: collapse; font-size: .85rem;
+    font-variant-numeric: tabular-nums; }
+  .cl-odds-table th { font-weight: 600; font-size: .72rem; text-transform: uppercase;
+    letter-spacing: .04em; opacity: .7; text-align: right; padding: .25rem .3rem; }
+  .cl-odds-table td { text-align: right; padding: .35rem .3rem;
+    border-top: 1px solid rgba(127,127,127,.15); vertical-align: top; }
+  .cl-odds-table th:first-child, .cl-odds-table td:first-child { text-align: left; }
+  .cl-odds-table .cl-odds-sub { display: block; font-size: .72rem; opacity: .65; }
+  .cl-odds-table .cl-odds-na { opacity: .5; }
+  .cl-odds-foot { font-size: .75rem; opacity: .7; margin-top: .5rem; }
+  .cl-note { border-left: 3px solid rgba(242,153,0,.8); padding: .5rem .8rem;
+    font-size: .85rem; background: rgba(242,153,0,.08); border-radius: 6px; margin: .4rem 0 .8rem; }
+  .cl-note.cl-info { border-left-color: rgba(42,120,214,.8); background: rgba(42,120,214,.08); }
 </style>
 """
 
@@ -430,3 +451,133 @@ def weather_card(weather: MatchWeather) -> str:
         f"{escape(weather.fetched_label or '?')}{lead}. Open-Meteo, CC BY 4.0.</div>"
         "</div>"
     )
+
+
+# --------------------------------------------------------------------------
+# Model forecast against bookmaker odds
+# --------------------------------------------------------------------------
+
+# The four states a quote can be in on the page. Text and a mark carry the
+# meaning; the colour only underlines it.
+ODDS_STATES: dict[str, tuple[str, str, str]] = {
+    "CURRENT": ("cl-ok", "✓", "current"),
+    "STALE": ("cl-warn", "⏱", "stale - older than the expected refresh"),
+    "WITHDRAWN": ("cl-bad", "✗", "not in the latest fetch - withdrawn or suspended"),
+    "INCOMPLETE": ("cl-warn", "!", "incomplete - the bookmaker quoted fewer than 3 outcomes"),
+}
+
+
+@dataclass(frozen=True)
+class OutcomeRow:
+    """One line of the comparison table: an outcome seen by the model and by one bookmaker."""
+
+    label: str
+    model_prob: float
+    price: float | None = None
+    fair_prob: float | None = None
+
+    @property
+    def model_odds(self) -> float:
+        """Fair decimal odds implied by the model: 1 / probability."""
+        return 1 / self.model_prob
+
+    @property
+    def deviation_pp(self) -> float | None:
+        """Model minus market probability, in percentage points; None without a market."""
+        return None if self.fair_prob is None else (self.model_prob - self.fair_prob) * 100
+
+
+@dataclass(frozen=True)
+class OddsComparison:
+    """One bookmaker's newest quote next to the newest model forecast."""
+
+    bookmaker: str
+    state: str  # one of ODDS_STATES
+    model_label: str  # when the forecast was computed
+    odds_label: str  # the bookmaker's own timestamp
+    fetched_label: str  # when the pipeline read it
+    age_label: str  # "12 min ago"
+    outcomes: Sequence[OutcomeRow]
+    overround: float | None = None
+
+
+def age_label(minutes: float | None) -> str:
+    """Age in the coarsest unit that is still honest: minutes, hours or days."""
+    if minutes is None:
+        return "unknown age"
+    if minutes < 1:
+        return "just now"
+    if minutes < 90:
+        return f"{int(minutes)} min ago"
+    if minutes < 48 * 60:
+        return f"{minutes / 60:.0f} h ago"
+    return f"{minutes / 1440:.0f} days ago"
+
+
+def signed_pp(value: float | None) -> str:
+    """A signed percentage-point figure, with a real minus sign."""
+    if value is None:
+        return "–"
+    sign = "+" if value > 0 else ("−" if value < 0 else "±")
+    return f"{sign}{abs(value):.1f} pp"
+
+
+def odds_state_chip(state: str) -> str:
+    """The state of a quote as a chip: mark and words, not colour alone."""
+    cls, mark, words = ODDS_STATES.get(state, ("", "?", state.lower()))
+    return f'<span class="cl-chip {cls}">{mark} {escape(words)}</span>'
+
+
+def odds_comparison_card(comparison: OddsComparison) -> str:
+    """Model forecast and one bookmaker's odds side by side, both timestamps visible."""
+    rows = []
+    for o in comparison.outcomes:
+        if o.price is None:
+            market = '<span class="cl-odds-na">–</span><span class="cl-odds-sub">not quoted</span>'
+        else:
+            fair = f"{o.fair_prob * 100:.0f} % fair" if o.fair_prob is not None else "no fair prob."
+            market = f'{o.price:.2f}<span class="cl-odds-sub">{escape(fair)}</span>'
+        rows.append(
+            "<tr>"
+            f"<td>{escape(o.label)}</td>"
+            f"<td>{o.model_prob * 100:.0f} %"
+            f'<span class="cl-odds-sub">{o.model_odds:.2f}</span></td>'
+            f"<td>{market}</td>"
+            f"<td>{escape(signed_pp(o.deviation_pp))}</td>"
+            "</tr>"
+        )
+    margin = (
+        f" · margin {comparison.overround * 100:.1f} %" if comparison.overround is not None else ""
+    )
+    return (
+        '<div class="cl-card">'
+        '<div class="cl-odds-head">'
+        f'<span class="cl-odds-book">{escape(comparison.bookmaker)}</span>'
+        f"{odds_state_chip(comparison.state)}"
+        "</div>"
+        '<div class="cl-odds-times">'
+        f"Model forecast: {escape(comparison.model_label)}<br>"
+        f"Odds: {escape(comparison.odds_label)} (bookmaker time) · read "
+        f"{escape(comparison.fetched_label)}, {escape(comparison.age_label)}"
+        "</div>"
+        '<table class="cl-odds-table">'
+        "<thead><tr><th>Outcome</th><th>Model<br>prob. · odds</th>"
+        f"<th>{escape(comparison.bookmaker)}<br>odds · fair prob.</th>"
+        "<th>Model<br>deviation</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table>"
+        '<div class="cl-odds-foot">1X2, regular time incl. stoppage time. Fair probability = '
+        "the bookmaker's three prices with its margin removed. Deviation = model minus market, "
+        f"in percentage points - a model deviation, not a betting edge{margin}.</div>"
+        "</div>"
+    )
+
+
+def odds_comparison_grid(cards: Sequence[str]) -> str:
+    """Bookmaker cards side by side; as many per row as fit 300 px each."""
+    return '<div class="cl-odds-grid">' + "".join(cards) + "</div>"
+
+
+def note(text: str, kind: str = "warn") -> str:
+    """A short notice the reader must not miss: amber for caveats, blue for information."""
+    cls = "cl-note cl-info" if kind == "info" else "cl-note"
+    return f'<div class="{cls}">{escape(text)}</div>'

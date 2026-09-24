@@ -5,10 +5,11 @@ HSLU · DENG – Data Engineering · HS26 · End-to-End Batch Data Pipeline
 [![CI](https://github.com/Elias-Martinelli/deng/actions/workflows/ci.yml/badge.svg)](https://github.com/Elias-Martinelli/deng/actions/workflows/ci.yml)
 
 A reproducible daily batch pipeline that collects UEFA Champions League
-fixtures, results, standings and weather and assembles them into a curated,
-point-in-time-correct dataset — the foundation on which a model can later
-predict who wins a match. **The pipeline is the product**; the Streamlit viewer
-is a preview of its data.
+fixtures, results, standings, weather and bookmaker odds and assembles them
+into a curated, point-in-time-correct dataset — the foundation on which a
+model can later predict who wins a match. **The pipeline is the product**; the
+Streamlit viewer is a preview of its data, including a baseline forecast next
+to the odds of real bookmakers.
 
 ![Data pipeline architecture](docs/architecture.svg)
 
@@ -78,6 +79,8 @@ Details: [`docs/use-case.md`](docs/use-case.md).
 | `curated.fact_match` | one Champions League match | label: `outcome`, derived from the goals | **implemented** |
 | `curated.fact_team_match_form` | one team's participation in one match, with its form going in | features known before kick-off | **implemented** |
 | `curated.fact_match_weather` | one match | forecast for the kick-off hour, fetched before kick-off, or why it is missing | **implemented** |
+| `curated.fact_match_prediction` | one match, one model version, one run date | the baseline model's HOME/DRAW/AWAY probabilities as of that run | **implemented** (baseline) |
+| `curated.fact_bookmaker_odds` | one odds change of one bookmaker for one match | the market's view, with the bookmaker's timestamp and ours | **implemented** |
 | `curated.dim_team`, `curated.dim_venue` | one team / one home venue | descriptive attributes, coordinates | **implemented** |
 | `curated.fact_match_snapshot` | one upcoming match on one pipeline run date | **the training table**: everything known on that day | planned (final) |
 | `curated.dim_date` | one calendar day | partition pruning in BigQuery | planned (final) |
@@ -96,6 +99,11 @@ Full definitions, keys and reasoning: [`docs/data-model.md`](docs/data-model.md)
    Sporting CP, 13 Oct 2026*, and see the features a model would get, their
    window sizes and states, data freshness and quality results. Everything is
    served from our own tables; the app makes no API calls.
+4. **Model versus market** - for the same fixture, the baseline model's
+   probabilities next to the 1X2 odds of named bookmakers, with both
+   timestamps, the margin-free market probability, the deviation in
+   percentage points and how both moved towards kick-off. The odds are fetched
+   by the pipeline under a credit budget, never by the app.
 
 A single league phase has 144 matches - too few to train on. Past seasons are
 served by the API, so loading several of them is the planned lever (backlog 1.9).
@@ -107,10 +115,12 @@ served by the API, so loading several of them is the planned lever (backlog 1.9)
 | [football-data.org v4](https://www.football-data.org) | CL fixtures, results, standings, teams, referees, head-to-head | REST/JSON, `X-Auth-Token`, free registration | 10 requests/min; no line-ups, injuries or match statistics; 11 of 36 clubs without domestic-league data |
 | [Open-Meteo](https://open-meteo.com) | 16-day hourly forecast for the kick-off hour | REST/JSON, no key | 10 000 calls/day, CC BY 4.0 |
 | [OpenStreetMap](https://www.openstreetmap.org) via `make venues` | stadium coordinates, once per season → `data/reference/venues.csv` | Nominatim, 1 req/s | ODbL |
+| [The Odds API](https://the-odds-api.com) v4 | 1X2 odds (h2h, regular time) of ~25 European bookmakers per upcoming match, with each bookmaker's timestamp | REST/JSON, `apiKey`, free registration; optional | 500 credits/month, one per fetch; polled only in a window before watched matches ([ADR-005](docs/adr/ADR-005-bookmaker-odds-source.md)) |
 | `data/reference/venues.csv` *(planned)* | stadium coordinates and time zones | versioned in this repo | maintained by hand |
 
 Evaluation including rejected alternatives: [`docs/data-sources.md`](docs/data-sources.md).
-Decision: [ADR-001](docs/adr/ADR-001-football-data-source.md) (ACCEPTED).
+Decisions: [ADR-001](docs/adr/ADR-001-football-data-source.md) (football, weather),
+[ADR-005](docs/adr/ADR-005-bookmaker-odds-source.md) (odds), both ACCEPTED.
 Measured behaviour of the live API: [`docs/evidence/api-exploration.md`](docs/evidence/api-exploration.md).
 
 ## Data Characteristics
@@ -134,7 +144,9 @@ Identified by measurement, not assumption ([evidence](docs/evidence/api-explorat
 | `?status=SCHEDULED` returns rows stored as `TIMED` | upcoming matches are selected by `utc_kickoff`, never by the status string |
 | The API's own aggregates do not add up (`wins+draws+losses ≠ count`) | all form figures computed from individual match rows; a constraint and a check enforce that ours add up |
 | `standings.form` is always null | not used |
-| `odds` is a stub object with a marketing message | not parsed; validation checks for expected keys, not field presence |
+| `odds` is a stub object with a marketing message | not parsed; odds come from The Odds API instead |
+| Bookmakers spell club names their own way ("Bayern Munich", "Inter Milan") | events are resolved by kick-off time plus name similarity and an alias file; an unresolved event stays `UNMATCHED` and a WARNING check names it - never guessed |
+| A bookmaker suspends or withdraws a market before kick-off | a quote with fewer than three prices is stored as `is_complete = false`; one the latest fetch no longer carries is shown as withdrawn - both flagged in the app, not dropped |
 | 11 of 36 clubs have no domestic-league data in the free tier | scope is Champions League only for every club ([ADR-004](docs/adr/ADR-004-champions-league-scope.md)), so form is comparable across all 36 |
 | `group` null since the 2024/25 format change | no group dimension modelled |
 | Matches rescheduled or postponed | full reload per day; the raw zone keeps each day's version |
@@ -148,7 +160,8 @@ Dagster, in three steps:
 | --- | --- | --- |
 | **1. Ingest** | daily 06:00 Europe/Zurich, plus backfill on demand | Fetches fixtures, results, teams and standings; forecasts for matches ≤ 16 days ahead; missing club crests. Stores every answer unchanged in `raw` with an idempotent upsert per day |
 | **2. Transform** | after a successful ingest | SQL in one transaction: `raw` → typed `staging` → `curated` facts and dimensions, incl. point-in-time form and the weather status per match |
-| **3. Quality checks** | after the transformation | 18 checks stored in `meta.dq_results`; a CRITICAL failure fails the run, a WARNING stays visible |
+| **3. Quality checks** | after the transformation | 24 checks stored in `meta.dq_results`; a CRITICAL failure fails the run, a WARNING stays visible |
+| **Odds refresh** (own job) | every 15 min, configurable | Decides whether to spend a credit - once a day always, at the interval only while a watched match is within 48 h of kick-off, never below the quota reserve - then stores the fetch and rebuilds the odds change history |
 
 Colours in the diagram: grey = outside world (sources, consumers), blue =
 processing step, purple = storage and orchestration; dashed = control, not
@@ -177,6 +190,7 @@ kept next to the code in [`src/deng/ingestion/extract.py`](src/deng/ingestion/ex
 | `competitions/CL/matches` | 144 | FULL | 212 KB in one request |
 | Open-Meteo `v1/forecast` | 1 per venue with a match ≤ 16 days ahead | FULL per venue and day, **today only** | the forecast changes daily and every day's version is kept; a past date would return analysis data, not a forecast |
 | club crests | 36 images | **INCREMENTAL** by URL | a changed crest gets a new URL, so a stored one is never fetched again |
+| The Odds API `sports/{sport}/odds` | every upcoming event × every bookmaker | **FULL per fetch, append-only** | one credit answers the whole competition; every fetch is a new row because the intraday history *is* the data. Budget rules in [`src/deng/ingestion/odds.py`](src/deng/ingestion/odds.py) |
 
 Incremental loading via `lastUpdated` would cost an extra request to discover
 what changed and would still miss matches the API *adds* mid-season. A full
@@ -202,7 +216,7 @@ cd deng
 
 ./setup.sh                 # venv + install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 96 tests; the database ones skip without PostgreSQL
+make test                  # 135 tests; the database ones skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, no API key needed
@@ -223,6 +237,19 @@ make explore               # fetch fresh sample payloads and profile the schema
 make run                   # ingest from the API + transform + data quality
 ```
 
+Bookmaker odds are optional. With a free key from <https://the-odds-api.com>
+in `.env` as `ODDS_API_KEY`:
+
+```bash
+make odds                  # fetch if the budget rules allow, then rebuild the odds tables
+make odds ODDS_FORCE=1     # fetch now, regardless of window and interval
+```
+
+Without a key the step skips itself and says so; `make run-samples` replays
+two committed sample fetches (fictional prices,
+[`data/sample/the-odds-api/`](data/sample/the-odds-api/README.md)) so the
+whole path works offline.
+
 `make help` lists every target.
 
 ## PostgreSQL
@@ -231,7 +258,7 @@ Four schemas, separated by how far the data has been processed:
 
 | Schema | Content |
 |---|---|
-| `raw` | API payloads exactly as received (JSONB) plus ingestion metadata |
+| `raw` | API payloads exactly as received (JSONB) plus ingestion metadata - one table per source, the odds one append-only per fetch |
 | `staging` | typed, flattened tables — rebuildable from raw at any time |
 | `curated` | facts and dimensions: the data product |
 | `meta` | `pipeline_runs`, `dq_results` |
@@ -279,6 +306,19 @@ erDiagram
         text weather_status
         numeric temperature_c
     }
+    fact_match_prediction["curated.fact_match_prediction"] {
+        bigint match_id PK, FK
+        text model_version PK
+        date as_of_date PK
+        numeric home_prob
+    }
+    fact_bookmaker_odds["curated.fact_bookmaker_odds"] {
+        bigint odds_id PK
+        bigint match_id FK
+        text bookmaker_key
+        timestamptz source_updated_at
+        numeric home_price
+    }
     team_crests["raw.team_crests"] {
         text crest_url PK
         bytea image
@@ -288,6 +328,8 @@ erDiagram
     fact_match ||--|{ fact_team_match_form : "2 per match"
     dim_team ||--o{ fact_team_match_form : "team_id"
     fact_match ||--|| fact_match_weather : "1 per match"
+    fact_match ||--|{ fact_match_prediction : "1 per run date"
+    fact_match ||--o{ fact_bookmaker_odds : "1 per odds change"
     dim_team ||--o| dim_venue : "home venue"
     dim_venue ||..o{ fact_match_weather : "venue_team_id"
     dim_team ||..o| team_crests : "crest_url"
@@ -393,6 +435,11 @@ make dagster-backfill FROM=2026-09-15 TO=2026-09-17   # one run per day, one at 
 
 * **Schedule:** `daily_pipeline_schedule`, 06:00 Europe/Zurich, active as soon
   as the daemon runs. The 06:00 run ingests under *today's* date.
+* **Second job:** `odds_refresh`, unpartitioned, every `ODDS_REFRESH_MINUTES`
+  (default 15). Most ticks decide *not* to fetch: the asset applies the budget
+  rules (daily baseline, watch window before kick-off, quota reserve) and
+  records the reason in its metadata. Odds are not daily data, so they cannot
+  share the daily partitions - hence the separate job.
 * **Dependencies:** a failed ingest does not start the transform; a CRITICAL
   data-quality failure fails the run, a WARNING shows up in the asset metadata.
 * **Retries:** only for transient errors (HTTP 429/5xx, network, database not
@@ -430,9 +477,14 @@ previous data product is still there.
 | 7 | `310_staging_weather_forecast.sql` | `staging.weather_forecast` (hourly, one version per day) |
 | 8 | `320_dim_venue.sql` | `curated.dim_venue` from `venues.csv` |
 | 9 | `330_fact_match_weather.sql` | `curated.fact_match_weather`: forecast or reason, per match |
+| 6b | `240_fact_match_prediction.sql` | `curated.fact_match_prediction`: the baseline model, one forecast per match and run date (part of the first transaction) |
+| 10 | `410_staging_bookmaker_odds.sql` | `staging.bookmaker_odds`: one row per quoted outcome of every fetch not staged yet |
+| — | `deng.ingestion.odds.match_events` | `staging.odds_event_match`: bookmaker event → fixture, by kick-off time, name similarity and aliases (Python) |
+| 11 | `420_fact_bookmaker_odds.sql` | `curated.fact_bookmaker_odds`: one row per odds change with fair probabilities |
 
 Steps 7–9 are a **second transaction**: which forecasts to fetch is read from
 `fact_match`, so the weather can only be fetched after steps 1–6 committed.
+Steps 10–11 run on every odds fetch, with the event matcher between them.
 
 Justification for the two non-trivial ones:
 
@@ -448,6 +500,18 @@ Justification for the two non-trivial ones:
   for the kick-off hour - the same leakage rule - and gives every match a
   `weather_status` (`AVAILABLE`, `NOT_YET_AVAILABLE`, `VENUE_UNKNOWN`,
   `NOT_CAPTURED`, `MISSING`) instead of a silent null.
+* **`fact_match_prediction`** is the baseline model `form-poisson-v1`, in SQL:
+  Poisson goal rates from the league's home/away averages and each team's
+  last-5 attack and defence, every input restricted to matches finished
+  before the predicted match's kick-off. One row per match and run date,
+  so the forecast is versioned and a comparison can use the forecast that
+  existed when the odds were read. It is the thing the odds are compared
+  with, not a claim to beat the market.
+* **`fact_bookmaker_odds`** keeps one row per *odds change* per bookmaker
+  and market - the bookmaker's own timestamp, the prices, and the fetch
+  interval in which we saw them - and removes the margin using the three
+  prices of the same bookmaker at the same moment, never mixing bookmakers
+  or moments.
 
 The logic lives in `.sql` files rather than Python strings so it can be read,
 reviewed and run by hand in `psql` — and so the BigQuery versions are the same
@@ -461,7 +525,7 @@ cannot drift away from the schema.
 
 ## Data Quality
 
-Eighteen checks run after every transformation
+Twenty-four checks run after every transformation
 ([`src/deng/quality/checks.py`](src/deng/quality/checks.py)) and are persisted
 to `meta.dq_results`, so "was the data good on 18 September?" is a query rather
 than an archaeology exercise in old logs.
@@ -475,6 +539,12 @@ than an archaeology exercise in old logs.
   implausible scores, and how well populated the form window currently is
   (early in a season most teams have fewer than three completed matches — real
   and worth knowing, not a reason to discard the run).
+* **Forecast and odds:** every match has a forecast and its probabilities sum
+  to 1 (CRITICAL); a bookmaker's fair probabilities sum to 1 and an incomplete
+  quote has none (CRITICAL); prices and margins plausible, every bookmaker
+  event resolved to a fixture, and a fresh fetch when a match is within 24 h
+  (WARNING). The odds checks pass on an empty odds zone, so a reviewer without
+  a key never sees a failure from them.
 
 ```bash
 make dq        # run the checks; non-zero exit on a CRITICAL failure
@@ -488,7 +558,7 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
-* CI runs lint, 96 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 135 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -502,10 +572,10 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 96 tests: config, API client, source schema, loader, transformations, weather, crests, DQ, orchestration, app components | `96 passed` (or `54 passed, 42 skipped` without a database; the 9 orchestration tests need `make setup-orchestrator`) |
+| `make test` | 135 tests: config, API client, source schema, loader, transformations, weather, crests, odds, DQ, orchestration, app components | `135 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
 | `make lint` | formatting and static checks | `All checks passed!` |
-| `make verify` | raw zone, business keys, run log | `2/2 queries passed`, exit 0 |
-| `make dq` | curated-layer data quality | `17/18 checks passed`, exit 0 |
+| `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
+| `make dq` | curated-layer data quality | `23/24 checks passed` (the open WARNING is the form window early in the season), exit 0 |
 
 Worked examples with real output:
 [`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
@@ -540,6 +610,21 @@ meetings and recent results. Status chips at the top show data freshness and
 the latest data-quality result; the sidebar holds the details. It earns no
 points on its own; it makes the curated tables inspectable in a defence.
 
+**Model forecast vs. bookmaker odds.** For the chosen fixture, one card per
+bookmaker (selectable, several side by side): the model's HOME / DRAW / AWAY
+probability and its odds (1 / p), the bookmaker's current 1X2 odds (regular
+time incl. stoppage time) and the margin-free market probability from that
+bookmaker's three prices, and the difference in percentage points - labelled
+a *model deviation*, never a betting edge. The forecast's timestamp and the
+odds' timestamp (the bookmaker's own, plus when the pipeline read it and how
+old that is) are shown separately. Stale, withdrawn and incomplete quotes are
+flagged in words. During a match the forecast is labelled as the pre-match
+forecast: a live comparison is not offered until a live model exists
+(backlog 12.3). A chart below shows how each bookmaker's quote and the
+forecast moved towards kick-off (steps: a quote holds until changed), with a
+table view. All numbers are fictional until a real key has fetched real
+odds; the sample fetches say so on the page.
+
 **One page for desktop, iPhone and Android.** Instead of a native app, the
 viewer is a responsive web page: cards on a CSS grid that switch from two
 columns to one below 640 px, no tables that scroll sideways on a phone. Open the
@@ -556,7 +641,8 @@ API layer in front of the database, and none of it is assessed.
 
 **The app never calls an external API** - nor loads anything from the internet
 (no web fonts, no crest images from the API's CDN). Selecting a fixture runs a
-SQL query against our curated tables. A frontend calling football-data.org on
+SQL query against our curated tables; the odds too were fetched by the
+pipeline under its credit budget, so reloading the page can never spend one. A frontend calling football-data.org on
 each click would be quicker to write and would make the pipeline pointless: no
 history, no reproducibility, no point-in-time correctness, and a rate limit
 shared with every visitor.
@@ -596,6 +682,18 @@ Documented honestly, because hidden failures cost more than known ones:
   fetched after the fact; post-match actuals from the archive API are backlog 2.7.
 * **The forecast is for the hour containing the kick-off** (18:45 → 18:00 UTC),
   not an average over the match.
+* **Bookmaker odds: no live fetch yet.** The committed sample fetches follow
+  The Odds API's documented schema with fictional prices; the first real fetch
+  needs a personal key (backlog 13.5). The free budget of 500 credits a month
+  covers roughly two watched matchdays at 15-minute resolution -
+  `ODDS_WATCH_MATCH_IDS` and `ODDS_REFRESH_MINUTES` are the levers.
+* **The baseline model is a baseline.** `form-poisson-v1` runs on at most
+  five Champions League matches per club; its deviation from the market is a
+  statement about the model, not about the market. Fair probabilities remove
+  the margin proportionally, which ignores the favourite-longshot bias.
+* **No live comparison.** During a match the app shows the pre-match forecast
+  against the last odds read and says so; the interval job does not fetch for
+  matches already kicked off.
 * **Tests share the local database** and empty its tables; run `make
   run-samples` again after `make test`.
 * The knockout fixtures do not exist until the December draw, so the fixture
@@ -628,21 +726,22 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── src/deng/
 │   ├── config.py             # validated settings from the environment
 │   ├── pipeline.py           # CLI: init · ingest · transform · dq · run · backfill · verify
-│   ├── ingestion/            # API client + which endpoints and why
+│   ├── ingestion/            # API clients: football, weather, crests, bookmaker odds + budget rules
 │   ├── database/             # connections, idempotent raw loader, run log
 │   ├── transformation/       # ordered SQL execution in one transaction
 │   ├── orchestration/        # Dagster assets, schedule, retry policy
-│   └── quality/              # the eighteen data-quality checks
+│   └── quality/              # the twenty-four data-quality checks
 │
 ├── sql/
 │   ├── schema/               # DDL (applied by `make init`)
 │   ├── transform/            # raw → staging → curated
 │   └── verify/               # verification queries
 │
-├── app/                      # viewer over the curated tables (page + HTML components)
+├── app/                      # viewer over the curated tables (page, odds section, HTML components)
 ├── notebooks/                # exploration
-├── tests/                    # 96 tests: unit, contract, integration
+├── tests/                    # 135 tests: unit, contract, integration
 ├── data/sample/              # committed API payloads (fixtures + offline source)
+├── data/reference/           # venues.csv, bookmaker_team_aliases.csv
 └── docs/
     ├── use-case.md · data-sources.md · data-model.md
     ├── rubric-checklist.md · project-backlog.md
