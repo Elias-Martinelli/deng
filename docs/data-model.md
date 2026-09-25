@@ -93,8 +93,9 @@ domestic league exists in our API tier. Descriptive only since ADR-004.
 Keyed by the club rather than a venue id because in the league phase every
 match is played at the home club's venue, and the source identifies venues only
 by (outdated) name. Coordinates, time zone, the OSM reference they came from
-and `coordinates_status` (`RESOLVED` / `NOT_AVAILABLE`). Built from
-`data/reference/venues.csv` ([evidence](evidence/weather.md#2-venues-why-the-apis-venue-fields-could-not-be-geocoded-blindly)).
+and `coordinates_status` (`RESOLVED` / `NOT_AVAILABLE`). Built from the stored
+OpenStreetMap answers in `raw.osm_venues` via `staging.venues`
+([evidence](evidence/weather.md#2-venues-why-the-apis-venue-fields-could-not-be-geocoded-blindly)).
 A neutral-venue final would need a venue key of its own - not before May.
 
 ### `curated.fact_match_weather` — fact
@@ -167,6 +168,24 @@ model) and `curated.odds_comparison_latest` (both joined: model probability,
 model odds = 1/p, market odds, fair probability and the deviation in
 percentage points - a *model deviation*, not a betting edge).
 
+### `curated.model_features` — view
+
+> **Grain: one row represents one match** - the label plus the features that
+> were known before kick-off.
+
+[`011_model_features.sql`](../sql/schema/011_model_features.sql) joins
+`fact_match` (label and teams), both sides of `fact_team_match_form`,
+`fact_match_weather`, the newest baseline forecast and the newest market
+probabilities into one row. **This is what a model would read**, and what the
+dashboard shows. A view rather than a table, because it adds no logic of its
+own: everything it selects is already point-in-time correct in the tables
+underneath. `outcome` is NULL until the match has been played, which is how a
+training set and the upcoming fixtures are told apart.
+
+The snapshot table planned for the final milestone
+(`curated.fact_match_snapshot`) adds the dimension this view cannot have: one
+row per match *per day*.
+
 ### `curated.team_crest` — view
 
 One row per team with a stored crest, selecting from `raw.team_crests` by the
@@ -179,7 +198,7 @@ team's current crest URL. A view, because there is nothing to transform.
 | `staging.matches` | one row per match |
 | `staging.teams` | one row per team in the current season |
 | `staging.standings` | **one row per team per season per ingestion date** — a point-in-time snapshot, because the table changes after every matchday |
-| `staging.venues` | one row per club, loaded from `data/reference/venues.csv` on every weather run |
+| `staging.venues` | one row per club, built from the stored OpenStreetMap answers (`raw.osm_venues`) by [`305_staging_venues.sql`](../sql/transform/305_staging_venues.sql) |
 | `staging.weather_forecast` | **one row per venue per forecast hour per ingestion date** — every day's forecast is kept, so how a forecast evolved towards kick-off stays queryable |
 | `staging.bookmaker_odds` | **one row per fetch, event, bookmaker, market and outcome** — a quoted price, with the bookmaker's own timestamp |
 | `staging.odds_event_match` | one row per bookmaker event: the fixture it resolved to (kick-off time + name similarity + aliases), or `UNMATCHED` |
@@ -196,8 +215,17 @@ the seed for the match-snapshot idea in the final architecture.
 | `raw.open_meteo` | one row per (endpoint, venue, ingestion date) — one forecast answer for one stadium on one day |
 | `raw.odds_api` | one row per fetch — the array of events with every bookmaker's odds at that moment, plus the credits the API reported left |
 | `raw.team_crests` | one row per crest URL — image bytes as received, fetched once |
+| `raw.osm_venues` | one row per (club, ingestion date) — one OpenStreetMap answer for one stadium, plus our review verdict (`review_status`, `review_note`) next to the untouched payload |
 | `meta.pipeline_runs` | one row per pipeline execution |
 | `meta.dq_results` | one row per data-quality check per run |
+
+Three read-only views on the raw zone
+([`009_raw_planning_views.sql`](../sql/schema/009_raw_planning_views.sql),
+[`010_raw_osm_venues.sql`](../sql/schema/010_raw_osm_venues.sql)) let the
+ingestion plan its next questions without reading a table the transformation
+built: `raw.match_calendar` (one row per match, from the newest stored football
+payload), `raw.team_catalog` (one row per club) and `raw.venue_coordinates`
+(the newest stadium coordinates per club, read by the weather source).
 
 ## Dimensional view
 

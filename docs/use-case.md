@@ -5,9 +5,10 @@
 **Champions League Match Intelligence Data Platform**
 
 A reproducible batch data pipeline that collects UEFA Champions League fixtures,
-results, standings and weather every day and assembles them into a curated,
-point-in-time-correct dataset - the foundation on which a model can later
-predict who wins a match.
+results, standings, weather and bookmaker odds every day - plus the stadium
+coordinates once, because stadiums do not move - and assembles them into a
+curated, point-in-time-correct dataset: the foundation on which a model can
+later predict who wins a match.
 
 ## Goal in one sentence
 
@@ -39,9 +40,12 @@ testing and fails in reality (data leakage).
   match-outcome model (HOME_WIN / DRAW / AWAY_WIN). They need a clean,
   documented, leakage-free table - one row per match, features known before
   kick-off, the result as label - and they need to trust how it was produced.
-* **Secondary: football-interested users** who look at an upcoming fixture in
-  the Streamlit viewer. It shows what the pipeline holds (form, weather state,
-  data freshness, quality results); it adds no data of its own.
+* **Secondary: anyone who wants to see what the pipeline produced.** The
+  Streamlit app is an analysis dashboard for the model data: how many matches
+  per season, how well each feature is covered and why it is absent where it is,
+  the leakage guarantees recomputed from the tables, and one match in detail
+  underneath. It reads curated tables only, makes no API call and adds no data
+  of its own.
 
 ## Data product
 
@@ -50,8 +54,11 @@ testing and fails in reality (data leakage).
 | `curated.fact_match` | one Champions League match | label: `outcome`, derived from the goals | implemented |
 | `curated.fact_team_match_form` | one team going into one match | features: form over the last ≤ 5 matches finished *before* kick-off, rest days | implemented |
 | `curated.fact_match_weather` | one match | features: forecast for the kick-off hour, fetched *before* kick-off, or the reason it is missing | implemented |
-| `curated.dim_team`, `curated.dim_venue` | one team / one home venue | descriptive attributes, coordinates | implemented |
+| `curated.fact_bookmaker_odds` | one quote of one bookmaker for one match and market | benchmark: what the market expected, with the bookmaker margin removed | implemented |
+| `curated.fact_match_prediction` | one match, one model version, one run date | benchmark: our own baseline forecast, so the market can be compared against something | implemented |
+| `curated.dim_team`, `curated.dim_venue` | one team / one home venue | descriptive attributes; the stadium coordinates the weather source needs | implemented |
 | `staging.standings` | one team's table position on one day | features: league position as it was on a given day | implemented (history kept) |
+| `curated.model_features` (view) | one match | **what a model would read**: the label plus every feature known before kick-off, in one row - form of both sides, weather at the kick-off hour, our baseline forecast and the market probabilities | implemented |
 | `curated.fact_match_snapshot` | **one upcoming match on one pipeline run date** | **the training table**: everything known about the match on that day, with an availability state per attribute group | planned |
 
 Details, grains and keys: [`docs/data-model.md`](data-model.md).
@@ -66,9 +73,11 @@ Details, grains and keys: [`docs/data-model.md`](data-model.md).
 2. **Availability analysis** - how many days before kick-off does a usable
    weather forecast exist? How often does a kick-off time change after
    publication? The daily snapshots answer this directly.
-3. **Data preview** - inspect a fixture in the Streamlit viewer: the features
-   the model would see, their window sizes and states, the freshness of the
-   data and the latest quality-check results.
+3. **Judging the dataset before modelling** - the Streamlit dashboard answers
+   the questions a data scientist asks first: how large is the dataset per
+   season, which features are how well covered and why they are absent where
+   they are, and can the leakage guarantees be reproduced from the tables? One
+   match in detail shows the same thing row by row.
 
 ## Project question
 
@@ -80,8 +89,9 @@ Details, grains and keys: [`docs/data-model.md`](data-model.md).
 
 * **Heterogeneous sources** with different formats, keys and update cadences
   (football API: nested JSON per competition; weather API: hourly time series
-  per coordinate; venues: a reference file) must be integrated on common keys
-  (`match_id`, `team_id`, kick-off hour + venue coordinates).
+  per coordinate; OpenStreetMap: one search answer per stadium; odds API: one
+  event list per competition with a block per bookmaker) must be integrated on
+  common keys (`match_id`, `team_id`, kick-off hour + venue coordinates).
 * **Time matters twice:** data is ingested on a daily schedule *and* the moment
   of ingestion is recorded, because the same match yields different information
   on different days. Leakage prevention is a property of the pipeline, not of
@@ -106,10 +116,13 @@ Details, grains and keys: [`docs/data-model.md`](data-model.md).
 ## Limitations (known up front)
 
 * **Training volume:** one league phase has 144 matches - too few to train a
-  model on. Past seasons *are* served by the API (2023/24 fetched in full, 47
-  seasons listed), so loading several seasons is the lever (backlog 1.9). The
-  competition format changed in 2024/25 (groups → single league phase), which a
-  model has to account for.
+  model on. Past seasons *are* served by the API, and the setting
+  `FOOTBALL_DATA_SEASONS` ingests them (two requests per season, once): measured
+  125 matches for 2023 and 189 for 2024, which brings the curated layer to 458
+  matches, 60 clubs and 332 rows with a label. 47 seasons are listed, so how far
+  back to go is still an open decision (backlog 1.9). The competition format
+  changed in 2024/25 (groups → single league phase), which a model has to
+  account for.
 * **Champions League only:** form, rest days and results use Champions League
   matches for every club ([ADR-004](adr/ADR-004-champions-league-scope.md)) -
   the free tier covers the domestic league of only 25 of 36 clubs, and two
@@ -124,9 +137,15 @@ Details, grains and keys: [`docs/data-model.md`](data-model.md).
 * **Weather forecasts** exist only ~16 days ahead; earlier states are
   `NOT_YET_AVAILABLE`, never an invented value. Forecasts cannot be fetched
   after the fact, so matches played before the pipeline ran have none.
-* **Venue coordinates** are not delivered by the football API; they come from
-  `data/reference/venues.csv`, built from OpenStreetMap and reviewed, which must
-  be updated when new clubs qualify.
-* **Rate limits** (10 requests/minute) keep the daily batch small by design:
-  4 football requests plus at most ~18 weather requests (one per venue with a
-  match in the next 16 days).
+* **Venue coordinates** are not delivered by the football API. They come from
+  OpenStreetMap, which is a pipeline source like the others and no longer a
+  hand-maintained CSV: every answer is stored unchanged in `raw.osm_venues` with
+  our review verdict beside it, and the transformation builds `staging.venues`
+  and `curated.dim_venue` from that. It runs once per club (`make venues`), so a
+  club that qualifies later needs one more run; until then it has no coordinates
+  and its matches carry a state, never an invented position.
+* **Rate limits** keep the daily batch small by design: 4 requests to
+  football-data.org (limit 10 per minute), at most ~18 weather requests (one per
+  venue with a match in the next 16 days, limit 10 000 per day) and at most one
+  credit of The Odds API (500 per month). Past seasons cost two requests each -
+  their matches and their clubs - and are fetched once, not every day.

@@ -50,7 +50,7 @@ month against a free budget of a few hundred.
 
 * One request per fetch for the whole competition; bookmakers are named, and
   each quote carries the bookmaker's own timestamp.
-* The budget is enforced in one place (`deng.ingestion.odds.plan_fetch`), is a
+* The budget is enforced in one place (`deng.sources.the_odds_api.plan_fetch`), is a
   pure function, and is unit-tested.
 * Free plan; e-mail registration only; the key never enters the raw zone (the
   stored URL and parameters are rebuilt without it, and a verification query

@@ -4,6 +4,18 @@ Status: **ACCEPTED** (2026-09-20). Confirmed by a real exploration run; the
 findings, including two corrections to earlier assumptions, are recorded in
 [`docs/evidence/api-exploration.md`](../evidence/api-exploration.md).
 
+**Two parts of this decision were changed later** (the rest still holds):
+
+* *Venue coordinates.* The reference file `venues.csv` is gone. OpenStreetMap
+  (Nominatim) is a source of the pipeline like the others: every answer is
+  stored unchanged in `raw.osm_venues` with our review verdict next to it, and
+  `sql/transform/305_staging_venues.sql` builds `staging.venues` from it. The
+  cadence is the same as planned - once per club, not per run.
+* *Daily budget.* [ADR-004](ADR-004-champions-league-scope.md) dropped the
+  per-club `/teams/{id}/matches` calls, so a run asks **4 football endpoints**
+  instead of ~60, plus at most ~20 weather requests and at most one odds
+  credit.
+
 ## Context
 
 The use case needs, for the UEFA Champions League: the full fixture list of the
@@ -20,7 +32,8 @@ account. Detailed comparison: [`docs/data-sources.md`](../data-sources.md).
 * **Weather data: Open-Meteo** forecast API (16-day horizon) and archive API
   (post-match actuals), no API key.
 * **Venue coordinates: a small versioned reference file** (`venues.csv`)
-  maintained in the repository.
+  maintained in the repository. *(Superseded: OpenStreetMap is a pipeline
+  source now - see the note under Status.)*
 
 ## Alternatives considered
 
@@ -60,15 +73,17 @@ account. Detailed comparison: [`docs/data-sources.md`](../data-sources.md).
 * The API's own aggregates (`resultSet.wins/draws/losses`, `standings.form`) are
   inconsistent or empty and must not be used – see evidence §8.
 * `odds` is a stub object containing a marketing message, not data.
-* No venue coordinates → manual reference file must be maintained when new clubs
-  qualify (data-quality check alerts on missing venues).
+* No venue coordinates → they are fetched from OpenStreetMap once per club, so a
+  club that qualifies later needs one more lookup (a data-quality check alerts
+  on missing venues).
 * Scores are "delayed" on the free tier – irrelevant for a daily batch, but the
   Streamlit app must not be presented as live.
 
 ## Consequences
 
-* Ingestion budget ≈ 60 calls/day → ~6 minutes. The client throttles on the
-  rate-limit headers and retries on 429/5xx.
+* Ingestion budget: 4 football calls/day since ADR-004 (≈ 60 while the per-club
+  endpoint was still planned). The client throttles on the rate-limit headers
+  and retries on 429/5xx.
 * Raw zone remains the archive of record for *point-in-time* questions (what was
   known on a given day); past **seasons** can additionally be re-fetched from the
   API, which makes a seasonal backfill genuinely useful rather than a

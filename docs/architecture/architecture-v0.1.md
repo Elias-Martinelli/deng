@@ -5,6 +5,19 @@ decided in an ADR after a technical spike; see [`docs/adr/`](../adr/README.md).
 Changes and lessons learned will be recorded in `architecture-v0.2.md` (midterm)
 and `architecture-final.md` (final).
 
+> **This is the original proposal, kept as it was written.** What the pipeline
+> looks like today is in three diagrams:
+> [`architecture-overview.svg`](../architecture-overview.svg) (the three stages),
+> [`architecture-detail.svg`](../architecture-detail.svg) (every box named after
+> a file or folder) and
+> [`architecture-target.svg`](../architecture-target.svg) (local today versus
+> cloud for the final). Two things below have since changed: there are **five
+> sources**, not two plus a file - the reference file `venues.csv` was replaced
+> by OpenStreetMap as a pipeline source (`raw.osm_venues`), and The Odds API was
+> added ([ADR-005](../adr/ADR-005-bookmaker-odds-source.md)); and the per-club
+> endpoint `teams/{id}/matches` was dropped
+> ([ADR-004](../adr/ADR-004-champions-league-scope.md)).
+
 ## 1. Conceptual view
 
 The GUI never talks to external APIs. Everything flows through one batch
