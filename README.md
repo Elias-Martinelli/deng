@@ -932,13 +932,33 @@ not "the only one who understands it"):
 
 | Area | Owner | Reviewer |
 |---|---|---|
-| Football ingestion, API client, raw model | Elias Martinelli | Noah Rodriguez |
-| Weather ingestion, venue reference data | Noah Rodriguez | Elias Martinelli |
+| Football ingestion, past seasons, raw model | Elias Martinelli | Noah Rodriguez |
+| Weather ingestion, stadium coordinates (OpenStreetMap) | Noah Rodriguez | Elias Martinelli |
 | Transformations, data model, data quality | Noah Rodriguez | Elias Martinelli |
 | Orchestration, Docker, Makefile, CI | Elias Martinelli | Noah Rodriguez |
+| Bookmaker odds, baseline forecast | Elias Martinelli | Noah Rodriguez |
 | Streamlit app and notebook | Noah Rodriguez | Elias Martinelli |
 | Terraform, GCS, BigQuery model | shared — paired session, then split by table | — |
 | Documentation and evidence | each documents what they built | — |
+
+## Data Attribution
+
+The data belongs to its sources, and two of the licences require this notice:
+
+* Weather forecasts from [Open-Meteo](https://open-meteo.com), licensed
+  **CC BY 4.0**.
+* Stadium coordinates from [OpenStreetMap](https://www.openstreetmap.org/copyright)
+  contributors, licensed **ODbL**, looked up through Nominatim within its
+  [usage policy](https://operations.osmfoundation.org/policies/nominatim/)
+  (one request per second, once per club).
+* Fixtures, results, teams, standings and club crests from
+  [football-data.org](https://www.football-data.org), and bookmaker odds from
+  [The Odds API](https://the-odds-api.com), both used on their free tiers for
+  study and evaluation.
+
+Nothing here is scraped, and this repository redistributes no source data - only
+committed sample answers for offline reproducibility. API keys live in `.env`,
+never in git.
 
 ## Authors
 
