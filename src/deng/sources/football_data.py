@@ -1,8 +1,8 @@
 """What to fetch from football-data.org, and with which load strategy.
 
-The client (`football_data_client.py`) knows *how* to call the API. This module
-knows *what* the pipeline needs and why - kept apart so that adding an endpoint
-is a one-line change in a list rather than a change to HTTP code.
+Two halves, kept apart on purpose: the endpoint list below says *what* the
+pipeline needs and why, the client further down says *how* to ask for it. So
+adding an endpoint is one more line in a list, not a change to HTTP code.
 """
 
 from __future__ import annotations

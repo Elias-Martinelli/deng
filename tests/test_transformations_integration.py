@@ -285,7 +285,8 @@ def test_model_features_is_one_row_per_match_with_its_label(connection, transfor
     assert (
         scalar(
             connection,
-            "SELECT count(*) FROM curated.model_features WHERE NOT is_finished AND outcome IS NOT NULL",
+            "SELECT count(*) FROM curated.model_features "
+            "WHERE NOT is_finished AND outcome IS NOT NULL",
         )
         == 0
     )
