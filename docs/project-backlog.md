@@ -38,6 +38,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 1.7 | ClubElo as cross-season strength signal | COULD | FINAL | [ ] (lower value now that the API serves history) |
 | 1.8 | Probe how far back seasons are actually served (2023/24 verified; test 2015, 2005, 1995) | SHOULD | MIDTERM | [ ] |
 | 1.9 | Decide how many past seasons to ingest, and document the reason | MUST | MIDTERM | [ ] |
+| 1.10 | Bookmaker odds source evaluated and decided (The Odds API, ADR-005) | SHOULD | FINAL | [x] `docs/data-sources.md` §2b |
 
 ## EPIC 2 – Local batch ingestion
 
@@ -148,7 +149,8 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
 | 12.1 | Notebook: exploration of the curated layer incl. independent leakage check | SHOULD | FINAL | [x] `notebooks/01_explore_curated_data.ipynb` |
-| 12.2 | Baseline HOME/DRAW/AWAY model with time-based split on snapshot features | COULD | FINAL | [ ] |
+| 12.2 | Baseline HOME/DRAW/AWAY model with time-based split on snapshot features | COULD | FINAL | [~] `form-poisson-v1` in SQL as the comparison baseline (`240_fact_match_prediction.sql`); evaluation against results open |
+| 12.3 | Live model updated with the match state, so an in-play comparison with live odds is honest | COULD | later | [ ] until then the app labels in-play forecasts as pre-match |
 
 ## EPIC 13 – Streamlit
 
@@ -157,6 +159,8 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 13.1 | Fixture picker → match intelligence page reading curated tables only | COULD | FINAL | [x] `app/streamlit_app.py`, screenshot in evidence |
 | 13.3 | Club crests stored in the database, shown in the viewer | COULD | FINAL | [x] `raw.team_crests`, evidence weather §5 |
 | 13.2 | Responsive layout for phones (iPhone, Android) instead of native apps | COULD | FINAL | [x] `app/components.py`, evidence §13; real-device check open |
+| 13.4 | Model forecast vs. bookmaker odds: named platforms, h2h, both timestamps, change history, chart; odds fetched only by the pipeline under a credit budget | COULD | FINAL | [x] ADR-005, `ingestion/odds.py`, `app/odds_view.py`; first live fetch with a real key open |
+| 13.5 | Evidence of a real odds fetch (key registered, `make odds`, quota headers, first unmatched-event alias) | SHOULD | FINAL | [ ] |
 
 ## EPIC 14 – Documentation and reproducibility
 

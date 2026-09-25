@@ -291,6 +291,108 @@ CHECKS: tuple[Check, ...] = (
         """,
     ),
     Check(
+        name="prediction_for_every_match",
+        target="curated.fact_match_prediction",
+        severity=CRITICAL,
+        description=(
+            "Every match has a current model forecast. The model is ours and runs on tables "
+            "that always exist, so a missing forecast is a transformation bug."
+        ),
+        sql="""
+            SELECT count(*)::text || ' match(es) without a forecast' AS observed,
+                   count(*) = 0 AS passed
+              FROM curated.fact_match m
+             WHERE NOT EXISTS (
+                SELECT 1 FROM curated.match_prediction_latest p WHERE p.match_id = m.match_id)
+        """,
+    ),
+    Check(
+        name="prediction_probabilities_sum_to_one",
+        target="curated.fact_match_prediction",
+        severity=CRITICAL,
+        description=(
+            "HOME + DRAW + AWAY = 1 within rounding, recomputed independently of the "
+            "constraint that enforces it on write."
+        ),
+        sql="""
+            SELECT count(*)::text AS observed, count(*) = 0 AS passed
+              FROM curated.fact_match_prediction
+             WHERE abs(home_prob + draw_prob + away_prob - 1) >= 0.001
+        """,
+    ),
+    Check(
+        name="odds_fair_probabilities_sum_to_one",
+        target="curated.fact_bookmaker_odds",
+        severity=CRITICAL,
+        description=(
+            "The margin-free market probabilities of a complete quote add up to 1, and an "
+            "incomplete quote has none - the two are never mixed."
+        ),
+        sql="""
+            SELECT count(*)::text AS observed, count(*) = 0 AS passed
+              FROM curated.fact_bookmaker_odds
+             WHERE (is_complete AND abs(home_prob_fair + draw_prob_fair + away_prob_fair - 1)
+                    >= 0.001)
+                OR (NOT is_complete AND home_prob_fair IS NOT NULL)
+        """,
+    ),
+    Check(
+        name="odds_prices_plausible",
+        target="curated.fact_bookmaker_odds",
+        severity=WARNING,
+        description=(
+            "Decimal prices between 1.01 and 1000 and a margin between -2 % and 30 %. "
+            "Outside that the feed changed format, not the market."
+        ),
+        sql="""
+            SELECT count(*)::text AS observed, count(*) = 0 AS passed
+              FROM curated.fact_bookmaker_odds
+             WHERE home_price NOT BETWEEN 1.01 AND 1000
+                OR draw_price NOT BETWEEN 1.01 AND 1000
+                OR away_price NOT BETWEEN 1.01 AND 1000
+                OR overround NOT BETWEEN -0.02 AND 0.30
+        """,
+    ),
+    Check(
+        name="odds_events_resolved_to_fixtures",
+        target="staging.odds_event_match",
+        severity=WARNING,
+        description=(
+            "Every bookmaker event was resolved to one of our fixtures. WARNING: an unmatched "
+            "event needs an alias in data/reference/bookmaker_team_aliases.csv; its odds are "
+            "stored in raw and staging meanwhile, nothing is lost."
+        ),
+        sql="""
+            SELECT coalesce(string_agg(home_team_name || ' vs ' || away_team_name, '; '
+                                       ORDER BY commence_time), '')
+                   || ' (' || count(*)::text || ' unmatched)' AS observed,
+                   count(*) = 0 AS passed
+              FROM staging.odds_event_match
+             WHERE match_id IS NULL
+        """,
+    ),
+    Check(
+        name="odds_fresh_before_kickoff",
+        target="raw.odds_api",
+        severity=WARNING,
+        description=(
+            "When a match kicks off within 24 h, the newest odds fetch is younger than 24 h. "
+            "WARNING: a stale state means the interval job did not run or the quota reserve "
+            "was reached; the app shows the age either way."
+        ),
+        sql="""
+            SELECT coalesce('newest fetch ' || to_char(max(ingested_at), 'YYYY-MM-DD HH24:MI'),
+                            'no fetch yet') AS observed,
+                   coalesce(
+                       NOT EXISTS (SELECT 1 FROM curated.fact_match
+                                    WHERE NOT is_finished
+                                      AND utc_kickoff BETWEEN now() AND now() + interval '24 hours')
+                       OR max(ingested_at) > now() - interval '24 hours',
+                       false) AS passed
+              FROM raw.odds_api
+        """,
+    ),
+    Check(
         name="every_team_has_a_crest",
         target="curated.team_crest",
         severity=WARNING,

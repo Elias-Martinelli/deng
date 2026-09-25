@@ -43,6 +43,12 @@ x-orchestrator: &orchestrator
     FOOTBALL_DATA_COMPETITION: ${FOOTBALL_DATA_COMPETITION:-CL}
     INGEST_SOURCE: ${INGEST_SOURCE:-api}
     LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    # Bookmaker odds: the key and the budget rules the interval job applies.
+    ODDS_API_KEY: ${ODDS_API_KEY:-}
+    ODDS_REFRESH_MINUTES: ${ODDS_REFRESH_MINUTES:-15}
+    ODDS_WATCH_HOURS_BEFORE_KICKOFF: ${ODDS_WATCH_HOURS_BEFORE_KICKOFF:-48}
+    ODDS_WATCH_MATCH_IDS: ${ODDS_WATCH_MATCH_IDS:-}
+    ODDS_QUOTA_RESERVE: ${ODDS_QUOTA_RESERVE:-50}
   volumes:
     - ./sql:/app/sql:ro
     - ./data/sample:/app/data/sample:ro
@@ -99,6 +105,11 @@ services:
       FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY:-}
       FOOTBALL_DATA_COMPETITION: ${FOOTBALL_DATA_COMPETITION:-CL}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ODDS_API_KEY: ${ODDS_API_KEY:-}
+      ODDS_REFRESH_MINUTES: ${ODDS_REFRESH_MINUTES:-15}
+      ODDS_WATCH_HOURS_BEFORE_KICKOFF: ${ODDS_WATCH_HOURS_BEFORE_KICKOFF:-48}
+      ODDS_WATCH_MATCH_IDS: ${ODDS_WATCH_MATCH_IDS:-}
+      ODDS_QUOTA_RESERVE: ${ODDS_QUOTA_RESERVE:-50}
     volumes:
       # Read-only mount of the SQL files (schema, transform, verify) so a query
       # change takes effect without rebuilding the image. Application code stays
@@ -114,7 +125,8 @@ services:
 
   app:
     # The Streamlit viewer. Reads the curated tables and nothing else - it makes
-    # no API calls, which is the architectural point it exists to demonstrate.
+    # no API calls (odds included), which is the architectural point it exists
+    # to demonstrate.
     build:
       context: .
       dockerfile: Dockerfile
@@ -129,6 +141,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-cl_intelligence}
       POSTGRES_USER: ${POSTGRES_USER:-deng}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Only to label freshness and say whether a key exists - the app never
+      # calls the API, so the key itself stays out of this container.
+      ODDS_API_KEY: ${ODDS_API_KEY:+configured}
+      ODDS_REFRESH_MINUTES: ${ODDS_REFRESH_MINUTES:-15}
+      ODDS_WATCH_HOURS_BEFORE_KICKOFF: ${ODDS_WATCH_HOURS_BEFORE_KICKOFF:-48}
+      ODDS_QUOTA_RESERVE: ${ODDS_QUOTA_RESERVE:-50}
     ports:
       - "${STREAMLIT_PORT:-8501}:8501"
     volumes:

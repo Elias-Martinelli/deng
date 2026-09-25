@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 # `components` lives next to this file; `streamlit run` puts the script's own
 # directory on sys.path, which makes this plain import work.
+import odds_view  # noqa: E402
 from components import (  # noqa: E402
     CSS,
     MatchWeather,
@@ -217,7 +218,8 @@ with st.sidebar:
         st.dataframe(dq, hide_index=True, width="stretch")
     st.caption(
         "Every figure comes from our own curated tables, produced by the batch pipeline. "
-        "This app makes no API calls."
+        "This app makes no API calls - bookmaker odds too are fetched by the pipeline, under "
+        "its credit budget; reloading this page never spends one."
     )
 
 # --- Fixture picker --------------------------------------------------------
@@ -228,7 +230,9 @@ fixtures = query(
       FROM curated.fact_match m
       JOIN curated.dim_team h ON h.team_id = m.home_team_id
       JOIN curated.dim_team a ON a.team_id = m.away_team_id
-     WHERE m.is_upcoming
+     -- Upcoming, plus matches in play (kicked off, not finished, under three
+     -- hours ago): the odds section labels their forecast as pre-match.
+     WHERE NOT m.is_finished AND m.utc_kickoff > now() - interval '3 hours'
      ORDER BY m.utc_kickoff
     """
 )
@@ -248,13 +252,13 @@ fixtures["label"] = (
     + fixtures["away"]
 )
 selected_label = st.selectbox(
-    f"Upcoming fixture · {len(fixtures)} available", options=fixtures["label"]
+    f"Fixture · {len(fixtures)} upcoming or in play", options=fixtures["label"]
 )
 match_id = int(fixtures.loc[fixtures["label"] == selected_label, "match_id"].iloc[0])
 
 detail = query(
     """
-    SELECT m.utc_kickoff, m.matchday,
+    SELECT m.utc_kickoff, m.matchday, m.is_finished,
            h.team_id AS home_id, h.name AS home_name, h.tla AS home_tla, h.venue,
            a.team_id AS away_id, a.name AS away_name, a.tla AS away_tla,
            fh.matches_considered AS home_n, fh.goals_scored_last_5 AS home_gf,
@@ -290,6 +294,22 @@ st.markdown(
         away_crest=crests().get(int(detail["away_id"])),
     ),
     unsafe_allow_html=True,
+)
+
+# --- Model forecast vs. bookmaker odds --------------------------------------
+_settings = get_settings()
+odds_view.render(
+    query=query,
+    local_time=local_time,
+    match_id=match_id,
+    home=detail["home_name"],
+    away=detail["away_name"],
+    kickoff=kickoff,
+    is_finished=bool(detail["is_finished"]),
+    refresh_minutes=_settings.odds_refresh_minutes,
+    watch_hours=_settings.odds_watch_hours_before_kickoff,
+    quota_reserve=_settings.odds_quota_reserve,
+    has_key=bool(_settings.odds_api_key.get_secret_value()),
 )
 
 
@@ -412,7 +432,7 @@ st.divider()
 st.caption(
     f"Times in {DISPLAY_TZ.split('/')[1]} local time. Data: football-data.org (free tier); "
     "weather by Open-Meteo.com (CC BY 4.0); venue locations © OpenStreetMap contributors "
-    "(ODbL). "
+    "(ODbL); bookmaker odds via The Odds API (free tier). "
     "Scope: UEFA Champions League matches only. No line-ups, injuries or match statistics - "
     "see the README's known limitations."
 )

@@ -111,3 +111,99 @@ def test_weather_explains_every_missing_state():
         assert "°C" not in html
         assert len(html) > 60, status
     assert "28 Sep" in weather_card(MatchWeather("NOT_YET_AVAILABLE", available_from="28 Sep"))
+
+
+# --- model forecast vs. bookmaker odds ---------------------------------------
+
+from components import (  # noqa: E402
+    OddsComparison,
+    OutcomeRow,
+    age_label,
+    note,
+    odds_comparison_card,
+    odds_comparison_grid,
+    odds_state_chip,
+    signed_pp,
+)
+
+
+def comparison(**overrides) -> OddsComparison:
+    values = dict(
+        bookmaker="Pinnacle",
+        state="CURRENT",
+        model_label="22 Sep 14:00 CEST · form-poisson-v1",
+        odds_label="22 Sep 14:05 CEST",
+        fetched_label="22 Sep 14:20 CEST",
+        age_label="12 min ago",
+        outcomes=[
+            OutcomeRow("Home win · Arsenal FC", 0.50, 2.10, 0.48),
+            OutcomeRow("Draw", 0.28, 3.40, 0.30),
+            OutcomeRow("Away win · Lille OSC", 0.22, 3.60, 0.22),
+        ],
+        overround=0.05,
+    )
+    values.update(overrides)
+    return OddsComparison(**values)
+
+
+def test_model_odds_are_one_over_the_probability():
+    row = OutcomeRow("Home win", 0.5, 2.10, 0.48)
+    assert row.model_odds == 2.0
+    assert round(row.deviation_pp, 1) == 2.0
+    assert OutcomeRow("Draw", 0.28).deviation_pp is None
+
+
+def test_card_shows_both_timestamps_the_age_and_every_outcome():
+    html = odds_comparison_card(comparison())
+    assert "Model forecast: 22 Sep 14:00 CEST" in html
+    assert "Odds: 22 Sep 14:05 CEST (bookmaker time)" in html
+    assert "read 22 Sep 14:20 CEST, 12 min ago" in html
+    for label in ("Home win · Arsenal FC", "Draw", "Away win · Lille OSC"):
+        assert label in html
+    assert "50 %" in html and "2.00" in html and "2.10" in html and "48 % fair" in html
+    assert "+2.0 pp" in html and "−2.0 pp" in html and "±0.0 pp" in html
+    assert "margin 5.0 %" in html
+
+
+def test_deviation_is_called_a_model_deviation_not_an_edge():
+    html = odds_comparison_card(comparison())
+    assert "not a betting edge" in html and "edge" not in html.split("not a betting edge")[0]
+
+
+def test_a_missing_price_is_shown_as_not_quoted():
+    html = odds_comparison_card(
+        comparison(state="INCOMPLETE", outcomes=[OutcomeRow("Draw", 0.28, None, None)])
+    )
+    assert "not quoted" in html and "incomplete" in html
+
+
+def test_every_state_is_words_and_a_mark_not_colour_alone():
+    for state in ("CURRENT", "STALE", "WITHDRAWN", "INCOMPLETE"):
+        chip = odds_state_chip(state)
+        assert "cl-chip" in chip and len(chip) > 40, state
+    assert "not in the latest fetch" in odds_state_chip("WITHDRAWN")
+    assert "cl-bad" in odds_state_chip("WITHDRAWN") and "cl-warn" in odds_state_chip("STALE")
+
+
+def test_bookmaker_names_from_the_feed_cannot_inject_markup():
+    html = odds_comparison_card(comparison(bookmaker="<b>x</b>"))
+    assert "<b>x</b>" not in html and "&lt;b&gt;x&lt;/b&gt;" in html
+
+
+def test_ages_use_the_coarsest_honest_unit():
+    assert age_label(0.4) == "just now"
+    assert age_label(12) == "12 min ago"
+    assert age_label(180) == "3 h ago"
+    assert age_label(3 * 1440) == "3 days ago"
+    assert age_label(None) == "unknown age"
+
+
+def test_signed_percentage_points_keep_the_sign():
+    assert signed_pp(3.24) == "+3.2 pp" and signed_pp(-0.06) == "−0.1 pp"
+    assert signed_pp(0) == "±0.0 pp" and signed_pp(None) == "–"
+
+
+def test_grid_and_notes_wrap_their_content():
+    assert odds_comparison_grid(["<i>a</i>", "<i>b</i>"]).count("<i>") == 2
+    assert "cl-info" in note("x", "info") and "cl-info" not in note("x")
+    assert "&lt;" in note("<x>")

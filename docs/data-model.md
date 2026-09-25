@@ -119,6 +119,54 @@ Every match has a row, and `weather_status` says why values are absent:
 `lead_days` (match date − forecast date) is kept because a 1-day forecast and a
 14-day forecast are different quality; a model should know which it gets.
 
+### `curated.fact_match_prediction` — fact
+
+> **Grain: one row represents one match, one model version and one run date** -
+> the model's HOME / DRAW / AWAY probabilities as of that run.
+
+Model `form-poisson-v1` ([`240_fact_match_prediction.sql`](../sql/transform/240_fact_match_prediction.sql)):
+goals per side are Poisson with rates built from the league's average home and
+away goals and each team's attack and defence strength from its last-5 window,
+both shrunk towards a prior. Every input is restricted to matches finished
+*before the kick-off of the match being predicted* - the same point-in-time
+rule as the form table - so a forecast computed today for a finished match is
+still built from pre-match information. Whether it was *computed* before
+kick-off is a separate fact, `is_pre_match`. A rerun of the same day replaces
+that day's forecast; a new day adds one, so how the forecast moved towards
+kick-off stays queryable and a comparison can pick the forecast that existed
+when the odds were read. Constraint: the three probabilities sum to 1.
+
+A deliberately simple baseline: it is the thing the odds are compared with,
+not a claim to beat the market (backlog 12.2 is the real model).
+
+### `curated.fact_bookmaker_odds` — fact
+
+> **Grain: one row represents one odds change: one match, one bookmaker, one
+> market, one distinct quote** (the bookmaker's timestamp plus the three
+> prices), with the fetch interval `[first_seen_at, last_seen_at]` in which
+> the pipeline observed it.
+
+| Column | Notes |
+|---|---|
+| `bookmaker_key`, `bookmaker_title` | the platform, as the API names it |
+| `market_key` | `h2h`: 1X2 on regular time incl. stoppage time |
+| `source_updated_at` | when the bookmaker last changed the quote (its own clock) |
+| `first_seen_at`, `last_seen_at` | first and latest fetch that showed exactly this quote |
+| `home_price`, `draw_price`, `away_price` | decimal odds; NULL when not quoted |
+| `is_complete` | false when fewer than three outcomes were quoted (suspended / partial) |
+| `overround` | bookmaker margin: sum of implied probabilities − 1 |
+| `home_prob_fair`, `draw_prob_fair`, `away_prob_fair` | implied probabilities with the margin removed, **always from the three prices of the same bookmaker at the same moment** |
+
+Two timestamps per row on purpose: "what the bookmaker said and when" and
+"when we looked" are different facts, and the comparison shows both.
+
+**Views for consumers:** `curated.bookmaker_odds_latest` (newest quote per
+match, bookmaker and market, with `is_current` = still carried by the latest
+fetch), `curated.match_prediction_latest` (newest forecast per match and
+model) and `curated.odds_comparison_latest` (both joined: model probability,
+model odds = 1/p, market odds, fair probability and the deviation in
+percentage points - a *model deviation*, not a betting edge).
+
 ### `curated.team_crest` — view
 
 One row per team with a stored crest, selecting from `raw.team_crests` by the
@@ -133,6 +181,8 @@ team's current crest URL. A view, because there is nothing to transform.
 | `staging.standings` | **one row per team per season per ingestion date** — a point-in-time snapshot, because the table changes after every matchday |
 | `staging.venues` | one row per club, loaded from `data/reference/venues.csv` on every weather run |
 | `staging.weather_forecast` | **one row per venue per forecast hour per ingestion date** — every day's forecast is kept, so how a forecast evolved towards kick-off stays queryable |
+| `staging.bookmaker_odds` | **one row per fetch, event, bookmaker, market and outcome** — a quoted price, with the bookmaker's own timestamp |
+| `staging.odds_event_match` | one row per bookmaker event: the fixture it resolved to (kick-off time + name similarity + aliases), or `UNMATCHED` |
 
 `staging.standings` is the one staging table whose grain includes the ingestion
 date. That is intentional: it turns the league table into a time series and is
@@ -144,14 +194,18 @@ the seed for the match-snapshot idea in the final architecture.
 |---|---|
 | `raw.football_data` | one row per (source, endpoint, request parameters, ingestion date) — one API answer on one day |
 | `raw.open_meteo` | one row per (endpoint, venue, ingestion date) — one forecast answer for one stadium on one day |
+| `raw.odds_api` | one row per fetch — the array of events with every bookmaker's odds at that moment, plus the credits the API reported left |
 | `raw.team_crests` | one row per crest URL — image bytes as received, fetched once |
 | `meta.pipeline_runs` | one row per pipeline execution |
 | `meta.dq_results` | one row per data-quality check per run |
 
 ## Dimensional view
 
-`fact_match`, `fact_team_match_form` and `fact_match_weather` are the facts;
-`dim_team` and `dim_venue` the dimensions. `dim_date` is planned for the cloud
+`fact_match`, `fact_team_match_form`, `fact_match_weather`,
+`fact_match_prediction` and `fact_bookmaker_odds` are the facts; `dim_team`
+and `dim_venue` the dimensions. The last two are the only facts with a time
+axis below the day: they record versions (forecast per run, quote per change)
+rather than a state. `dim_date` is planned for the cloud
 model, where a date dimension earns its place through partition pruning.
 Locally it would only add joins.
 
@@ -168,7 +222,8 @@ fact_match_weather   fact_match   fact_team_match_form
 * **No group dimension.** Since the 2024/25 format change `group` is null in
   every row (evidence §5). A textbook design would have produced a table that
   is empty for every current-season match.
-* **No odds.** The field exists but carries a marketing message, not data.
+* **No odds from football-data.org.** Its field carries a marketing message,
+  not data; odds come from The Odds API instead ([ADR-005](adr/ADR-005-bookmaker-odds-source.md)).
 * **No line-ups, injuries or player data.** Not available on the free tier.
   The snapshot table in the final architecture reserves `NOT_AVAILABLE` states
   for them rather than pretending they are missing at random.

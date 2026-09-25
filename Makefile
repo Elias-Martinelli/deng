@@ -33,7 +33,7 @@ PYTHON ?= $(shell for c in python3.13 python3.12 python3.11 python3.10 python3; 
 PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 
 .PHONY: help setup setup-app test test-integration lint format explore doctor clean \
-        up down logs ps psql init ingest ingest-samples transform dq run run-samples \
+        up down logs ps psql init ingest ingest-samples transform dq run run-samples odds \
         backfill verify docker-ingest docker-app reset app notebook \
         setup-orchestrator orchestrator dagster-dev dagster-backfill venues docker-ready
 
@@ -140,10 +140,13 @@ ingest-samples:  ## Ingest from the committed sample payloads (no API key needed
 transform:  ## raw -> staging -> curated for today
 	$(PY) -m deng.pipeline transform
 
+odds:  ## Fetch bookmaker odds if the budget rules allow (needs ODDS_API_KEY); ODDS_FORCE=1 to fetch now
+	$(PY) -m deng.pipeline odds $(if $(ODDS_FORCE),--force,)
+
 dq:  ## Run the data-quality checks and persist the results
 	$(PY) -m deng.pipeline dq
 
-run:  ## Full daily sequence from the API: ingest -> transform -> crests -> weather -> checks
+run:  ## Full daily sequence from the API: ingest -> transform -> crests -> weather -> odds -> checks
 	$(PY) -m deng.pipeline run
 
 run-samples:  ## Same sequence from the committed payloads (no API key needed)

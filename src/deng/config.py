@@ -44,6 +44,29 @@ class Settings(BaseSettings):
     # Reserved for post-match weather actuals (backlog 2.7); not used yet.
     open_meteo_archive_url: str = "https://archive-api.open-meteo.com/v1/archive"
 
+    # --- The Odds API (bookmaker odds, free tier) --------------------------
+    # Optional: without a key the odds step skips itself and says so; nothing
+    # else in the pipeline depends on it.
+    odds_api_key: SecretStr = Field(default=SecretStr(""))
+    odds_api_base_url: str = "https://api.the-odds-api.com/v4"
+    odds_api_sport: str = "soccer_uefa_champs_league"
+    # Bookmaker regions; one region x one market costs one credit per request.
+    odds_api_regions: str = "eu"
+    # Optional comma-separated bookmaker keys to narrow the answer (empty = all
+    # bookmakers of the regions). Does not change the credit cost.
+    odds_api_bookmakers: str = ""
+    # How often the interval job may fetch while a watched match is close:
+    # every 15 min for the last 48 h before kick-off. The daily run always
+    # fetches once a day regardless. All three are documented in .env.example.
+    odds_refresh_minutes: int = Field(default=15, ge=1)
+    odds_watch_hours_before_kickoff: int = Field(default=48, ge=0)
+    # Optional comma-separated match ids to watch; empty = every unfinished
+    # match inside the window.
+    odds_watch_match_ids: str = ""
+    # Stop fetching when the API reports fewer credits than this (free tier:
+    # 500 per month). The last stored state stays visible with its age.
+    odds_quota_reserve: int = Field(default=50, ge=0)
+
     # --- PostgreSQL --------------------------------------------------------
     postgres_host: str = "localhost"
     postgres_port: int = 5432
@@ -85,6 +108,11 @@ class Settings(BaseSettings):
             f"postgresql://{user}:{password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def odds_watch_match_id_set(self) -> frozenset[int]:
+        """The watched match ids as integers; empty means "every match in the window"."""
+        return frozenset(int(part) for part in self.odds_watch_match_ids.split(",") if part.strip())
 
     def require_football_api_key(self) -> str:
         """Return the football-data.org key or fail with an actionable message."""
