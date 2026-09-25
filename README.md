@@ -5,13 +5,15 @@ HSLU · DENG – Data Engineering · HS26 · End-to-End Batch Data Pipeline
 [![CI](https://github.com/Elias-Martinelli/deng/actions/workflows/ci.yml/badge.svg)](https://github.com/Elias-Martinelli/deng/actions/workflows/ci.yml)
 
 A reproducible daily batch pipeline that collects UEFA Champions League
-fixtures, results, standings, weather and bookmaker odds and assembles them
-into a curated, point-in-time-correct dataset — the foundation on which a
-model can later predict who wins a match. **The pipeline is the product**; the
-Streamlit viewer is a preview of its data, including a baseline forecast next
-to the odds of real bookmakers.
+fixtures, results, standings, weather, bookmaker odds and stadium coordinates
+and assembles them into a curated, point-in-time-correct dataset. **The
+pipeline is the product.** A model that predicts the winner is what the data is
+*for* — it is the downstream use, not part of this project. The Streamlit page
+is an analysis dashboard for that data.
 
-![Data pipeline architecture](docs/architecture.svg)
+The whole project is three boxes, in this order:
+
+![The three stages: ingest, transform, data product](docs/architecture-overview.svg)
 
 How the pieces fit: [Architecture](#architecture) · what is done and what is
 not: [Project Status](#project-status).
@@ -69,8 +71,9 @@ Details: [`docs/use-case.md`](docs/use-case.md).
 * **Primary: a data scientist or analyst** who wants to build and evaluate a
   match-outcome model (HOME_WIN / DRAW / AWAY_WIN) and needs a clean,
   documented, leakage-free table to train it on.
-* **Secondary: football-interested users** who look at an upcoming fixture in
-  the Streamlit viewer - a preview of what the pipeline holds.
+* **Secondary: anyone who wants to judge the data** before using it - the
+  Streamlit dashboard shows how large the dataset is, how well each feature is
+  covered, why a value is missing where it is, and one match in detail.
 
 ## Data Product
 
@@ -81,7 +84,10 @@ Details: [`docs/use-case.md`](docs/use-case.md).
 | `curated.fact_match_weather` | one match | forecast for the kick-off hour, fetched before kick-off, or why it is missing | **implemented** |
 | `curated.fact_match_prediction` | one match, one model version, one run date | the baseline model's HOME/DRAW/AWAY probabilities as of that run | **implemented** (baseline) |
 | `curated.fact_bookmaker_odds` | one odds change of one bookmaker for one match | the market's view, with the bookmaker's timestamp and ours | **implemented** |
-| `curated.dim_team`, `curated.dim_venue` | one team / one home venue | descriptive attributes, coordinates | **implemented** |
+| `curated.dim_team` | one team | name, three-letter code, crest URL | **implemented** |
+| `curated.dim_venue` | one home venue (keyed by the home club) | coordinates for the weather, or the reason there are none | **implemented** |
+| `curated.model_features` *(view)* | one match | **what a model would read**: the label plus every feature known before kick-off, in one row | **implemented** |
+| `curated.team_crest` *(view)* | one team | the club logo, served from our own database instead of the API's CDN | **implemented** |
 | `curated.fact_match_snapshot` | one upcoming match on one pipeline run date | **the training table**: everything known on that day | planned (final) |
 | `curated.dim_date` | one calendar day | partition pruning in BigQuery | planned (final) |
 
@@ -95,28 +101,39 @@ Full definitions, keys and reasoning: [`docs/data-model.md`](docs/data-model.md)
    that point.
 2. **Availability analysis** - how many days before kick-off does a usable
    forecast exist, how often do kick-off times move?
-3. **Data preview** - pick a fixture in the Streamlit viewer, e.g. *RC Lens vs
-   Sporting CP, 13 Oct 2026*, and see the features a model would get, their
-   window sizes and states, data freshness and quality results. Everything is
-   served from our own tables; the app makes no API calls.
+3. **Judging the data** - the Streamlit dashboard answers "could someone train
+   a model on this?": how many matches per season, how many of them carry a
+   label, how well each feature is covered and the honest reason when it is
+   not, plus one fixture in detail. Everything is served from our own tables;
+   the app makes no API calls.
 4. **Model versus market** - for the same fixture, the baseline model's
    probabilities next to the 1X2 odds of named bookmakers, with both
    timestamps, the margin-free market probability, the deviation in
    percentage points and how both moved towards kick-off. The odds are fetched
    by the pipeline under a credit budget, never by the app.
 
-A single league phase has 144 matches - too few to train on. Past seasons are
-served by the API, so loading several of them is the planned lever (backlog 1.9).
+A single league phase has 144 matches - too few to train on, so past seasons
+are ingested as well. `FOOTBALL_DATA_SEASONS=2023,2024` costs one matches
+request and one teams request per season; measured, 2023 adds 125 matches and
+2024 adds 189 to the current 144. With both seasons in, the curated layer holds
+458 matches, 60 clubs, 332 matches with a label and 664 form rows, and all 24
+data-quality checks pass. The API lists 47 seasons, so this is a dial, not a
+ceiling.
 
 ## Data Sources
 
-| Source | Content | Access | Limits (free tier) |
+**Five sources**, one file per source in
+[`src/deng/sources/`](src/deng/sources/). Four providers: the crest images come
+from football-data.org too, but they are a separate download with its own
+strategy, so they are their own step.
+
+| Source | What it is for | Access | Limit (free tier) |
 |---|---|---|---|
-| [football-data.org v4](https://www.football-data.org) | CL fixtures, results, standings, teams, referees, head-to-head | REST/JSON, `X-Auth-Token`, free registration | 10 requests/min; no line-ups, injuries or match statistics; 11 of 36 clubs without domestic-league data |
-| [Open-Meteo](https://open-meteo.com) | 16-day hourly forecast for the kick-off hour | REST/JSON, no key | 10 000 calls/day, CC BY 4.0 |
-| [OpenStreetMap](https://www.openstreetmap.org) via `make venues` | stadium coordinates, once per season → `data/reference/venues.csv` | Nominatim, 1 req/s | ODbL |
-| [The Odds API](https://the-odds-api.com) v4 | 1X2 odds (h2h, regular time) of ~25 European bookmakers per upcoming match, with each bookmaker's timestamp | REST/JSON, `apiKey`, free registration; optional | 500 credits/month, one per fetch; polled only in a window before watched matches ([ADR-005](docs/adr/ADR-005-bookmaker-odds-source.md)) |
-| `data/reference/venues.csv` *(planned)* | stadium coordinates and time zones | versioned in this repo | maintained by hand |
+| [football-data.org v4](https://www.football-data.org) | fixtures, results, teams, standings - the backbone, and the label a model learns | REST/JSON, `X-Auth-Token`, free registration | 10 requests/minute; no line-ups, injuries or match statistics; 11 of 36 clubs without domestic-league data |
+| [Open-Meteo](https://open-meteo.com) | hourly forecast for the kick-off hour | REST/JSON, no key | forecasts 16 days ahead and nothing backwards; 10 000 calls/day, CC BY 4.0 |
+| [The Odds API](https://the-odds-api.com) v4 | 1X2 odds (regular time) of ~25 European bookmakers, each with the bookmaker's own timestamp - the market's view next to ours | REST/JSON, `apiKey`, free registration; optional | 500 credits/month, one credit per fetch ([ADR-005](docs/adr/ADR-005-bookmaker-odds-source.md)) |
+| [OpenStreetMap](https://www.openstreetmap.org) (Nominatim) | stadium coordinates - the football API has none and the weather API needs them | REST/JSON, no key | 1 request per second; asked once per club, not daily; ODbL |
+| club crests (football-data.org) | the club logos the dashboard shows | plain HTTPS image download | one download per crest URL, ever |
 
 Evaluation including rejected alternatives: [`docs/data-sources.md`](docs/data-sources.md).
 Decisions: [ADR-001](docs/adr/ADR-001-football-data-source.md) (football, weather),
@@ -126,8 +143,11 @@ Measured behaviour of the live API: [`docs/evidence/api-exploration.md`](docs/ev
 ## Data Characteristics
 
 * **Volume** (measured 20 Sep 2026): 144 league-phase matches, 36 teams, one
-  standings table. ≈ 60 API calls and < 2 MB raw per daily run; < 1 GB per
-  season. All 47 listed seasons together are roughly 5 000–6 500 matches.
+  standings table. A daily run costs 4 football requests, at most ~20 weather
+  requests (one per venue with a match inside 16 days) and at most one odds
+  credit; < 2 MB raw per day, < 1 GB per season. Each past season that is switched on costs two requests once (2023:
+  125 matches, 2024: 189). All 47 listed seasons together are roughly
+  5 000–6 500 matches.
 * **Format:** nested JSON. Business keys are stable integers (`match.id`,
   `team.id`, `season.id`).
 * **Change behaviour:** kick-off times and statuses change in place, scores are
@@ -153,20 +173,46 @@ Identified by measurement, not assumption ([evidence](docs/evidence/api-explorat
 
 ## Architecture
 
-The diagram at the top shows the local stack. One daily run, orchestrated by
-Dagster, in three steps:
+The diagram at the top is the whole idea in three boxes. Two more pictures add
+the detail; both are plain SVG, readable in light and dark mode.
+
+![Sources, ingestion, warehouse, transformation, data product](docs/architecture-detail.svg)
+
+[`docs/architecture-detail.svg`](docs/architecture-detail.svg) is today's
+pipeline in full: the four APIs on the left (the crest images come from the
+football API as well, which is why there are five sources), one Python file per
+source, the warehouse with its three zones (`raw` as received, `staging` typed,
+`curated` the data product), the SQL transformation, and the dashboard that
+reads the result. Everything left of the warehouse is Python and everything
+right of it is SQL; solid arrows are data, dashed ones are the platform that
+runs, stores or records the work.
+
+![Local path today versus cloud path for the final milestone](docs/architecture-target.svg)
+
+[`docs/architecture-target.svg`](docs/architecture-target.svg) shows the same
+pipeline with two destinations: the local path (PostgreSQL in Docker Compose) is
+in place today, the cloud path (GCS bucket, BigQuery) is the final milestone,
+and the platform row underneath carries both. The point of the picture is that
+the ingestion and the SQL files stay the same - the cloud is a different target,
+not a second pipeline.
+
+One daily run, orchestrated by Dagster, in three steps:
 
 | Step | Trigger | What it does |
 | --- | --- | --- |
-| **1. Ingest** | daily 06:00 Europe/Zurich, plus backfill on demand | Fetches fixtures, results, teams and standings; forecasts for matches ≤ 16 days ahead; missing club crests. Stores every answer unchanged in `raw` with an idempotent upsert per day |
-| **2. Transform** | after a successful ingest | SQL in one transaction: `raw` → typed `staging` → `curated` facts and dimensions, incl. point-in-time form and the weather status per match |
+| **1. Ingest** | daily 06:00 Europe/Zurich, plus backfill on demand | Asks all five sources in order and stores every answer unchanged in `raw` - one row per source, question and day, written with an idempotent upsert. Nothing is transformed here |
+| **2. Transform** | after a successful ingest | SQL files in order: `raw` → typed `staging` → `curated` facts, dimensions and the features that were known before kick-off |
 | **3. Quality checks** | after the transformation | 24 checks stored in `meta.dq_results`; a CRITICAL failure fails the run, a WARNING stays visible |
 | **Odds refresh** (own job) | every 15 min, configurable | Decides whether to spend a credit - once a day always, at the interval only while a watched match is within 48 h of kick-off, never below the quota reserve - then stores the fetch and rebuilds the odds change history |
 
-Colours in the diagram: grey = outside world (sources, consumers), blue =
-processing step, purple = storage and orchestration; dashed = control, not
-data. The source of the picture is [`docs/architecture.svg`](docs/architecture.svg)
-(plain SVG, readable in light and dark mode).
+**The rule that keeps this simple:** the ingestion may read the APIs, the files
+under `data/` and the raw zone - never `staging`, never `curated`. That is not
+only an intention: [`tests/test_layering.py`](tests/test_layering.py) searches
+the ingestion code for those table names and fails if one appears. Three
+read-only views on the raw zone make it possible: `raw.match_calendar` and
+`raw.team_catalog` tell the later steps which matches and clubs exist, and
+`raw.venue_coordinates` hands the weather step the coordinates the
+OpenStreetMap step stored - all of it from answers, never from a built table.
 
 * [Architecture v0.1](docs/architecture/architecture-v0.1.md) — the initial
   design with Mermaid diagrams for the conceptual, local and cloud views.
@@ -176,33 +222,43 @@ data. The source of the picture is [`docs/architecture.svg`](docs/architecture.s
 
 ## Batch Ingestion Strategy
 
-One scheduled run per day. Each run: **extract → store raw → transform →
-data-quality checks**.
+One scheduled run per day, and inside it one rule:
 
-Load strategy per endpoint — all **FULL** at this stage, with the reasoning
-kept next to the code in [`src/deng/ingestion/extract.py`](src/deng/ingestion/extract.py):
+> **Ingest everything first, transform afterwards.**
 
-| Endpoint | Rows | Strategy | Why |
+Every source is asked and every answer is stored before a single line of SQL
+runs ([`src/deng/ingestion/runner.py`](src/deng/ingestion/runner.py) is that
+step, all of it). The reason is the sentence worth saying out loud in a defence:
+**the whole product can be rebuilt from the raw zone without asking an API
+again.** If a transformation turns out to be wrong, we fix the SQL and re-run
+it - the data is already here, no request budget is spent twice, and a source
+that changes its answers tomorrow cannot change what we stored yesterday.
+
+Load strategy per source, with the reasoning kept next to the code in the file
+it belongs to:
+
+| Source | How often | Strategy | Why |
 |---|---|---|---|
-| `competitions/CL` | 47 seasons | FULL | 9 KB, changes rarely |
-| `competitions/CL/teams` | 36 | FULL | feeds `dim_team`, stable within a season |
-| `competitions/CL/standings` | 36 | FULL | changes every matchday, one request |
-| `competitions/CL/matches` | 144 | FULL | 212 KB in one request |
-| Open-Meteo `v1/forecast` | 1 per venue with a match ≤ 16 days ahead | FULL per venue and day, **today only** | the forecast changes daily and every day's version is kept; a past date would return analysis data, not a forecast |
-| club crests | 36 images | **INCREMENTAL** by URL | a changed crest gets a new URL, so a stored one is never fetched again |
-| The Odds API `sports/{sport}/odds` | every upcoming event × every bookmaker | **FULL per fetch, append-only** | one credit answers the whole competition; every fetch is a new row because the intraday history *is* the data. Budget rules in [`src/deng/ingestion/odds.py`](src/deng/ingestion/odds.py) |
+| football-data.org: competition, teams, standings, matches ([`football_data.py`](src/deng/sources/football_data.py)) | every run, daily | **FULL** | four requests for the whole competition; matches are *added* mid-season (the December knockout draw) and kick-off times change in place, so a full reload is simpler than asking what changed - and it self-heals after a missed day |
+| football-data.org: past seasons, `FOOTBALL_DATA_SEASONS` | **once** per season | **ONCE** | a finished season never changes again. One matches request and one teams request per season; `?season=2023` is part of the raw zone's key, so that answer sits next to today's instead of overwriting it |
+| Open-Meteo: forecasts ([`open_meteo.py`](src/deng/sources/open_meteo.py)) | every run, daily | one request **per venue** with a match inside the 16-day horizon, **today only** | the forecast changes daily and every day's version is kept. A past date would return what the weather turned out to be, not what was predicted - so a backfill fetches no weather at all |
+| The Odds API: 1X2 odds ([`the_odds_api.py`](src/deng/sources/the_odds_api.py)) | on a **credit budget** | **FULL per fetch, append-only** | one credit answers the whole competition, and every fetch is a new row because the intraday history *is* the data. Once a day as a baseline, at the configured interval only while a watched match is close to kick-off, never below the quota reserve |
+| OpenStreetMap: stadium coordinates ([`openstreetmap.py`](src/deng/sources/openstreetmap.py)) | **once per club** | only clubs without a stored answer | stadiums do not move. On a normal day this step makes no request at all; when it does, it paces itself to one per second |
+| club crests ([`club_crests.py`](src/deng/sources/club_crests.py)) | when a URL is new | **INCREMENTAL** by URL | a changed crest is published under a new URL, so a stored one is never fetched again |
 
-Incremental loading via `lastUpdated` would cost an extra request to discover
-what changed and would still miss matches the API *adds* mid-season. A full
-reload of a small bounded payload is simpler, self-heals after a missed day and
-costs one request. That stops being true once we ingest many seasons at once —
-then incremental *by season* is the plan (backlog 1.9).
+Incremental loading of the daily endpoints via `lastUpdated` would cost an extra
+request to discover what changed and would still miss the matches the API
+*adds* mid-season. A full reload of a small, bounded payload is simpler and
+costs one request. Past seasons are the exception, and they are exactly the
+incremental case: fetched once, never again.
 
 **Failure behaviour:** transient errors (429, 5xx, network) retry with
 exponential back-off; 400/403/404 fail immediately because repeating them
 cannot help and would spend the request budget. Requests are paced against the
 `X-Requests-Available-Minute` header. Every run is recorded in
-`meta.pipeline_runs`, failures included, with their error message.
+`meta.pipeline_runs`, failures included, with their error message. Crests and
+odds are extras: a failure there is reported and recorded but does not fail the
+run - the football data, which everything else rests on, does.
 
 ## Local Development
 
@@ -216,7 +272,7 @@ cd deng
 
 ./setup.sh                 # venv + install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 135 tests; the database ones skip without PostgreSQL
+make test                  # 137 tests; the database ones skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, no API key needed
@@ -241,14 +297,27 @@ Bookmaker odds are optional. With a free key from <https://the-odds-api.com>
 in `.env` as `ODDS_API_KEY`:
 
 ```bash
-make odds                  # fetch if the budget rules allow, then rebuild the odds tables
-make odds ODDS_FORCE=1     # fetch now, regardless of window and interval
+make odds                  # = ingest --only odds; fetches if the budget rules allow
 ```
 
-Without a key the step skips itself and says so; `make run-samples` replays
-two committed sample fetches (fictional prices,
-[`data/sample/the-odds-api/`](data/sample/the-odds-api/README.md)) so the
-whole path works offline.
+Without a key the step skips itself and says so; `make run-samples` replays two
+committed sample fetches (fictional prices,
+[`data/sample/the-odds-api/`](data/sample/the-odds-api/README.md)), so the whole
+path works offline.
+
+Stadium coordinates need no key and are asked once per season:
+
+```bash
+make venues                # = ingest --only openstreetmap
+```
+
+Offline, the committed answers in
+[`data/sample/openstreetmap/`](data/sample/openstreetmap/) are replayed instead,
+so `make run-samples` fills the venues too.
+
+Past seasons as training data: set `FOOTBALL_DATA_SEASONS=2023,2024` in `.env`
+and run `make ingest` once. Each season costs two requests; the answers stay in
+the raw zone, so the transformation can be re-run from them at any time.
 
 `make help` lists every target.
 
@@ -258,7 +327,7 @@ Four schemas, separated by how far the data has been processed:
 
 | Schema | Content |
 |---|---|
-| `raw` | API payloads exactly as received (JSONB) plus ingestion metadata - one table per source, the odds one append-only per fetch |
+| `raw` | every answer exactly as received (JSONB) plus who asked what and when - one table per source (`football_data`, `open_meteo`, `odds_api`, `osm_venues`, `team_crests`), the odds one append-only per fetch, plus three read-only views the ingestion plans its next questions with |
 | `staging` | typed, flattened tables — rebuildable from raw at any time |
 | `curated` | facts and dimensions: the data product |
 | `meta` | `pipeline_runs`, `dq_results` |
@@ -361,6 +430,17 @@ erDiagram
         uuid run_id FK
         jsonb payload
     }
+    osm_venues["raw.osm_venues"] {
+        bigint raw_id PK
+        uuid run_id FK
+        jsonb payload
+        text review_status
+    }
+    odds_api["raw.odds_api"] {
+        bigint raw_id PK
+        uuid run_id FK
+        jsonb payload
+    }
     team_crests["raw.team_crests"] {
         text crest_url PK
         uuid run_id FK
@@ -368,17 +448,24 @@ erDiagram
 
     pipeline_runs ||--o{ football_data : "run_id"
     pipeline_runs ||--o{ open_meteo : "run_id"
+    pipeline_runs ||--o{ osm_venues : "run_id"
+    pipeline_runs ||--o{ odds_api : "run_id"
     pipeline_runs ||--o{ team_crests : "run_id"
     pipeline_runs ||--o{ dq_results : "run_id"
 ```
 
+One table per source, all the same shape: the answer unchanged, plus the run
+that fetched it. `raw.osm_venues` has one column the others do not need -
+`review_status`, our own verdict about a stadium hit, stored next to the
+untouched payload because a search can return the right name in the wrong city.
+
 How to read it: `||` exactly one, `o|` zero or one, `|{` one or many,
 `o{` zero or many. **Solid lines are foreign keys** enforced by PostgreSQL;
 **dashed lines are join keys without a constraint**, on purpose:
-`venue_team_id` - a club missing from `venues.csv` (e.g. new after the
-knockout draw) must not abort the weather run; its matches get `VENUE_UNKNOWN`
-and a WARNING check reports it. `crest_url` - a crest is optional and fetched
-after the team exists.
+`venue_team_id` - a club whose stadium OpenStreetMap could not resolve, or one
+that is new after the knockout draw, must not abort the weather run; its matches
+get `VENUE_UNKNOWN` and a WARNING check reports it. `crest_url` - a crest is
+optional and fetched after the team exists.
 
 DDL: [`sql/schema/`](sql/schema/) · transformations: [`sql/transform/`](sql/transform/) ·
 verification: [`sql/verify/`](sql/verify/).
@@ -388,7 +475,7 @@ verification: [`sql/verify/`](sql/verify/).
 ```bash
 make up            # PostgreSQL with a health check and a named volume
 make docker-ingest # run the pipeline inside its own image
-make docker-app    # Streamlit viewer in a container → http://localhost:8501
+make docker-app    # Streamlit dashboard in a container → http://localhost:8501
 make down          # stop (keeps data);  make reset  also deletes the volume
 ```
 
@@ -422,10 +509,15 @@ first real run exposed: [evidence §11](docs/evidence/local-pipeline-run.md#11-d
 One asset per table, one daily partition per logical date:
 
 ```text
-raw/football_data ──► staging/{matches,teams,standings} ──► curated/{dim_team,fact_match,fact_team_match_form} ─┐
-curated/dim_team  ──► raw/team_crests ─────────────────────────────────────────────────────────────────────────────┼─► meta/dq_results
-curated/fact_match ─► raw/open_meteo ──► staging/weather_forecast ──► curated/{dim_venue,fact_match_weather} ──────┘
-      ingest                         transform (one transaction)                                         data quality
+ingest — every source reads the APIs and the raw zone, never a built table
+  raw/football_data ─┬─► raw/osm_venues ──► raw/open_meteo
+                     ├─► raw/team_crests
+                     └─► raw/odds_api                       (own job, every N minutes)
+
+transform — SQL only                                        data quality
+  raw/*  ──► staging/{matches, teams, standings, venues, weather_forecast, bookmaker_odds}
+         ──► curated/{dim_team, dim_venue, fact_match, fact_team_match_form,
+                      fact_match_prediction, fact_match_weather, fact_bookmaker_odds}  ──► meta/dq_results
 ```
 
 ```bash
@@ -453,40 +545,57 @@ make dagster-backfill FROM=2026-09-15 TO=2026-09-17   # one run per day, one at 
 * **Without Docker:** `make setup-orchestrator && make dagster-dev`.
 
 The assets call the same functions as the CLI, so the manual path still works
-and is what the orchestrator runs:
+and is what the orchestrator runs. The CLI has seven commands, and that is all
+of it:
 
 ```bash
-python -m deng.pipeline run --date 2026-09-18
+python -m deng.pipeline init                    # create the schemas and tables (idempotent)
+python -m deng.pipeline ingest                  # ask all five sources, store every answer
+python -m deng.pipeline ingest --only weather   # one source: football|openstreetmap|crests|weather|odds
+python -m deng.pipeline ingest --from-samples   # replay the committed answers, no API key needed
+python -m deng.pipeline transform               # raw -> staging -> curated, all sources
+python -m deng.pipeline dq                      # the 24 data-quality checks
+python -m deng.pipeline run --date 2026-09-18   # ingest + transform + dq, in that order
 python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
+python -m deng.pipeline verify                  # the verification queries
 ```
+
+`ingest`, `transform` and `run` take `--date`, `backfill` takes `--from` and
+`--to`, the rest need no date. There is no separate `crests`, `weather` or
+`odds` command any more: fetching is part of `ingest`, building tables is part
+of `transform`. The `make` targets are one-line wrappers around exactly these
+calls.
 
 ## Transformation
 
-SQL files executed in order inside **one transaction**: either every curated
-table is consistent with the same staging state, or nothing changed and the
-previous data product is still there.
+Thirteen SQL files in [`sql/transform/`](sql/transform/), executed in the order
+their numbers give. The number says which layer a file builds - 1xx staging,
+2xx/3xx/4xx curated - so the list reads top to bottom like the pipeline itself.
 
-| Step | File | Produces |
+| # | File | Produces |
 |---|---|---|
-| 1 | `110_staging_matches.sql` | `staging.matches` from raw JSONB |
+| 1 | `110_staging_matches.sql` | `staging.matches` from the raw JSON |
 | 2 | `111_staging_teams.sql` | `staging.teams` |
 | 3 | `112_staging_standings.sql` | `staging.standings` (one snapshot per day) |
 | 4 | `210_dim_team.sql` | `curated.dim_team` |
-| 5 | `220_fact_match.sql` | `curated.fact_match` incl. derived outcome |
-| 6 | `230_fact_team_match_form.sql` | `curated.fact_team_match_form` |
-| 7 | `310_staging_weather_forecast.sql` | `staging.weather_forecast` (hourly, one version per day) |
-| 8 | `320_dim_venue.sql` | `curated.dim_venue` from `venues.csv` |
-| 9 | `330_fact_match_weather.sql` | `curated.fact_match_weather`: forecast or reason, per match |
-| 6b | `240_fact_match_prediction.sql` | `curated.fact_match_prediction`: the baseline model, one forecast per match and run date (part of the first transaction) |
-| 10 | `410_staging_bookmaker_odds.sql` | `staging.bookmaker_odds`: one row per quoted outcome of every fetch not staged yet |
-| — | `deng.ingestion.odds.match_events` | `staging.odds_event_match`: bookmaker event → fixture, by kick-off time, name similarity and aliases (Python) |
-| 11 | `420_fact_bookmaker_odds.sql` | `curated.fact_bookmaker_odds`: one row per odds change with fair probabilities |
+| 5 | `220_fact_match.sql` | `curated.fact_match` incl. the derived outcome |
+| 6 | `230_fact_team_match_form.sql` | `curated.fact_team_match_form`: each team's form going into the match |
+| 7 | `240_fact_match_prediction.sql` | `curated.fact_match_prediction`: the baseline forecast, one per match and run date |
+| 8 | `305_staging_venues.sql` | `staging.venues` from the stored OpenStreetMap answers |
+| 9 | `310_staging_weather_forecast.sql` | `staging.weather_forecast` (hourly, one version per day) |
+| 10 | `320_dim_venue.sql` | `curated.dim_venue` |
+| 11 | `330_fact_match_weather.sql` | `curated.fact_match_weather`: the forecast, or the reason there is none |
+| 12 | `410_staging_bookmaker_odds.sql` | `staging.bookmaker_odds`: one row per quoted outcome of every fetch not staged yet |
+| — | `deng.transformation.odds_matching` | `staging.odds_event_match`: bookmaker event → our fixture, by kick-off time, name similarity and aliases. Python, because it is string matching, not set logic - and a transformation, because it reads curated tables |
+| 13 | `420_fact_bookmaker_odds.sql` | `curated.fact_bookmaker_odds`: one row per odds change, with the margin removed |
 
-Steps 7–9 are a **second transaction**: which forecasts to fetch is read from
-`fact_match`, so the weather can only be fetched after steps 1–6 committed.
-Steps 10–11 run on every odds fetch, with the event matcher between them.
+They run in three transactions - 1–7 football, 8–11 weather, 12–13 odds with the
+event matcher in between - because the later ones read what the earlier ones
+wrote (`320` needs `dim_team`, `330` and `420` need `fact_match`). Each
+transaction either lands completely or not at all, so the tables are never
+half-built.
 
-Justification for the two non-trivial ones:
+Why the non-trivial ones look the way they do:
 
 * **`fact_match`** derives `outcome` from the goals instead of copying the
   API's `score.winner`, so the ML label can never contradict the numbers in its
@@ -507,6 +616,10 @@ Justification for the two non-trivial ones:
   so the forecast is versioned and a comparison can use the forecast that
   existed when the odds were read. It is the thing the odds are compared
   with, not a claim to beat the market.
+* **`model_features`** is a view on top of all of them: one row per match, the
+  label plus every feature known before kick-off. It adds no logic of its own -
+  it is where a reader (or a model) sees the result of all thirteen files at
+  once.
 * **`fact_bookmaker_odds`** keeps one row per *odds change* per bookmaker
   and market - the bookmaker's own timestamp, the prices, and the fetch
   interval in which we saw them - and removes the margin using the three
@@ -521,11 +634,21 @@ statements in a different dialect rather than a rewrite.
 
 Grains, keys, facts and dimensions: [`docs/data-model.md`](docs/data-model.md).
 Every grain is also a `COMMENT ON TABLE` in the database, so the documentation
-cannot drift away from the schema.
+cannot drift away from the schema. Eleven DDL files in
+[`sql/schema/`](sql/schema/) create all of it, and `make init` can be re-run at
+any time.
+
+The one thing to look at first is the view
+[`curated.model_features`](sql/schema/011_model_features.sql): **one row per
+match, the label plus every feature known before kick-off** - exactly what a
+model would read, and what the dashboard shows. It is a view rather than a
+table because it only joins curated tables that already exist, so there is
+nothing to keep in sync; the snapshot table planned for the final milestone
+adds the missing dimension, one row per match *per day*.
 
 ## Data Quality
 
-Twenty-four checks run after every transformation
+Twenty-four checks - 16 CRITICAL, 8 WARNING - run after every transformation
 ([`src/deng/quality/checks.py`](src/deng/quality/checks.py)) and are persisted
 to `meta.dq_results`, so "was the data good on 18 September?" is a query rather
 than an archaeology exercise in old logs.
@@ -545,6 +668,9 @@ than an archaeology exercise in old logs.
   event resolved to a fixture, and a fresh fetch when a match is within 24 h
   (WARNING). The odds checks pass on an empty odds zone, so a reviewer without
   a key never sees a failure from them.
+* **Completeness of the side data:** every club has a venue row - resolved or
+  with a stored reason - and a crest (both WARNING: a missing picture or a
+  stadium we could not verify is worth seeing, not worth failing a run for).
 
 ```bash
 make dq        # run the checks; non-zero exit on a CRITICAL failure
@@ -558,7 +684,7 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
-* CI runs lint, 135 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 137 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -572,10 +698,10 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 135 tests: config, API client, source schema, loader, transformations, weather, crests, odds, DQ, orchestration, app components | `135 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
+| `make test` | 137 tests: config, API client, source schemas, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`) | `137 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
-| `make dq` | curated-layer data quality | `23/24 checks passed` (the open WARNING is the form window early in the season), exit 0 |
+| `make dq` | curated-layer data quality | `24/24 checks passed` with past seasons ingested; `23/24` with the current season only - the open WARNING is the form window early in a season. Exit 0 either way |
 
 Worked examples with real output:
 [`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
@@ -602,13 +728,30 @@ a test.
 make app           # http://localhost:8501   (or: make docker-app)
 ```
 
-**A preview of the data, not the product.** It shows what the pipeline holds
-for one upcoming fixture - the inputs a match-outcome model would get - and
-nothing it did not compute: kick-off (Zurich time), venue, both teams' form as
-W/D/L badges with the number of matches behind it, the weather state, previous
-meetings and recent results. Status chips at the top show data freshness and
-the latest data-quality result; the sidebar holds the details. It earns no
-points on its own; it makes the curated tables inspectable in a defence.
+**An analysis dashboard for the model data, not the product.** It answers the
+question this project exists for - *could someone train a match-outcome model on
+this, and what exactly would they get?* - in four panels. The first three read
+`curated.model_features`, the same view a model would read:
+
+* **The dataset** - how many matches, how many of them already carry a label,
+  per season, with the first and last match date. More seasons is the lever, and
+  the caption says what one costs.
+* **Feature coverage** - for how many matches each feature is present, and the
+  honest reason when it is not ("kick-off beyond the 16-day forecast horizon"),
+  plus the number of matches per weather state. A gap with a reason is data; a
+  silent null would be a bug.
+* **Leakage guarantees** - the three rules that make the features usable (form
+  uses only matches finished before kick-off, the forecast was fetched before
+  kick-off, every match has exactly two form rows), each **recomputed in the
+  page from the tables** instead of quoted from the pipeline.
+* **One match in detail**, underneath: kick-off (Zurich time), venue, both
+  teams' form as W/D/L badges with the number of matches behind it, the weather
+  state, previous meetings and recent results - the same row a model would get,
+  in a shape a person can sanity-check.
+
+Status chips at the top show data freshness and the latest data-quality result;
+the sidebar holds the run log and every check. The dashboard earns no points on
+its own; it makes the curated tables inspectable in a defence.
 
 **Model forecast vs. bookmaker odds.** For the chosen fixture, one card per
 bookmaker (selectable, several side by side): the model's HOME / DRAW / AWAY
@@ -626,7 +769,7 @@ table view. All numbers are fictional until a real key has fetched real
 odds; the sample fetches say so on the page.
 
 **One page for desktop, iPhone and Android.** Instead of a native app, the
-viewer is a responsive web page: cards on a CSS grid that switch from two
+dashboard is a responsive web page: cards on a CSS grid that switch from two
 columns to one below 640 px, no tables that scroll sideways on a phone. Open the
 URL on a phone in the same network, or use "Add to Home Screen" for an app-like
 icon. Verified by rendering in Chrome with the iPhone 15 and Pixel 7 device
@@ -639,6 +782,9 @@ API layer in front of the database, and none of it is assessed.
 |---|---|---|
 | ![desktop](docs/evidence/streamlit-app.png) | ![iPhone](docs/evidence/streamlit-iphone.png) | ![Android](docs/evidence/streamlit-android.png) |
 
+The screenshots were taken before the dataset panels were added and show the
+match-detail part of the page, which now sits underneath them.
+
 **The app never calls an external API** - nor loads anything from the internet
 (no web fonts, no crest images from the API's CDN). Selecting a fixture runs a
 SQL query against our curated tables; the odds too were fetched by the
@@ -649,8 +795,9 @@ shared with every visitor.
 
 ## Google Cloud Architecture
 
-*Planned for the final submission.* Ingestion writes raw JSON straight to a GCS
-bucket (`raw/source=…/endpoint=…/ingestion_date=…/run_id.json`); BigQuery loads
+*Planned for the final submission* - the right-hand path in
+[`docs/architecture-target.svg`](docs/architecture-target.svg). Ingestion writes
+raw JSON straight to a GCS bucket (`raw/source=…/endpoint=…/ingestion_date=…/run_id.json`); BigQuery loads
 staging from GCS and builds curated tables with `MERGE`, partitioned by
 `match_date` / `snapshot_date` and clustered by team and match ids. Terraform
 provisions the bucket, the dataset, a service account and IAM bindings. The
@@ -666,20 +813,28 @@ Documented honestly, because hidden failures cost more than known ones:
   form, rest days and results ignore domestic matches for every club. Windows
   are therefore small (at most 8 league-phase matches), which
   `matches_considered` makes visible.
-* **Historical seasons are available but not ingested yet.** The API serves
-  them (verified); how many to load is an open decision (backlog 1.9).
+* **Past seasons are ingested on demand, not by default.**
+  `FOOTBALL_DATA_SEASONS` is empty in a daily run, which gives 144 matches;
+  with `2023,2024` it is 458. How many of the 47 listed seasons a training set
+  should have is still an open decision.
+* **The training table is still to come.** `curated.model_features` is one row
+  per match, as the data looks today. The snapshot table
+  `curated.fact_match_snapshot` - one row per match *per day*, which is what
+  makes "what was known ten days before kick-off?" a query - is planned for the
+  final milestone.
 * **Backfill re-labels, it does not reconstruct.** The API always answers with
   today's state, so a backfill for 17 September writes today's data under that
   logical date. It recovers missed runs and enables re-processing; it does not
   recover what the API would have said back then.
-* **Weather: first real forecast on 28 September.** Matchday 2 is 22 days
-  after this writing; forecasts reach 16. Until then every upcoming match is
-  `NOT_YET_AVAILABLE` - the AVAILABLE path is proven by integration tests
-  ([evidence](docs/evidence/weather.md)).
-* **No weather for Shakhtar and Sabah home matches** (`VENUE_UNKNOWN`): no
-  verified venue, so no forecast for a guessed location.
-* **No weather for past matches** (`NOT_CAPTURED`): a forecast cannot be
-  fetched after the fact; post-match actuals from the archive API are backlog 2.7.
+* **Weather exists only inside 16 days, and never backwards.** A match further
+  out is `NOT_YET_AVAILABLE` (the AVAILABLE path is proven by integration
+  tests, [evidence](docs/evidence/weather.md)); a match already played is
+  `NOT_CAPTURED`, because a forecast cannot be fetched after the fact - the
+  post-match actuals from the archive API are backlog 2.7.
+* **No weather for Shakhtar and Sabah home matches** (`VENUE_UNKNOWN`):
+  OpenStreetMap gives no verified venue for them, and a guessed location would
+  be worse than an honest gap. The reason is stored with the club, in
+  [`openstreetmap.py`](src/deng/sources/openstreetmap.py).
 * **The forecast is for the hour containing the kick-off** (18:45 → 18:00 UTC),
   not an average over the match.
 * **Bookmaker odds: no live fetch yet.** The committed sample fetches follow
@@ -726,27 +881,37 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── src/deng/
 │   ├── config.py             # validated settings from the environment
 │   ├── pipeline.py           # CLI: init · ingest · transform · dq · run · backfill · verify
-│   ├── ingestion/            # API clients: football, weather, crests, bookmaker odds + budget rules
+│   ├── sources/              # one file per source, each answering the same two questions
+│   │                         #   (plan: what to fetch · fetch: how):
+│   │                         #   football_data · openstreetmap · club_crests ·
+│   │                         #   open_meteo · the_odds_api  (+ http.py: the two error types)
+│   ├── ingestion/            # runner.py: THE ingestion — the five sources, in order
+│   │                         #   raw_reads.py: the few questions it may ask the raw zone
 │   ├── database/             # connections, idempotent raw loader, run log
-│   ├── transformation/       # ordered SQL execution in one transaction
+│   ├── transformation/       # ordered SQL execution + odds_matching.py (event → fixture)
 │   ├── orchestration/        # Dagster assets, schedule, retry policy
 │   └── quality/              # the twenty-four data-quality checks
 │
 ├── sql/
-│   ├── schema/               # DDL (applied by `make init`)
-│   ├── transform/            # raw → staging → curated
+│   ├── schema/               # 11 DDL files (applied by `make init`)
+│   ├── transform/            # 13 files: raw → staging → curated
 │   └── verify/               # verification queries
 │
-├── app/                      # viewer over the curated tables (page, odds section, HTML components)
+├── app/                      # the dashboard: dataset panels, odds section, HTML components
 ├── notebooks/                # exploration
-├── tests/                    # 135 tests: unit, contract, integration
-├── data/sample/              # committed API payloads (fixtures + offline source)
-├── data/reference/           # venues.csv, bookmaker_team_aliases.csv
+├── tests/                    # 137 tests: unit, contract, integration, layering rule
+├── data/sample/              # committed API answers — the offline path
+├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/
+    ├── architecture-overview.svg · architecture-detail.svg · architecture-target.svg
     ├── use-case.md · data-sources.md · data-model.md
     ├── rubric-checklist.md · project-backlog.md
     ├── architecture/ · adr/ · evidence/
 ```
+
+Two sentences that explain the whole layout: **`sources/` asks, `sql/` builds,
+and nothing in `sources/` or `ingestion/` may read what `sql/` built.** The
+Makefile and the CLI are wrappers; the Dagster assets call the same functions.
 
 ## Contributing and Branch Strategy
 
