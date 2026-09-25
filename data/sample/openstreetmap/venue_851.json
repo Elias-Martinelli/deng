@@ -1,0 +1,21 @@
+{
+ "place_id": 101886267,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 184958291,
+ "lat": "51.1933461",
+ "lon": "3.1805853",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5232183774663921,
+ "addresstype": "leisure",
+ "name": "Jan Breydelstadion",
+ "display_name": "Jan Breydelstadion, Olympialaan, Sint-Andries, Brugge, West-Vlaanderen, Vlaanderen, 8200, België / Belgique / Belgien",
+ "boundingbox": [
+  "51.1924258",
+  "51.1942689",
+  "3.1793509",
+  "3.1819365"
+ ]
+}

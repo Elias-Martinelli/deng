@@ -85,8 +85,8 @@ format:  ## Auto-format code
 	$(PY) -m ruff format .
 	$(PY) -m ruff check --fix .
 
-venues:  ## Rebuild data/reference/venues.csv from OpenStreetMap (once per season; review the diff)
-	$(PY) scripts/build_venues.py
+venues:  ## Look up stadium coordinates at OpenStreetMap (once per season; a normal run skips it)
+	$(PY) -m deng.pipeline ingest --only openstreetmap
 
 explore:  ## API exploration: fetch small samples from football-data.org (needs FOOTBALL_DATA_API_KEY)
 	$(PY) scripts/explore_football_api.py
@@ -131,7 +131,7 @@ psql: docker-ready  ## Open a psql shell in the database container
 init:  ## Create schemas and tables (idempotent)
 	$(PY) -m deng.pipeline init
 
-ingest:  ## Ingest today from the API (needs FOOTBALL_DATA_API_KEY)
+ingest:  ## Ask all five sources and store the answers (needs FOOTBALL_DATA_API_KEY)
 	$(PY) -m deng.pipeline ingest
 
 ingest-samples:  ## Ingest from the committed sample payloads (no API key needed)
@@ -140,13 +140,13 @@ ingest-samples:  ## Ingest from the committed sample payloads (no API key needed
 transform:  ## raw -> staging -> curated for today
 	$(PY) -m deng.pipeline transform
 
-odds:  ## Fetch bookmaker odds if the budget rules allow (needs ODDS_API_KEY); ODDS_FORCE=1 to fetch now
-	$(PY) -m deng.pipeline odds $(if $(ODDS_FORCE),--force,)
+odds:  ## Ask The Odds API if the budget rules allow (needs ODDS_API_KEY)
+	$(PY) -m deng.pipeline ingest --only odds
 
 dq:  ## Run the data-quality checks and persist the results
 	$(PY) -m deng.pipeline dq
 
-run:  ## Full daily sequence from the API: ingest -> transform -> crests -> weather -> odds -> checks
+run:  ## Full daily sequence: ingest all five sources -> transform -> data-quality checks
 	$(PY) -m deng.pipeline run
 
 run-samples:  ## Same sequence from the committed payloads (no API key needed)

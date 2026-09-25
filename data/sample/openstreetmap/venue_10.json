@@ -1,0 +1,21 @@
+{
+ "place_id": 123072894,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 3869991,
+ "lat": "48.7922488",
+ "lon": "9.2320857",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.545970357409063,
+ "addresstype": "leisure",
+ "name": "MHPArena",
+ "display_name": "MHPArena, 87, Mercedesstraße, Wasen, Bad Cannstatt, Stuttgart, Baden-Württemberg, 70372, Deutschland",
+ "boundingbox": [
+  "48.7910682",
+  "48.7934337",
+  "9.2302194",
+  "9.2339512"
+ ]
+}

@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 520" width="1020" height="520"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Where the pipeline runs today and where it is going</title>
+  <desc id="desc">One ingestion and one set of transformations serve two paths. The development
+    path, in place for the midterm, stores raw and curated data in PostgreSQL in Docker Compose.
+    The production path, due for the final milestone, writes the raw zone to Google Cloud Storage
+    and the curated tables to BigQuery, provisioned with Terraform. The platform row shows
+    orchestration with Dagster, containers, infrastructure, CI and the repository.</desc>
+
+  <style>
+    .box   { stroke-width: 1.5; }
+    .cloud { fill: #ecfdf5; stroke: #0f9d76; }
+    .local { fill: #fffbeb; stroke: #b45309; stroke-dasharray: 5 3; }
+    .share { fill: #e0f2fe; stroke: #0284c7; }
+    .plat  { fill: #f1f5f9; stroke: #64748b; }
+    .lane  { fill: none; stroke: #cbd5e1; stroke-width: 1; stroke-dasharray: 3 4; }
+    .flow  { stroke: #64748b; stroke-width: 1.8; fill: none; marker-end: url(#arrow); }
+    .cflow { stroke: #0f9d76; stroke-width: 1.8; fill: none; marker-end: url(#arrow-cloud); }
+    .lflow { stroke: #b45309; stroke-width: 1.8; fill: none; stroke-dasharray: 5 3;
+             marker-end: url(#arrow-local); }
+    .ctrl  { stroke: #94a3b8; stroke-width: 1.2; fill: none; stroke-dasharray: 4 3;
+             marker-end: url(#arrow-thin); }
+    text   { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+             fill: #0f172a; }
+    .h     { font-size: 14px; font-weight: 650; }
+    .s     { font-size: 11.5px; fill: #475569; }
+    .lane-label { font-size: 12px; font-weight: 650; fill: #64748b; letter-spacing: .03em; }
+    .lgd   { font-size: 12px; fill: #475569; }
+
+    @media (prefers-color-scheme: dark) {
+      .cloud { fill: #052e26; stroke: #34d399; }
+      .local { fill: #2a1f05; stroke: #f59e0b; }
+      .share { fill: #082f49; stroke: #38bdf8; }
+      .plat  { fill: #1e293b; stroke: #94a3b8; }
+      .lane  { stroke: #334155; }
+      .flow  { stroke: #94a3b8; }
+      text   { fill: #e2e8f0; }
+      .s, .lgd, .lane-label { fill: #94a3b8; }
+      #arrow path { fill: #94a3b8; }
+    }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+    <marker id="arrow-cloud" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0f9d76"/></marker>
+    <marker id="arrow-local" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b45309"/></marker>
+    <marker id="arrow-thin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+            orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+  </defs>
+
+  <!-- Legend -->
+  <rect class="box cloud" x="24" y="20" width="16" height="12" rx="3"/>
+  <text class="lgd" x="48" y="31">Cloud, final milestone</text>
+  <rect class="box local" x="215" y="20" width="16" height="12" rx="3"/>
+  <text class="lgd" x="239" y="31">Local, in place today</text>
+  <rect class="box share" x="392" y="20" width="16" height="12" rx="3"/>
+  <text class="lgd" x="416" y="31">Same code on both paths</text>
+  <rect class="box plat" x="600" y="20" width="16" height="12" rx="3"/>
+  <text class="lgd" x="624" y="31">Platform: runs, builds, provisions</text>
+
+  <!-- Lanes -->
+  <line class="lane" x1="20" y1="70" x2="1000" y2="70"/>
+  <text class="lane-label" x="24" y="86">PRODUCTION PATH (cloud)</text>
+  <line class="lane" x1="20" y1="232" x2="1000" y2="232"/>
+  <text class="lane-label" x="24" y="248">DEVELOPMENT PATH (local)</text>
+  <line class="lane" x1="20" y1="368" x2="1000" y2="368"/>
+  <text class="lane-label" x="24" y="384">PLATFORM</text>
+
+  <!-- Shared column: sources and ingestion -->
+  <rect class="box plat" x="24" y="130" width="150" height="74" rx="10"/>
+  <text class="h" x="99" y="156" text-anchor="middle">4 public APIs</text>
+  <text class="s" x="99" y="176" text-anchor="middle">documented, free</text>
+  <text class="s" x="99" y="192" text-anchor="middle">rate-limited</text>
+
+  <rect class="box share" x="204" y="130" width="160" height="74" rx="10"/>
+  <text class="h" x="284" y="156" text-anchor="middle">Ingestion</text>
+  <text class="s" x="284" y="176" text-anchor="middle">Python, one file per source</text>
+  <text class="s" x="284" y="192" text-anchor="middle">writes the raw zone</text>
+
+  <rect class="box share" x="560" y="130" width="160" height="74" rx="10"/>
+  <text class="h" x="640" y="156" text-anchor="middle">Transformation</text>
+  <text class="s" x="640" y="176" text-anchor="middle">the same SQL files</text>
+  <text class="s" x="640" y="192" text-anchor="middle">raw → staging → curated</text>
+
+  <rect class="box plat" x="876" y="130" width="126" height="74" rx="10"/>
+  <text class="h" x="939" y="156" text-anchor="middle">Data product</text>
+  <text class="s" x="939" y="176" text-anchor="middle">dashboard today</text>
+  <text class="s" x="939" y="192" text-anchor="middle">model later</text>
+
+  <!-- Cloud row -->
+  <rect class="box cloud" x="392" y="92" width="150" height="62" rx="10"/>
+  <text class="h" x="467" y="116" text-anchor="middle">Data lake</text>
+  <text class="s" x="467" y="135" text-anchor="middle">GCS bucket, raw objects</text>
+
+  <rect class="box cloud" x="740" y="92" width="128" height="62" rx="10"/>
+  <text class="h" x="804" y="116" text-anchor="middle">Warehouse</text>
+  <text class="s" x="804" y="135" text-anchor="middle">BigQuery</text>
+
+  <!-- Local row -->
+  <rect class="box local" x="392" y="256" width="150" height="62" rx="10"/>
+  <text class="h" x="467" y="280" text-anchor="middle">Local storage</text>
+  <text class="s" x="467" y="299" text-anchor="middle">PostgreSQL, raw schema</text>
+
+  <rect class="box local" x="740" y="256" width="128" height="62" rx="10"/>
+  <text class="h" x="804" y="280" text-anchor="middle">Curated tables</text>
+  <text class="s" x="804" y="299" text-anchor="middle">same models</text>
+
+  <!-- Flows -->
+  <path class="flow" d="M174,167 L202,167"/>
+  <path class="cflow" d="M364,155 L390,123"/>
+  <path class="lflow" d="M364,180 L390,272"/>
+  <path class="cflow" d="M542,123 L558,150"/>
+  <path class="lflow" d="M542,272 L558,186"/>
+  <path class="cflow" d="M720,150 L738,123"/>
+  <path class="lflow" d="M720,186 L738,272"/>
+  <path class="cflow" d="M868,123 L874,146"/>
+  <path class="lflow" d="M868,272 L874,192"/>
+
+  <!-- Platform row -->
+  <rect class="box plat" x="24" y="398" width="180" height="66" rx="10"/>
+  <text class="h" x="114" y="422" text-anchor="middle">Orchestration</text>
+  <text class="s" x="114" y="441" text-anchor="middle">Dagster: daily partitions,</text>
+  <text class="s" x="114" y="456" text-anchor="middle">retries, backfills</text>
+
+  <rect class="box plat" x="222" y="398" width="180" height="66" rx="10"/>
+  <text class="h" x="312" y="422" text-anchor="middle">Containers</text>
+  <text class="s" x="312" y="441" text-anchor="middle">Docker Compose,</text>
+  <text class="s" x="312" y="456" text-anchor="middle">pinned base image</text>
+
+  <rect class="box plat" x="420" y="398" width="180" height="66" rx="10"/>
+  <text class="h" x="510" y="422" text-anchor="middle">Infrastructure</text>
+  <text class="s" x="510" y="441" text-anchor="middle">Terraform → bucket,</text>
+  <text class="s" x="510" y="456" text-anchor="middle">dataset, IAM (final)</text>
+
+  <rect class="box plat" x="618" y="398" width="180" height="66" rx="10"/>
+  <text class="h" x="708" y="422" text-anchor="middle">CI</text>
+  <text class="s" x="708" y="441" text-anchor="middle">GitHub Actions:</text>
+  <text class="s" x="708" y="456" text-anchor="middle">lint, tests, smoke run</text>
+
+  <rect class="box plat" x="816" y="398" width="184" height="66" rx="10"/>
+  <text class="h" x="908" y="422" text-anchor="middle">Repository</text>
+  <text class="s" x="908" y="441" text-anchor="middle">README, ADRs, evidence,</text>
+  <text class="s" x="908" y="456" text-anchor="middle">architecture v0.1 → final</text>
+
+  <path class="ctrl" d="M114,398 L284,208"/>
+  <path class="ctrl" d="M312,398 L467,322"/>
+  <path class="ctrl" d="M510,398 L740,160"/>
+
+  <text class="s" x="24" y="496">One ingestion, one set of SQL files, two destinations: the cloud path is a different target, not a second pipeline.</text>
+</svg>

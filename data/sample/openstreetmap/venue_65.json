@@ -1,0 +1,21 @@
+{
+ "place_id": 275483795,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 26329734,
+ "lat": "53.4831448",
+ "lon": "-2.2005273",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5723988425652039,
+ "addresstype": "leisure",
+ "name": "Etihad Stadium",
+ "display_name": "Etihad Stadium, Joe Mercer Way, Bradford, Manchester, Greater Manchester, England, M11 3FF, United Kingdom",
+ "boundingbox": [
+  "53.4820612",
+  "53.4842284",
+  "-2.2021811",
+  "-2.1986161"
+ ]
+}

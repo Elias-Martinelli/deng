@@ -1,0 +1,21 @@
+{
+ "place_id": 103015960,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 268785933,
+ "lat": "50.4328242",
+ "lon": "2.8149863",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5195885951300004,
+ "addresstype": "leisure",
+ "name": "Stade Bollaert-Delelis",
+ "display_name": "Stade Bollaert-Delelis, Avenue Alfred Maës, Cité n°4, Lens, Pas-de-Calais, Hauts-de-France, France métropolitaine, 62300, France",
+ "boundingbox": [
+  "50.4321056",
+  "50.4337634",
+  "2.8131396",
+  "2.8167788"
+ ]
+}

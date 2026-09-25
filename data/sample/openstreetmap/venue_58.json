@@ -1,0 +1,21 @@
+{
+ "place_id": 278834457,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 23136743,
+ "lat": "52.5091264",
+ "lon": "-1.8850354",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.586497081040828,
+ "addresstype": "leisure",
+ "name": "Villa Park",
+ "display_name": "Villa Park, Trinity Road, Aston, Birmingham, West Midlands, England, B6 6HE, United Kingdom",
+ "boundingbox": [
+  "52.5080564",
+  "52.5101523",
+  "-1.8865042",
+  "-1.8831345"
+ ]
+}

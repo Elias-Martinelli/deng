@@ -1,10 +1,23 @@
 # Data Sources
 
 Status: **confirmed 20 Sep 2026 by a real exploration run** – football-data.org
-and Open-Meteo are the chosen sources. Measured findings, including two
+and Open-Meteo are the chosen core sources. Measured findings, including two
 corrections to the assumptions below, are in
 [`docs/evidence/api-exploration.md`](evidence/api-exploration.md); the decision
 is recorded in [ADR-001](adr/ADR-001-football-data-source.md) (ACCEPTED).
+
+The pipeline has **five** sources, each one module in `src/deng/sources/`. The
+ingestion asks them in this order:
+
+1. **football-data.org** – fixtures, results, teams, standings (§ 1)
+2. **OpenStreetMap / Nominatim** – stadium coordinates (§ 3)
+3. **the crest images** of football-data.org – club logos
+4. **Open-Meteo** – weather forecasts (§ 2)
+5. **The Odds API** – bookmaker odds (§ 2b, [ADR-005](adr/ADR-005-bookmaker-odds-source.md))
+
+Football comes first because three of the later sources need to know which
+matches and clubs exist – and they read that from the raw zone, never from a
+table the transformation builds.
 
 Guiding principle: as few sources as possible, each one free, documented,
 reachable without scraping and usable for an academic project.
@@ -36,13 +49,16 @@ Endpoints planned for the daily batch (football-data.org):
 |---|---|---|
 | `GET /competitions/CL` | competition + current season metadata | 1 |
 | `GET /competitions/CL/teams` | teams (id, name, short name, crest, venue name, address) | 1 |
-| `GET /competitions/CL/matches` | all matches of the season (scheduled + finished) | 1–2 |
+| `GET /competitions/CL/matches` | all matches of the season (scheduled + finished), reloaded in full because matches are added mid-season | 1 |
 | `GET /competitions/CL/standings` | league-phase table | 1 |
+| `GET /competitions/CL/matches?season=YYYY` + `.../teams?season=YYYY` | past seasons as training data, switched on with the setting `FOOTBALL_DATA_SEASONS` | 2 per season, **once** |
 | ~~`GET /teams/{id}/matches?status=FINISHED`~~ | dropped by [ADR-004](adr/ADR-004-champions-league-scope.md): form is Champions League only | – |
-| `GET /matches/{id}/head2head` | historical encounters for upcoming matches (only within 14 days of kick-off) | ≤ 18 |
+| ~~`GET /matches/{id}/head2head`~~ | not fetched: a COULD item for the final (backlog 2.5); the one pairing probed had no previous meetings | – |
 
-≈ 60 calls per day ⇒ ~6 minutes at 10 calls/minute. Well within limits, and the
-client throttles on `X-Requests-Available-Minute`.
+**4 calls per day** – far inside 10 calls/minute, and the client throttles on
+`X-Requests-Available-Minute`. Past seasons are the only extra cost and they are
+paid once: measured 125 matches for 2023 and 189 for 2024, next to the 144 of
+the current league phase.
 
 ## 2. Weather data – candidates
 
@@ -81,16 +97,37 @@ Needed for the model-versus-market view in the app; decision in
 | Known limitations | budget: 15-minute polling around the clock costs ~2 900/month, so the pipeline polls only in a window before watched matches; bookmakers spell club names their own way (aliases needed); h2h only covers regular time | daily budget spent by one matchday | not data |
 | Verdict | **RECOMMENDED** – one request per fetch for the whole competition, named bookmakers, own timestamps | rejected – per-fixture-and-bookmaker requests do not fit a matchday into 100/day | rejected |
 
-## 3. Reference data (maintained in the repository)
+## 3. Stadium coordinates – OpenStreetMap (Nominatim)
+
+The football API delivers no coordinates and the weather API needs them, so
+OpenStreetMap is a source of the pipeline like the other four – **not** a CSV
+maintained by hand. `make venues` (`ingest --only openstreetmap`) stores every
+answer in the raw zone, and `sql/transform/305_staging_venues.sql` unpacks it
+into `staging.venues`, exactly as `110` unpacks the football payload.
+
+| Criterion | **OpenStreetMap / Nominatim** (chosen) |
+|---|---|
+| API / URL | `https://nominatim.openstreetmap.org/search` |
+| Authentication | none; the usage policy requires an identifying `User-Agent` |
+| Rate limit | at most **1 request per second**; 36 clubs once a season is far inside it |
+| Cadence | **once per club, not daily** – stadiums do not move, so the plan only returns clubs without a stored answer and a normal run asks nothing |
+| Where the answer lands | `raw.osm_venues`: the Nominatim payload untouched, plus what we asked, when and by which run – and two extra columns the other sources do not need, `review_status` (`RESOLVED` / `NOT_AVAILABLE`) and `review_note`: **our verdict is stored next to the payload**, no longer only in a CSV. The view `raw.venue_coordinates` hands the newest row per club to the weather source |
+| Data format | JSON array of search hits; `lat`, `lon`, `display_name`, `osm_type`, `osm_id` |
+| Known limitations | searching the API's venue name blindly puts clubs in the wrong city – the first run put Napoli in Novara, Barcelona in a village near Girona and Roma in Turin. 8 clubs therefore have a corrected search term and 5 flagged rows were checked on the map by hand, each with the reason next to the search term in `src/deng/sources/openstreetmap.py` ([evidence](evidence/weather.md#2-venues-why-the-apis-venue-fields-could-not-be-geocoded-blindly)) |
+| Unresolvable | 2 of 36 clubs have no usable home venue (Shakhtar have played outside Ukraine since 2022; the API delivers no venue for Sabah FK). They get no coordinates, their matches get the weather status `VENUE_UNKNOWN`, and a WARNING check names every club without a venue row |
+| Offline path | the 36 committed answers in `data/sample/openstreetmap/` keep `--from-samples` working without a network |
+| Licence | **ODbL** – attribution required |
+| Verdict | **CHOSEN** – free, no key, and once it is a source the coordinates get the same audit trail as every other payload: which question, which answer, which day, which verdict |
+
+### Reference data still maintained in the repository
 
 | Dataset | File | Purpose | Source |
 |---|---|---|---|
-| Venues | `data/reference/venues.csv` | stadium, latitude, longitude, time zone and OSM reference for the 36 league-phase clubs; joins clubs to weather coordinates | OpenStreetMap via `make venues`, plausibility-checked, flagged rows reviewed by hand ([evidence](evidence/weather.md#2-venues-why-the-apis-venue-fields-could-not-be-geocoded-blindly)); ODbL |
 | Bookmaker team aliases | `data/reference/bookmaker_team_aliases.csv` | how bookmaker feeds spell the 36 clubs ("Bayern Munich", "Inter Milan"); joins odds events to fixtures together with the kick-off time | maintained by hand; a WARNING check names every event that still fails to resolve |
 
-Small, versioned and reviewable – preferable to geocoding at run time, which
-would introduce a third external dependency into every run. Generated rather
-than typed by hand, so every row names the map object it came from.
+One small, versioned, reviewable file – and an unresolved event is reported, not
+silently dropped. The former `data/reference/venues.csv` and
+`scripts/build_venues.py` are gone: their job is now § 3 above.
 
 ## 4. Optional enrichment (COULD, not planned before the final)
 
@@ -108,13 +145,14 @@ state per attribute group.
 |---|---|---|---|
 | Fixture (teams, stage, matchday) | months ahead (draw in late August) | football-data.org | – (a match without fixture does not exist) |
 | Kick-off date/time | dates at the draw, times a few weeks later; may change | football-data.org (`status` SCHEDULED → TIMED) | `KICKOFF_TBD` |
-| Venue name | with the fixture (home stadium); neutral final venue known in advance | football-data.org teams / reference file | `NOT_AVAILABLE` |
-| Venue coordinates | always (reference file) | `venues.csv` | `NOT_AVAILABLE` (new club not yet in file – data-quality alert) |
+| Venue name | with the fixture (home stadium); neutral final venue known in advance | football-data.org teams (their spelling) and OpenStreetMap (ours) | `NOT_AVAILABLE` |
+| Venue coordinates | after the club's one OpenStreetMap lookup (`make venues`, once per club) | OpenStreetMap → `raw.osm_venues` | `NOT_AVAILABLE` stored as the verdict; the match gets `VENUE_UNKNOWN`, and a club with no venue row at all raises a data-quality WARNING |
 | Standings / league position | after matchday 1; changes after every matchday | football-data.org | `NOT_YET_AVAILABLE` before matchday 1 |
-| Team form (last 5 matches) | as soon as ≥ 1 Champions League match is finished (ADR-004) | football-data.org team matches | `PARTIAL` (fewer than 5 matches) |
-| Head-to-head | if the teams met before (any season) | football-data.org head2head | `NO_PREVIOUS_MEETINGS` |
+| Team form (last 5 matches) | as soon as ≥ 1 Champions League match is finished (ADR-004) | computed from our own match rows, not from an API aggregate | `PARTIAL` (fewer than 5 matches) |
+| Head-to-head | if the teams met before (any season) | football-data.org head2head (not ingested yet, backlog 2.5) | `NO_PREVIOUS_MEETINGS` |
 | Weather forecast | ≤ 16 days before kick-off (reliable ≤ 7 days) | Open-Meteo forecast | `NOT_YET_AVAILABLE` |
 | Weather actuals | ≥ 5 days after the match | Open-Meteo archive | `NOT_YET_AVAILABLE` |
+| Bookmaker odds | while the event is listed as upcoming; the pipeline spends credits only in a window before watched matches ([ADR-005](adr/ADR-005-bookmaker-odds-source.md)) | The Odds API | no quote for the match – never an invented price |
 | Line-ups | ~1 h before kick-off | **not in free tier** | `NOT_AVAILABLE` |
 | Injuries / suspensions | days before | **not in free tier** | `NOT_AVAILABLE` |
 | Final score | minutes after the match | football-data.org (`status=FINISHED`) | `NOT_YET_PLAYED` |
@@ -130,3 +168,5 @@ snapshot table therefore doubles as a data-availability audit trail.
 * API-Football pricing: <https://www.api-football.com/pricing>
 * TheSportsDB documentation: <https://www.thesportsdb.com/documentation>
 * Open-Meteo documentation and terms: <https://open-meteo.com/en/docs>, <https://open-meteo.com/en/terms>
+* The Odds API (v4) pricing and documentation: <https://the-odds-api.com>
+* Nominatim usage policy and OpenStreetMap licence: <https://operations.osmfoundation.org/policies/nominatim/>, <https://www.openstreetmap.org/copyright>

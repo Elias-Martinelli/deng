@@ -1,9 +1,12 @@
 """Crest ingestion against PostgreSQL, with a fake HTTP session (no network)."""
 
+from datetime import date
+
 import pytest
 import requests
+from psycopg.types.json import Jsonb
 
-from deng.ingestion.crests import fetch_crests
+from deng.sources.club_crests import fetch_crests
 
 pytestmark = pytest.mark.postgres
 
@@ -34,16 +37,29 @@ class FakeSession:
 
 
 @pytest.fixture
-def teams(connection):
+def teams(connection, run_id):
+    """Store a teams answer in the raw zone, exactly as the football source does.
+
+    The crest source reads the clubs from the raw zone, never from the curated
+    dimension (tests/test_layering.py), so the fixture seeds the raw answer.
+    """
+    payload = {
+        "teams": [
+            {"id": 1, "name": "Good FC", "crest": "https://crests.example/1.png"},
+            {"id": 2, "name": "Broken FC", "crest": "https://crests.example/2.png"},
+        ]
+    }
     with connection.cursor() as cursor:
         cursor.execute("TRUNCATE raw.team_crests")
-        cursor.executemany(
-            "INSERT INTO curated.dim_team (team_id, name, crest_url, has_domestic_coverage) "
-            "VALUES (%s, %s, %s, true)",
-            [
-                (1, "Good FC", "https://crests.example/1.png"),
-                (2, "Broken FC", "https://crests.example/2.png"),
-            ],
+        cursor.execute(
+            """
+            INSERT INTO raw.football_data
+                (endpoint, request_params, request_url, ingestion_date, run_id,
+                 payload, payload_hash, record_count)
+            VALUES ('competitions/CL/teams', '{}', 'https://api.example/teams',
+                    %s, %s, %s, 'test-hash', 2)
+            """,
+            (date(2026, 9, 20), run_id, Jsonb(payload)),
         )
     connection.commit()
 
@@ -64,7 +80,10 @@ def test_stores_images_and_survives_a_bad_answer(connection, teams):
     result = fetch_crests(connection, session=session, pause_seconds=0)
     assert result.fetched == [1]
     assert "not an image" in result.failed[2]
-    assert count(connection, "SELECT count(*) FROM curated.team_crest") == 1
+    # Counted in the raw zone, the layer the ingestion writes. The view
+    # curated.team_crest joins the crest to the curated dimension and is the
+    # transformation's business.
+    assert count(connection, "SELECT count(*) FROM raw.team_crests") == 1
 
 
 def test_a_stored_crest_is_never_fetched_again(connection, teams):

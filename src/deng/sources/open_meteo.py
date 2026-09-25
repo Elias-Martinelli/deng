@@ -17,28 +17,27 @@ What is fetched, and why this way:
   the weather turned out to be, not what was predicted - so a backfill does not
   fetch weather at all. That is stated in the output, not silently skipped.
 
-Venue coordinates come from `data/reference/venues.csv`, loaded into
-`staging.venues` at the start of every weather run.
+Venue coordinates come from the OpenStreetMap source, which stored them in the
+raw zone; this module only reads them (raw.venue_coordinates).
 """
 
 from __future__ import annotations
 
-import csv
 import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import psycopg
 import requests
 from psycopg.types.json import Jsonb
 
+from deng.clock import pipeline_today
 from deng.database.raw_loader import hash_payload
-from deng.ingestion.football_data_client import ApiError, RetryableApiError
+from deng.sources.http import ApiError, RetryableApiError
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +50,7 @@ HOURLY_VARIABLES = (
     "wind_speed_10m",
     "weather_code",
 )
-# The pipeline's "today" is the schedule's calendar day, not the container's UTC day.
-PIPELINE_TZ = ZoneInfo("Europe/Zurich")
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
-VENUES_FILE = Path("data") / "reference" / "venues.csv"
 SAMPLE_DIR = Path("data") / "sample" / "open-meteo"
 
 
@@ -97,11 +92,6 @@ class WeatherResult:
         return f"{len(self.stored)}/{self.planned} venue forecast(s) stored"
 
 
-def pipeline_today() -> date:
-    """The calendar day the pipeline considers 'today'."""
-    return datetime.now(PIPELINE_TZ).date()
-
-
 def _find(relative: Path) -> Path:
     # Working directory first (repo root locally, /app in the image), then the
     # repository layout - the same lookup order as for the sql/ directory.
@@ -109,60 +99,17 @@ def _find(relative: Path) -> Path:
     return candidate if candidate.exists() else REPO_ROOT / relative
 
 
-def load_venues(connection: psycopg.Connection, path: Path | None = None) -> int:
-    """Upsert data/reference/venues.csv into staging.venues. Returns the row count."""
-    path = path or _find(VENUES_FILE)
-    with path.open(encoding="utf-8") as handle:
-        rows = list(csv.DictReader(handle))
-
-    # CSV has no types and no NULL: an empty cell means "unknown" and becomes
-    # NULL, never 0.0 - a stadium at latitude 0 would be in the Atlantic.
-    def number(value: str) -> float | None:
-        return float(value) if value else None
-
-    # Reloaded on every weather run (36 rows, milliseconds), so an edited CSV
-    # takes effect on the next run without a separate command. Upsert, not
-    # truncate-and-insert: a row that disappears from the file stays until a
-    # person removes it - deleting reference data should be a decision.
-    with connection.cursor() as cursor:
-        cursor.executemany(
-            """
-            INSERT INTO staging.venues AS v
-                (team_id, team_name, api_venue, osm_name, latitude, longitude, timezone,
-                 osm_type, osm_id, status, note)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (team_id) DO UPDATE SET
-                team_name = EXCLUDED.team_name, api_venue = EXCLUDED.api_venue,
-                osm_name = EXCLUDED.osm_name, latitude = EXCLUDED.latitude,
-                longitude = EXCLUDED.longitude, timezone = EXCLUDED.timezone,
-                osm_type = EXCLUDED.osm_type, osm_id = EXCLUDED.osm_id,
-                status = EXCLUDED.status, note = EXCLUDED.note
-            """,
-            [
-                (
-                    int(r["team_id"]),
-                    r["team_name"],
-                    r["api_venue"] or None,
-                    r["osm_name"] or None,
-                    number(r["latitude"]),
-                    number(r["longitude"]),
-                    r["timezone"] or None,
-                    r["osm_type"] or None,
-                    int(r["osm_id"]) if r["osm_id"] else None,
-                    r["status"],
-                    r["note"] or None,
-                )
-                for r in rows
-            ],
-        )
-    return len(rows)
-
-
 def plan_requests(connection: psycopg.Connection, logical_date: date) -> list[ForecastRequest]:
-    """One request per venue that hosts an unfinished match inside the horizon."""
+    """One request per venue that hosts an unplayed match inside the horizon.
+
+    Both facts come from the raw zone: which matches are coming up (the football
+    answer stored earlier in this run) and where they are played (the stored
+    OpenStreetMap answers). The ingestion therefore needs no transformed table -
+    see tests/test_layering.py.
+    """
     # Inclusive range: logical date + 15 is the last day the API still serves.
     last_day = logical_date + timedelta(days=HORIZON_DAYS - 1)
-    # Finished matches need no forecast. min/max per venue give one date range
+    # Played matches need no forecast. min/max per venue give one date range
     # covering all its matches inside the horizon; the days in between cost
     # nothing extra because the answer is one small JSON document.
     with connection.cursor() as cursor:
@@ -170,8 +117,9 @@ def plan_requests(connection: psycopg.Connection, logical_date: date) -> list[Fo
             """
             SELECT m.home_team_id, v.latitude, v.longitude,
                    min(m.match_date), max(m.match_date)
-              FROM curated.fact_match m
-              JOIN staging.venues v ON v.team_id = m.home_team_id AND v.status = 'RESOLVED'
+              FROM raw.match_calendar m
+              JOIN raw.venue_coordinates v
+                ON v.team_id = m.home_team_id AND v.review_status = 'RESOLVED'
              WHERE NOT m.is_finished
                AND m.match_date BETWEEN %s AND %s
              GROUP BY m.home_team_id, v.latitude, v.longitude
@@ -279,11 +227,6 @@ def ingest_weather(
         today: Override for "today" (tests).
     """
     result = WeatherResult()
-    # Venues are committed first and on their own: even when the fetch below is
-    # skipped or fails, dim_venue can still be built and every match still gets
-    # a weather status.
-    load_venues(connection)
-    connection.commit()
 
     today = today or pipeline_today()
     if not from_samples and logical_date != today:

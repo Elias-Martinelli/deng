@@ -1,0 +1,21 @@
+{
+ "place_id": 281217413,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 25651711,
+ "lat": "51.5550404",
+ "lon": "-0.1083997",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5846371842849631,
+ "addresstype": "leisure",
+ "name": "Emirates Stadium",
+ "display_name": "Emirates Stadium, 75, Drayton Park, Finsbury Park, London Borough of Islington, Greater London, England, N5 1BU, United Kingdom",
+ "boundingbox": [
+  "51.5539434",
+  "51.5561461",
+  "-0.1098292",
+  "-0.1069705"
+ ]
+}

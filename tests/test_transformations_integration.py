@@ -10,9 +10,9 @@ from datetime import date, timedelta
 import pytest
 
 from deng.database import RawLoader
-from deng.ingestion.weather import load_venues
 from deng.quality import run_checks
 from deng.quality.checks import CRITICAL
+from deng.sources import openstreetmap
 from deng.transformation import (
     WEATHER_COUNTED_TABLES,
     WEATHER_TRANSFORMATION_ORDER,
@@ -43,7 +43,9 @@ def transformed(connection, run_id, all_samples):
         )
     connection.commit()
     result = run_transformations(connection, LOGICAL_DATE)
-    load_venues(connection)
+    # The OpenStreetMap source stores the committed answers; 305 turns them
+    # into staging.venues, exactly as in a real run.
+    openstreetmap.ingest(connection, LOGICAL_DATE, run_id, from_samples=True)
     run_transformations(
         connection, LOGICAL_DATE, order=WEATHER_TRANSFORMATION_ORDER, counted=WEATHER_COUNTED_TABLES
     )
@@ -265,3 +267,36 @@ def test_match_date_is_the_utc_day_whatever_the_session_time_zone(connection, ru
         "WHERE match_date <> (utc_kickoff AT TIME ZONE 'UTC')::date",
     )
     assert shifted == 0
+
+
+def test_model_features_is_one_row_per_match_with_its_label(connection, transformed):
+    """The view a model would read: one row per match, label only once played."""
+    matches = scalar(connection, "SELECT count(*) FROM curated.fact_match")
+    assert scalar(connection, "SELECT count(*) FROM curated.model_features") == matches
+
+    # The label is the result, so it exists exactly for the played matches.
+    assert (
+        scalar(
+            connection,
+            "SELECT count(*) FROM curated.model_features WHERE is_finished AND outcome IS NULL",
+        )
+        == 0
+    )
+    assert (
+        scalar(
+            connection,
+            "SELECT count(*) FROM curated.model_features "
+            "WHERE NOT is_finished AND outcome IS NOT NULL",
+        )
+        == 0
+    )
+
+    # Every match carries both sides' form window, even when it is empty.
+    assert (
+        scalar(
+            connection,
+            "SELECT count(*) FROM curated.model_features "
+            "WHERE home_form_matches IS NULL OR away_form_matches IS NULL",
+        )
+        == 0
+    )

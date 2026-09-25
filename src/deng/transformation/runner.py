@@ -41,21 +41,23 @@ TRANSFORMATION_ORDER: tuple[str, ...] = (
 # forecasts) can only be fetched once fact_match says which matches are inside
 # the horizon, i.e. after the football chain has committed.
 WEATHER_TRANSFORMATION_ORDER: tuple[str, ...] = (
+    "transform/305_staging_venues.sql",
     "transform/310_staging_weather_forecast.sql",
     "transform/320_dim_venue.sql",
     "transform/330_fact_match_weather.sql",
 )
 
 WEATHER_COUNTED_TABLES: tuple[str, ...] = (
+    "staging.venues",
     "staging.weather_forecast",
     "curated.dim_venue",
     "curated.fact_match_weather",
 )
 
 # The odds chain runs in two transactions with the event matcher (Python, see
-# deng.ingestion.odds.match_events) in between: staging unpacks the fetches,
-# the matcher resolves bookmaker events to fixtures, and only then can the
-# curated change history be built per match.
+# deng.transformation.odds_matching.match_events) in between: staging unpacks
+# the fetches, the matcher resolves bookmaker events to fixtures, and only then
+# can the curated change history be built per match.
 ODDS_STAGING_ORDER: tuple[str, ...] = ("transform/410_staging_bookmaker_odds.sql",)
 ODDS_CURATED_ORDER: tuple[str, ...] = ("transform/420_fact_bookmaker_odds.sql",)
 

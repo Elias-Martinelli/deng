@@ -1,0 +1,21 @@
+{
+ "place_id": 135881050,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 8015060,
+ "lat": "51.3457078",
+ "lon": "12.3482361",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5450380358332815,
+ "addresstype": "leisure",
+ "name": "Red Bull Arena",
+ "display_name": "Red Bull Arena, Am Sportforum, Zentrum-Nordwest, Mitte, Leipzig, Sachsen, 04105, Deutschland",
+ "boundingbox": [
+  "51.3446699",
+  "51.3468038",
+  "12.3467377",
+  "12.3498550"
+ ]
+}

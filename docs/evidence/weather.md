@@ -19,7 +19,8 @@ Until then every upcoming match is honestly `NOT_YET_AVAILABLE`.
 
 ## 2. Venues: why the API's venue fields could not be geocoded blindly
 
-`make venues` searches OpenStreetMap (Nominatim) for each club. The first,
+`make venues` (`ingest --only openstreetmap`) searches OpenStreetMap
+(Nominatim) for each club. The first,
 naive run with the API's venue names returned **four wrong stadiums**:
 
 | Club | API venue | Naive result | Why wrong |
@@ -33,8 +34,8 @@ Also not found under the API's name: Atlético (Wanda Metropolitano), Fenerbahç
 AEK (plays at OPAP Arena since 2022), Viking (former sponsor name). Several API
 *addresses* are training grounds (Bayern, Roma, Napoli, LASK).
 
-Result after justified search overrides (each with its reason in
-`scripts/build_venues.py`) and a plausibility check (a place name from the API
+Result after justified search overrides (each with its reason next to the search
+term, today in `src/deng/sources/openstreetmap.py`) and a plausibility check (a place name from the API
 address must appear in OSM's address):
 
 ```text
@@ -61,6 +62,9 @@ weather 0/0 venue forecast(s) stored         ← no match inside 16 days
   VENUE_UNKNOWN         8 matches           ← Shakhtar and Sabah home games
 data quality: 17/18 checks passed           ← the known form-window WARNING
 ```
+
+(18 checks on that day; the odds and forecast checks came later, so there are
+24 today.)
 
 A run for a past date: `weather skipped: logical date 2026-09-20 is not today
 (2026-09-21); a forecast fetched now would not be what was known then`, and the
@@ -90,7 +94,8 @@ Data-quality checks added: `every_match_has_a_weather_row`,
 
 ## 5. Crests
 
-`python -m deng.pipeline crests`: first run `36 fetched, 0 failed` (all PNG,
+`python -m deng.pipeline crests` (today: `ingest --only crests`): first run
+`36 fetched, 0 failed` (all PNG,
 ~18 KB each), second run `0 fetched` - no request at all. Stored in
 `raw.team_crests`, read by the viewer through `curated.team_crest`, embedded as
 data URIs: the page still loads nothing from a third-party server.

@@ -1,0 +1,21 @@
+{
+ "place_id": 271264150,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 24292284,
+ "lat": "67.2766478",
+ "lon": "14.3844344",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.4683032579695318,
+ "addresstype": "leisure",
+ "name": "Aspmyra stadion",
+ "display_name": "Aspmyra stadion, Hålogalandsgata, Aspåsen, Vestbyen, Hernes - Hierggenjárgga - Härrgenjárrga, Bodø, Nordland, 8004, Norge",
+ "boundingbox": [
+  "67.2760144",
+  "67.2773854",
+  "14.3826399",
+  "14.3863129"
+ ]
+}

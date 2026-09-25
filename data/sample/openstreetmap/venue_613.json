@@ -1,0 +1,21 @@
+{
+ "place_id": 59730232,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 66321024,
+ "lat": "40.9875807",
+ "lon": "29.0369773",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5402861980398624,
+ "addresstype": "leisure",
+ "name": "Chobani Stadyumu",
+ "display_name": "Chobani Stadyumu, 3, Recep Peker Caddesi, Kızıltoprak, Zühtüpaşa Mahallesi, Kadıköy, İstanbul, Marmara Bölgesi, 34724, Türkiye",
+ "boundingbox": [
+  "40.9865946",
+  "40.9886689",
+  "29.0356815",
+  "29.0382046"
+ ]
+}
