@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS raw.open_meteo (
 COMMENT ON TABLE raw.open_meteo IS
     'Grain: one row per (endpoint, venue, ingestion date) - one forecast answer for one stadium on one day.';
 
--- Reference data from data/reference/venues.csv, loaded on every weather run.
+-- Venue data, built by sql/transform/305_staging_venues.sql from the stored
+-- OpenStreetMap answers in raw.osm_venues.
 CREATE TABLE IF NOT EXISTS staging.venues (
     team_id      BIGINT PRIMARY KEY,
     team_name    TEXT   NOT NULL,
@@ -39,7 +40,7 @@ CREATE TABLE IF NOT EXISTS staging.venues (
         CHECK (status <> 'RESOLVED' OR (latitude IS NOT NULL AND longitude IS NOT NULL))
 );
 
-COMMENT ON TABLE staging.venues IS 'Grain: one row per club (its home venue). Source: data/reference/venues.csv.';
+COMMENT ON TABLE staging.venues IS 'Grain: one row per club (its home venue). Source: raw.osm_venues (OpenStreetMap).';
 
 -- Hourly forecast values, unpacked from the columnar arrays of the payload.
 CREATE TABLE IF NOT EXISTS staging.weather_forecast (
