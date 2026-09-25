@@ -56,15 +56,17 @@ class Endpoint:
     rationale: str = ""
 
 
-# Why FULL for everything at this stage:
+# Why these four are FULL every day:
 #
 # The complete season fixture list is ~210 KB and one request. An incremental
 # strategy based on `lastUpdated` would need a second request to discover what
 # changed, and would still miss matches that the API *adds* mid-season (the
 # knockout draw in December - see docs/evidence/api-exploration.md §6). Full
 # reload of a small, bounded payload is simpler, self-healing after any missed
-# day, and costs one request. It stops being right when we ingest many seasons
-# at once: there, INCREMENTAL by season is the plan (backlog 1.9).
+# day, and costs one request.
+#
+# FULL is not a blanket rule, though: a *finished* season cannot change, so it is
+# fetched ONCE instead - see season_endpoints() below.
 DAILY_ENDPOINTS: tuple[Endpoint, ...] = (
     Endpoint(
         name="competition",
