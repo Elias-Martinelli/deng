@@ -180,9 +180,11 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 14.6 | Evidence folder: run logs, verification output, rerun/backfill proof | MUST | MIDTERM | [ ] |
 | 14.7 | Final architecture and evolution v0.1 → v0.2 → final | MUST | FINAL | [ ] |
 | 14.8 | Known limitations section honest and current | MUST | all | [~] |
-| 14.9 | Oral-defence question bank with both students' answers | SHOULD | MIDTERM/FINAL | [ ] |
+| 14.9 | Oral-defence question bank with both students' answers | SHOULD | MIDTERM/FINAL | [~] 16 questions with short answers in `docs/pitch/speaker-notes.md` (M1 level: raw zone, reruns, source failure, leakage, past seasons, full vs. incremental, 100x data, Dagster vs. Airflow, data quality, licences); the midterm additions (orchestration failure modes, evidence walkthrough) are open |
 | 14.10 | README points at the three new diagrams; delete the outdated `docs/architecture.svg` (it predates the odds source, OpenStreetMap and the restructure) | MUST | MIDTERM | [x] README shows all three; `docs/architecture.svg` deleted |
 | 14.11 | Documentation drift after the restructure: `README.md`, `docs/data-model.md`, `docs/data-sources.md`, ADR-001, architecture v0.1 and one DQ description still name the deleted `data/reference/venues.csv`, and none of them mentions `raw.osm_venues`, the raw planning views or `curated.model_features` | MUST | MIDTERM | [x] no document presents `venues.csv` or `scripts/build_venues.py` as current (only as history); `raw.osm_venues`, the three raw planning views and `curated.model_features` are in `docs/data-model.md` and the README; ADR-001 and architecture v0.1 carry a note saying what changed |
+| 14.12 | Pitch material for Milestone 1: 10 slides mapped to the six points of §1.5, German speaker notes per slide, timing for two speakers; data-quality checks deliberately left out | MUST | M1 | [x] `docs/pitch/` - `README.md` (what §1.5 and §2.2 ask for, timing, how to present), `slides.md`, `speaker-notes.md` |
+| 14.13 | A reading path through the code for the defence: one match from the CLI to `curated.model_features`, and a lookup table from question to file | SHOULD | MIDTERM | [x] `docs/code-walkthrough.md`, nine stops, linked from the README and from `docs/pitch/README.md` |
 
 ## Division of responsibilities
 

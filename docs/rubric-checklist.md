@@ -30,10 +30,10 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 | Expected output / data product | M1 | DONE | `docs/use-case.md` §Data product | table list with grain | – |
 | Data characteristics, risks, challenges | M1 | DONE | `docs/data-sources.md`, `docs/use-case.md` §Limitations, evidence §5–§11 | measured: 144 matches, 11 of 36 clubs without domestic data, inconsistent API aggregates | – |
 | Initial ingestion and storage strategy | M1 | DONE | `docs/architecture/architecture-v0.1.md` §2, ADR-003 | – | – |
-| Architecture v0.1 incl. division of responsibilities | M1 | DONE | `docs/architecture/architecture-v0.1.md` (Mermaid, §6) | – | fill in second student's name |
+| Architecture v0.1 incl. division of responsibilities | M1 | DONE | `docs/architecture/architecture-v0.1.md` (Mermaid, §6), rendered as `docs/architecture-overview.svg` / `-detail.svg` / `-target.svg` | §6 names both students per area with the other as reviewer; the same table is slide 10 of the pitch | – |
 | Initial README | M1 | DONE | `README.md` | – | – |
 | Short project plan / backlog | M1 | DONE | `docs/project-backlog.md` | – | – |
-| Pitch (10 min): feasibility, source understanding, ingestion/storage reasoning | M1 | TODO | – | – | rehearse with question bank |
+| Pitch (10 min): feasibility, source understanding, ingestion/storage reasoning, answers to questions | M1 | IN PROGRESS | `docs/pitch/slides.md` (10 slides, one per §1.5 requirement), `docs/pitch/speaker-notes.md` (German, per slide) | timing table for two speakers, 16 expected questions with short answers incl. full vs. incremental, behaviour at 100× data, Dagster vs. Airflow, data quality and licences; `docs/code-walkthrough.md` for questions that go past the slides | rehearse out loud, both speakers, once against the clock |
 
 ## Midterm (§1.6, §2.3 – 40 points)
 
