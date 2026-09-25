@@ -7,6 +7,7 @@ repository state, 5 for the pitch itself and the answers to questions.
 |---|---|
 | [`slides.md`](slides.md) | the deck - one `##` heading per slide, in the order we present |
 | [`speaker-notes.md`](speaker-notes.md) | what to say per slide, in German, plus the questions we expect and short answers |
+| [`../code-walkthrough.md`](../code-walkthrough.md) | nine stops through the code, for the questions that go past the slides |
 
 ## What the module asks for (project description §1.5)
 

@@ -569,8 +569,10 @@ calls.
 ## Transformation
 
 Thirteen SQL files in [`sql/transform/`](sql/transform/), executed in the order
-their numbers give. The number says which layer a file builds - 1xx staging,
-2xx/3xx/4xx curated - so the list reads top to bottom like the pipeline itself.
+their numbers give. The hundreds digit groups the chain a file belongs to -
+1xx and 2xx football, 3xx weather, 4xx odds - and inside a group the staging
+file comes before the curated ones that read it, so the list runs top to bottom
+like the pipeline itself.
 
 | # | File | Produces |
 |---|---|---|
@@ -912,6 +914,10 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 Two sentences that explain the whole layout: **`sources/` asks, `sql/` builds,
 and nothing in `sources/` or `ingestion/` may read what `sql/` built.** The
 Makefile and the CLI are wrappers; the Dagster assets call the same functions.
+
+To follow one match through the code instead of reading the tree, take the nine
+stops in [`docs/code-walkthrough.md`](docs/code-walkthrough.md) - it opens the
+files in the order they run and says what each one is for.
 
 ## Contributing and Branch Strategy
 
