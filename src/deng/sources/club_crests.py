@@ -46,17 +46,21 @@ class CrestResult:
 
 def missing_crests(connection: psycopg.Connection) -> list[tuple[int, str]]:
     """Teams whose current crest URL has no stored image yet."""
+    # Reads the clubs from the raw zone (the teams answer the football source
+    # stored earlier in the same run), never from the curated dimension - see
+    # tests/test_layering.py.
+    #
     # The NOT EXISTS anti-join *is* the incremental load: it returns only URLs
     # that are not stored yet, so a normal day returns nothing and makes no
     # request. A club that gets a new crest URL shows up here automatically.
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT d.team_id, d.crest_url
-              FROM curated.dim_team d
-             WHERE d.crest_url IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM raw.team_crests c WHERE c.crest_url = d.crest_url)
-             ORDER BY d.team_id
+            SELECT t.team_id, t.crest_url
+              FROM raw.team_catalog t
+             WHERE t.crest_url IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM raw.team_crests c WHERE c.crest_url = t.crest_url)
+             ORDER BY t.team_id
             """
         )
         return [(int(team_id), url) for team_id, url in cursor.fetchall()]

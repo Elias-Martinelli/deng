@@ -1,0 +1,21 @@
+{
+ "place_id": 159514505,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 201384256,
+ "lat": "58.9145955",
+ "lon": "5.7309977",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.43843044507974105,
+ "addresstype": "leisure",
+ "name": "Lyse Arena",
+ "display_name": "Lyse Arena, Jåttåvågveien, Jåttåvågen, Gausel, Hinna, Stavanger, Rogaland, 4020, Norge",
+ "boundingbox": [
+  "58.9137870",
+  "58.9153920",
+  "5.7294160",
+  "5.7325840"
+ ]
+}

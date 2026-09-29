@@ -6,20 +6,17 @@
 -- files as the start of a parameter - even inside a comment - so SQL's LIKE
 -- wildcard is written doubled (%%) and stands for a single one.
 
--- The day's payload. If a day holds more than one (a sample replay and a real
--- API answer, which differ in `source`), the newest wins - deterministic.
-WITH payload AS (
-    SELECT payload
-      FROM raw.football_data
-     WHERE endpoint LIKE '%%/teams'
-       AND ingestion_date = %(logical_date)s
-     ORDER BY ingested_at DESC
-     LIMIT 1
-),
--- One row per element of the "teams" array.
-unpacked AS (
-    SELECT jsonb_array_elements(payload -> 'teams') AS t
-      FROM payload
+-- Every teams answer stored on this day: the current season plus one per past
+-- season that was ingested. A club that played several seasons appears more than
+-- once, so DISTINCT ON keeps the newest answer per club - the INSERT must see
+-- each team_id exactly once.
+WITH unpacked AS (
+    SELECT DISTINCT ON ((t ->> 'id')::bigint) t
+      FROM raw.football_data r
+      CROSS JOIN LATERAL jsonb_array_elements(r.payload -> 'teams') AS t
+     WHERE r.endpoint LIKE '%%/teams'
+       AND r.ingestion_date = %(logical_date)s
+     ORDER BY (t ->> 'id')::bigint, r.ingested_at DESC
 )
 INSERT INTO staging.teams AS s (
     team_id, name, short_name, tla, crest_url, founded, club_colors,

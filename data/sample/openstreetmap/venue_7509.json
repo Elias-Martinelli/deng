@@ -1,0 +1,21 @@
+{
+ "place_id": 187306232,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 678498215,
+ "lat": "48.1634912",
+ "lon": "17.1367945",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.45381775468440283,
+ "addresstype": "leisure",
+ "name": "Národný futbalový štadión",
+ "display_name": "Národný futbalový štadión, 4, Viktora Tegelhoffa, Tehelné pole, Bratislava, okres Bratislava III, Bratislava, Bratislavský kraj, 832 32, Slovensko",
+ "boundingbox": [
+  "48.1621488",
+  "48.1647633",
+  "17.1352041",
+  "17.1383969"
+ ]
+}

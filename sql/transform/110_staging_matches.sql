@@ -10,20 +10,19 @@
 -- --------------------------------------------------------------------------
 -- matches
 -- --------------------------------------------------------------------------
--- The unfiltered season list only: a request with filters (e.g. ?status=...)
--- would be a different, partial answer stored under different request_params.
-WITH payload AS (
-    SELECT payload
-      FROM raw.football_data
-     WHERE endpoint LIKE '%%/matches'
-       AND request_params = '{}'::jsonb
-       AND ingestion_date = %(logical_date)s
-     ORDER BY ingested_at DESC
-     LIMIT 1
-),
-unpacked AS (
-    SELECT jsonb_array_elements(payload -> 'matches') AS m
-      FROM payload
+-- Every match answer stored on this day, not just one: the current season comes
+-- without parameters, each past season as its own answer (?season=2023). A match
+-- can therefore appear twice - in the sample replay and in the real answer, or in
+-- two overlapping seasons - so DISTINCT ON keeps the newest and the INSERT below
+-- sees each match_id exactly once. (Without that, PostgreSQL refuses the upsert:
+-- "ON CONFLICT DO UPDATE command cannot affect row a second time".)
+WITH unpacked AS (
+    SELECT DISTINCT ON ((m ->> 'id')::bigint) m
+      FROM raw.football_data r
+      CROSS JOIN LATERAL jsonb_array_elements(r.payload -> 'matches') AS m
+     WHERE r.endpoint LIKE '%%/matches'
+       AND r.ingestion_date = %(logical_date)s
+     ORDER BY (m ->> 'id')::bigint, r.ingested_at DESC
 )
 INSERT INTO staging.matches AS t (
     match_id, season_id, competition_code, utc_kickoff, status, stage, matchday,

@@ -1,0 +1,21 @@
+{
+ "place_id": 109053182,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 54096891,
+ "lat": "51.8938646",
+ "lon": "4.5232281",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.573066161535141,
+ "addresstype": "leisure",
+ "name": "Stadion Feijenoord",
+ "display_name": "Stadion Feijenoord, Olympiaweg, De Veranda, Oud-IJsselmonde, IJsselmonde, Rotterdam, Zuid-Holland, Nederland, 3077 AL, Nederland",
+ "boundingbox": [
+  "51.8928818",
+  "51.8948286",
+  "4.5217819",
+  "4.5246851"
+ ]
+}

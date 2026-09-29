@@ -1,24 +1,24 @@
 # Reference data
 
-Small, versioned files that the pipeline joins against. Reviewed like code.
+Small, versioned files the pipeline joins against. Reviewed like code.
 
-## venues.csv
+## bookmaker_team_aliases.csv
 
-Stadium coordinates for the league-phase clubs. The football API delivers no
-coordinates, and its venue names and addresses are partly outdated or point to
-training grounds, so they cannot be geocoded blindly.
+Spellings the bookmakers use for a club, where they are too far from the club's
+own name for the automatic matching (`deng.transformation.odds_matching`). One
+row per alias, with the club id it belongs to. When the data-quality check
+`odds_events_resolved_to_fixtures` reports an unmatched event, the fix is a new
+row here - not a lower matching threshold.
 
-* **Built by** `make venues` (`scripts/build_venues.py`): one OpenStreetMap
-  (Nominatim) search per club, preferring objects tagged as a stadium.
-* **Checked by** an automatic plausibility test (a place name from the API
-  address must occur in OSM's address) plus a manual review of every flagged
-  row. `address_check` records the outcome; `note` records why a search term
-  differs from the API's venue name.
-* **Verifiable:** `https://www.openstreetmap.org/<osm_type>/<osm_id>`.
-* **Not resolved (`status = NOT_AVAILABLE`):** Shakhtar Donetsk (home matches
-  outside Ukraine since 2022, venue for 2026/27 not in any source we use) and
-  Sabah FK (no venue in the API). Their matches get no weather rather than a
-  guessed location.
+## Stadium coordinates are no longer a file
 
-Coordinates © OpenStreetMap contributors, licensed under the
-[ODbL](https://opendatacommons.org/licenses/odbl/).
+They used to live in `venues.csv`, built by a script that was run by hand.
+OpenStreetMap is now a source of the pipeline like any other
+(`deng.sources.openstreetmap`): the answers are stored in `raw.osm_venues`, and
+`sql/transform/305_staging_venues.sql` turns them into `staging.venues`.
+
+* Look them up again (once per season): `make venues`
+* Offline, and for peer reviewers without network: the committed answers in
+  `data/sample/openstreetmap/` are replayed with `--from-samples`.
+* Coordinates © OpenStreetMap contributors,
+  [ODbL](https://opendatacommons.org/licenses/odbl/).

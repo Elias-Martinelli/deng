@@ -1,0 +1,21 @@
+{
+ "place_id": 296021734,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 28355046,
+ "lat": "37.3564503",
+ "lon": "-5.9809176",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5366806267037146,
+ "addresstype": "leisure",
+ "name": "Estadio Benito Villamarín",
+ "display_name": "Estadio Benito Villamarín, Calle Periodista Ramón Resa, Sector Sur-La Palmera-Reina Mercedes, Distrito Bellavista-La Palmera, Sevilla, Andalucía, 41012, España",
+ "boundingbox": [
+  "37.3554522",
+  "37.3574657",
+  "-5.9828329",
+  "-5.9805828"
+ ]
+}

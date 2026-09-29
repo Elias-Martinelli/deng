@@ -280,8 +280,8 @@ CHECKS: tuple[Check, ...] = (
         target="curated.dim_venue",
         severity=WARNING,
         description=(
-            "Every club appears in data/reference/venues.csv (resolved or with a reason). A new "
-            "club after the knockout draw needs `make venues`."
+            "Every club has a venue row from OpenStreetMap (resolved or with a stored reason). "
+            "A new club after the knockout draw needs `make venues`."
         ),
         sql="""
             SELECT count(*)::text || ' team(s) without a venue row' AS observed,

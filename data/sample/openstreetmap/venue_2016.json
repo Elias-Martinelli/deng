@@ -1,0 +1,21 @@
+{
+ "place_id": 129557987,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 1011098666,
+ "lat": "48.2935745",
+ "lon": "14.2765553",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.36366628930239936,
+ "addresstype": "leisure",
+ "name": "Raiffeisen Arena",
+ "display_name": "Raiffeisen Arena, 1, Helmut-Köglberger-Platz, Römerberg, Froschberg, Linz, Oberösterreich, 4020, Österreich",
+ "boundingbox": [
+  "48.2927308",
+  "48.2944286",
+  "14.2751807",
+  "14.2779640"
+ ]
+}

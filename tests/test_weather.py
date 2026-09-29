@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from deng.ingestion.football_data_client import ApiError, RetryableApiError
-from deng.ingestion.weather import HOURLY_VARIABLES, ForecastRequest, fetch_forecast
+from deng.sources.http import ApiError, RetryableApiError
+from deng.sources.open_meteo import HOURLY_VARIABLES, ForecastRequest, fetch_forecast
 
 SAMPLE = (
     Path(__file__).resolve().parents[1]

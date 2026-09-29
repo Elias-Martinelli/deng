@@ -1,0 +1,21 @@
+{
+ "place_id": 75301236,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 288519795,
+ "lat": "45.8138295",
+ "lon": "9.0723243",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.5001665595127773,
+ "addresstype": "leisure",
+ "name": "Stadio Giuseppe Sinigaglia",
+ "display_name": "Stadio Giuseppe Sinigaglia, 2, Via Giuseppe Sinigaglia, Stadio, Vico, Como, Lombardia, 22100, Italia",
+ "boundingbox": [
+  "45.8130818",
+  "45.8145187",
+  "9.0710256",
+  "9.0737489"
+ ]
+}

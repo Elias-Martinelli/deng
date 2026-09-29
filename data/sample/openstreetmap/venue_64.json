@@ -1,0 +1,21 @@
+{
+ "place_id": 278480879,
+ "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+ "osm_type": "way",
+ "osm_id": 4830206,
+ "lat": "53.4309011",
+ "lon": "-2.9609719",
+ "category": "leisure",
+ "type": "stadium",
+ "place_rank": 30,
+ "importance": 0.610682197619203,
+ "addresstype": "leisure",
+ "name": "Anfield",
+ "display_name": "Anfield, Anfield Road, Anfield, Liverpool, Liverpool City Region, England, L4 0TH, United Kingdom",
+ "boundingbox": [
+  "53.4298307",
+  "53.4319511",
+  "-2.9625871",
+  "-2.9590183"
+ ]
+}
