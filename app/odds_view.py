@@ -51,7 +51,12 @@ SERIES_DARK = [
     "#9085e9",
     "#e66767",
 ]
-INK_LIGHT, INK_DARK = "#52514e", "#c3c2b7"
+# Neutrals mirror the tokens in app/style.py, so the chart sits on the same
+# hairline grid as the panels around it.
+INK_LIGHT, INK_DARK = "#4C5663", "#B4BDC8"  # model line  = --cl-text-1
+GRID_LIGHT, GRID_DARK = "#DAE0E7", "#3A424D"  # --cl-line-1
+AXIS_LIGHT, AXIS_DARK = "#BEC7D1", "#4E5866"  # --cl-line-2
+LABEL_LIGHT, LABEL_DARK = "#5C6875", "#98A3B0"  # --cl-text-2
 MAX_BOOKMAKERS = len(SERIES_LIGHT)
 OUTCOMES = ("Home win", "Draw", "Away win")
 MODEL_SERIES = "Model"
@@ -349,6 +354,9 @@ def _history_chart(query, match_id, all_titles, selected, kickoff, local_time) -
 
     dark = _theme_is_dark()
     palette = SERIES_DARK if dark else SERIES_LIGHT
+    grid = GRID_DARK if dark else GRID_LIGHT
+    axis = AXIS_DARK if dark else AXIS_LIGHT
+    label = LABEL_DARK if dark else LABEL_LIGHT
     domain = all_titles[:MAX_BOOKMAKERS] + [MODEL_SERIES]
     colours = palette[: len(all_titles[:MAX_BOOKMAKERS])] + [INK_DARK if dark else INK_LIGHT]
     y_title = "decimal odds" if as_odds else "probability, %"
@@ -373,10 +381,10 @@ def _history_chart(query, match_id, all_titles, selected, kickoff, local_time) -
         ],
     )
     lines = base.mark_line(interpolate="step-after", strokeWidth=2)
-    points = base.mark_point(size=60, filled=True)
+    points = base.mark_point(size=45, filled=True)
     chart = (
         alt.layer(lines, points)
-        .properties(height=170)
+        .properties(height=150)
         .facet(
             row=alt.Row(
                 "outcome:N",
@@ -386,7 +394,17 @@ def _history_chart(query, match_id, all_titles, selected, kickoff, local_time) -
             )
         )
         .resolve_scale(y="independent")
-        .configure_axis(gridColor="rgba(127,127,127,.25)", domainColor="rgba(127,127,127,.4)")
+        .configure_axis(
+            gridColor=grid,
+            domainColor=axis,
+            tickColor=axis,
+            labelColor=label,
+            titleColor=label,
+            labelFontSize=10,
+            titleFontSize=10,
+        )
+        .configure_legend(labelColor=label, titleColor=label, labelFontSize=10, symbolStrokeWidth=2)
+        .configure_header(labelColor=label, labelFontSize=11, labelFontWeight=600)
         .configure_view(strokeWidth=0)
     )
     st.altair_chart(chart, width="stretch")
@@ -400,4 +418,15 @@ def _history_chart(query, match_id, all_titles, selected, kickoff, local_time) -
     ).reset_index()
     table["at"] = table["at"].dt.strftime("%d %b %H:%M")
     with st.expander("Data table"):
-        st.dataframe(table, hide_index=True, width="stretch")
+        numeric = [c for c in table.columns if c not in ("at", "outcome")]
+        st.dataframe(
+            table,
+            hide_index=True,
+            width="stretch",
+            row_height=30,
+            column_config={
+                "at": st.column_config.TextColumn("Time", width="small"),
+                "outcome": st.column_config.TextColumn("Outcome", width="small"),
+                **{c: st.column_config.NumberColumn(c, format="%.2f") for c in numeric},
+            },
+        )

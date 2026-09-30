@@ -57,9 +57,11 @@ def _dataset(features: pd.DataFrame) -> None:
         unsafe_allow_html=True,
     )
     left, middle, right = st.columns(3)
-    left.metric("Matches", len(features))
-    middle.metric("With a label (played)", int(labelled.sum()))
-    right.metric("Seasons", int(features["season_id"].nunique()))
+    # border=True gives the three figures the same panel outline as the cards
+    # below them, so the page reads as one surface instead of floating numbers.
+    left.metric("Matches", len(features), border=True)
+    middle.metric("With a label (played)", int(labelled.sum()), border=True)
+    right.metric("Seasons", int(features["season_id"].nunique()), border=True)
 
     per_season = (
         features.assign(label=labelled)
@@ -73,7 +75,19 @@ def _dataset(features: pd.DataFrame) -> None:
         .reset_index()
         .sort_values("season_id")
     )
-    st.dataframe(per_season, hide_index=True, width="stretch")
+    st.dataframe(
+        per_season,
+        hide_index=True,
+        width="stretch",
+        row_height=30,
+        column_config={
+            "season_id": st.column_config.NumberColumn("Season", format="%d"),
+            "matches": st.column_config.NumberColumn("Matches", format="%d"),
+            "labelled": st.column_config.NumberColumn("Labelled", format="%d"),
+            "first": st.column_config.DateColumn("First", format="DD MMM YYYY"),
+            "last": st.column_config.DateColumn("Last", format="DD MMM YYYY"),
+        },
+    )
     st.caption(
         "More seasons is the lever: one league phase has 144 matches, a finished season with "
         "the knockout rounds has up to 189. Which seasons are fetched is a setting "
@@ -106,17 +120,37 @@ def _coverage(features: pd.DataFrame) -> None:
             {
                 "feature": label,
                 "present": present,
-                "share": f"{present / total:.0%}" if total else "-",
+                "share": round(present / total * 100) if total else None,
                 "absent because": reason,
             }
         )
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    st.dataframe(
+        pd.DataFrame(rows),
+        hide_index=True,
+        width="stretch",
+        row_height=30,
+        column_config={
+            "feature": st.column_config.TextColumn("Feature", width="medium"),
+            "present": st.column_config.NumberColumn("Present", format="%d"),
+            "share": st.column_config.NumberColumn("Coverage", format="%.0f%%"),
+            "absent because": st.column_config.TextColumn("Absent because", width="large"),
+        },
+    )
 
     if "weather_status" in features:
         states = features["weather_status"].value_counts().rename_axis("state").reset_index()
         states.columns = ["weather state", "matches"]
         st.caption("Why the weather is missing where it is missing:")
-        st.dataframe(states, hide_index=True, width="stretch")
+        st.dataframe(
+            states,
+            hide_index=True,
+            width="stretch",
+            row_height=30,
+            column_config={
+                "weather state": st.column_config.TextColumn("Weather state"),
+                "matches": st.column_config.NumberColumn("Matches", format="%d"),
+            },
+        )
 
 
 def _leakage(query: Callable[..., pd.DataFrame]) -> None:
@@ -170,7 +204,16 @@ def _leakage(query: Callable[..., pd.DataFrame]) -> None:
         """
     )
     checks["result"] = checks["violations"].map(lambda n: "ok" if n == 0 else f"{n} violations")
-    st.dataframe(checks[["guarantee", "result"]], hide_index=True, width="stretch")
+    st.dataframe(
+        checks[["guarantee", "result"]],
+        hide_index=True,
+        width="stretch",
+        row_height=30,
+        column_config={
+            "guarantee": st.column_config.TextColumn("Guarantee", width="large"),
+            "result": st.column_config.TextColumn("Result", width="small"),
+        },
+    )
     st.caption(
         "The first rule is enforced by the SQL window that builds the form table and is "
         "re-checked by the data-quality check `form_uses_no_future_matches` after every run."
