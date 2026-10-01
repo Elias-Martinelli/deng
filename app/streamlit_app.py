@@ -36,8 +36,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 # directory on sys.path, which makes this plain import work.
 import dataset_view
 import odds_view  # noqa: E402
+import table_view  # noqa: E402
 from components import (  # noqa: E402
-    CSS,
     MatchWeather,
     ResultRow,
     TeamForm,
@@ -51,6 +51,7 @@ from components import (  # noqa: E402
     title,
     weather_card,
 )
+from style import CSS  # noqa: E402
 
 from deng.config import get_settings  # noqa: E402
 
@@ -165,11 +166,22 @@ def result_rows(frame: pd.DataFrame) -> list[ResultRow]:
 # Page
 # --------------------------------------------------------------------------
 
-st.markdown(title("⚽ Champions League Match Data"), unsafe_allow_html=True)
+st.markdown(title("Champions League Match Data"), unsafe_allow_html=True)
 st.caption(
     "An analysis dashboard for the data a match-outcome model would be trained on. "
     "Everything shown is read from the curated tables; this page makes no API call."
 )
+
+view = st.radio(
+    "Ansicht",
+    ["Dashboard", "Curated Dataset"],
+    index=1,
+    horizontal=True,
+    label_visibility="collapsed",
+)
+if view == "Curated Dataset":
+    table_view.render(query)
+    st.stop()
 
 if not data_is_available():
     st.error(
@@ -217,10 +229,32 @@ with st.sidebar:
     if runs.empty:
         st.info("No completed pipeline run recorded yet.")
     else:
-        st.dataframe(runs, hide_index=True, width="stretch")
+        st.dataframe(
+            runs,
+            hide_index=True,
+            width="stretch",
+            row_height=30,
+            column_config={
+                "pipeline_name": st.column_config.TextColumn("Pipeline"),
+                "logical_date": st.column_config.DateColumn("Date", format="DD MMM YYYY"),
+                "status": st.column_config.TextColumn("Status", width="small"),
+                "finished_at": st.column_config.DatetimeColumn("Finished", format="DD MMM HH:mm"),
+            },
+        )
     if not dq.empty:
         st.subheader("Data quality")
-        st.dataframe(dq, hide_index=True, width="stretch")
+        st.dataframe(
+            dq,
+            hide_index=True,
+            width="stretch",
+            row_height=30,
+            column_config={
+                "check_name": st.column_config.TextColumn("Check"),
+                "severity": st.column_config.TextColumn("Severity", width="small"),
+                "passed": st.column_config.CheckboxColumn("Passed", width="small"),
+                "observed": st.column_config.TextColumn("Observed"),
+            },
+        )
     st.caption(
         "Every figure comes from our own curated tables, produced by the batch pipeline. "
         "This app makes no API calls - bookmaker odds too are fetched by the pipeline, under "
