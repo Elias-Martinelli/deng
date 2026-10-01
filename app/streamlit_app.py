@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 # directory on sys.path, which makes this plain import work.
 import dataset_view
 import odds_view  # noqa: E402
+import table_view  # noqa: E402
 from components import (  # noqa: E402
     MatchWeather,
     ResultRow,
@@ -170,6 +171,17 @@ st.caption(
     "An analysis dashboard for the data a match-outcome model would be trained on. "
     "Everything shown is read from the curated tables; this page makes no API call."
 )
+
+view = st.radio(
+    "Ansicht",
+    ["Dashboard", "Curated Dataset"],
+    index=1,
+    horizontal=True,
+    label_visibility="collapsed",
+)
+if view == "Curated Dataset":
+    table_view.render(query)
+    st.stop()
 
 if not data_is_available():
     st.error(
