@@ -37,7 +37,7 @@ from psycopg.types.json import Jsonb
 
 from deng.clock import pipeline_today
 from deng.database.raw_loader import hash_payload
-from deng.sources.http import ApiError, RetryableApiError
+from deng.sources.http import ApiError, RetryableApiError, retry_transient
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +190,7 @@ def store(
                 -- A rerun refreshes the fetch time on purpose: the leakage guard
                 -- compares it with the kick-off, so a rerun after kick-off makes
                 -- that day's forecast unusable and the previous day's is taken.
-                ingested_at = now(), run_id = EXCLUDED.run_id,
+                ingested_at = clock_timestamp(), run_id = EXCLUDED.run_id,
                 payload = EXCLUDED.payload, payload_hash = EXCLUDED.payload_hash
             """,
             (
@@ -248,7 +248,9 @@ def ingest_weather(
                 continue
             url, payload = sample
         else:
-            url, payload = fetch_forecast(session, base_url, request)
+            url, payload = retry_transient(
+                lambda request=request: fetch_forecast(session, base_url, request)
+            )
         store(connection, request, url, payload, logical_date, run_id)
         result.stored.append(request.venue_team_id)
     # All venues of the day in one commit, like the football payloads: a

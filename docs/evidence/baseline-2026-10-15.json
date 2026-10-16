@@ -1,0 +1,521 @@
+{
+  "model": "multinomial-logistic-v1",
+  "created_at": "2026-10-15T14:55:52.055511+00:00",
+  "dataset_sha256": "507337c2d4fd06b7b6090f1d55e490f7c1a60dde794508f773bdf1608465455f",
+  "target": "label_outcome_90min",
+  "classes": [
+    "AWAY_WIN",
+    "DRAW",
+    "HOME_WIN"
+  ],
+  "features": [
+    "home_history_matches",
+    "home_rest_days",
+    "home_played_last_7_days",
+    "home_played_last_14_days",
+    "home_matches_last_5",
+    "home_goals_for_per_match_last_5",
+    "home_goals_against_per_match_last_5",
+    "home_points_per_match_last_5",
+    "home_matches_last_10",
+    "home_goals_for_per_match_last_10",
+    "home_goals_against_per_match_last_10",
+    "home_points_per_match_last_10",
+    "home_venue_points_per_match_last_5",
+    "home_season_matches",
+    "home_season_points_per_match",
+    "home_h2h_matches_last_5",
+    "away_history_matches",
+    "away_rest_days",
+    "away_played_last_7_days",
+    "away_played_last_14_days",
+    "away_matches_last_5",
+    "away_goals_for_per_match_last_5",
+    "away_goals_against_per_match_last_5",
+    "away_points_per_match_last_5",
+    "away_matches_last_10",
+    "away_goals_for_per_match_last_10",
+    "away_goals_against_per_match_last_10",
+    "away_points_per_match_last_10",
+    "away_venue_points_per_match_last_5",
+    "away_season_matches",
+    "away_season_points_per_match",
+    "away_h2h_matches_last_5",
+    "competition_code"
+  ],
+  "train_before": "2025-07-01",
+  "test_before": "2026-07-01",
+  "train_rows": 5040,
+  "test_rows": 2552,
+  "train_kickoff_min": "2023-08-11 19:30:00+02:00",
+  "train_kickoff_max": "2025-05-31 21:00:00+02:00",
+  "test_kickoff_min": "2025-08-08 20:00:00+02:00",
+  "test_kickoff_max": "2026-05-30 18:00:00+02:00",
+  "train_class_counts": {
+    "HOME_WIN": 2183,
+    "AWAY_WIN": 1596,
+    "DRAW": 1261
+  },
+  "versions": {
+    "sklearn": "1.7.2",
+    "pandas": "2.3.3",
+    "numpy": "2.2.6"
+  },
+  "logistic": {
+    "rows": 2552,
+    "accuracy": 0.5062695924764891,
+    "macro_f1": 0.38611869189115416,
+    "log_loss": 1.0313431851584804,
+    "brier_multiclass_sum": 0.6153877642301776,
+    "confusion_matrix_true_rows_predicted_columns": [
+      [
+        484,
+        5,
+        294
+      ],
+      [
+        297,
+        6,
+        339
+      ],
+      [
+        319,
+        6,
+        802
+      ]
+    ]
+  },
+  "training_class_prior": {
+    "rows": 2552,
+    "accuracy": 0.4416144200626959,
+    "macro_f1": 0.20422216181933495,
+    "log_loss": 1.070860265178697,
+    "brier_multiclass_sum": 0.6477239201874875,
+    "confusion_matrix_true_rows_predicted_columns": [
+      [
+        0,
+        0,
+        783
+      ],
+      [
+        0,
+        0,
+        642
+      ],
+      [
+        0,
+        0,
+        1127
+      ]
+    ]
+  },
+  "by_competition": {
+    "BL1": {
+      "logistic": {
+        "rows": 306,
+        "accuracy": 0.5490196078431373,
+        "macro_f1": 0.4292101936400194,
+        "log_loss": 0.9964647886995196,
+        "brier_multiclass_sum": 0.5930561534156319,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            69,
+            2,
+            26
+          ],
+          [
+            38,
+            2,
+            35
+          ],
+          [
+            37,
+            0,
+            97
+          ]
+        ]
+      },
+      "training_class_prior": {
+        "rows": 306,
+        "accuracy": 0.43790849673202614,
+        "macro_f1": 0.20303030303030303,
+        "log_loss": 1.0704968073333632,
+        "brier_multiclass_sum": 0.6477271510456034,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            0,
+            0,
+            97
+          ],
+          [
+            0,
+            0,
+            75
+          ],
+          [
+            0,
+            0,
+            134
+          ]
+        ]
+      }
+    },
+    "CL": {
+      "logistic": {
+        "rows": 189,
+        "accuracy": 0.5396825396825397,
+        "macro_f1": 0.3771999518478392,
+        "log_loss": 1.1195871244225997,
+        "brier_multiclass_sum": 0.6420481011710342,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            29,
+            0,
+            32
+          ],
+          [
+            20,
+            0,
+            14
+          ],
+          [
+            20,
+            1,
+            73
+          ]
+        ]
+      },
+      "training_class_prior": {
+        "rows": 189,
+        "accuracy": 0.4973544973544973,
+        "macro_f1": 0.22143698468786807,
+        "log_loss": 1.0365166129326262,
+        "brier_multiclass_sum": 0.625212033887629,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            0,
+            0,
+            61
+          ],
+          [
+            0,
+            0,
+            34
+          ],
+          [
+            0,
+            0,
+            94
+          ]
+        ]
+      }
+    },
+    "DED": {
+      "logistic": {
+        "rows": 306,
+        "accuracy": 0.5,
+        "macro_f1": 0.381683619635463,
+        "log_loss": 1.0286972198987971,
+        "brier_multiclass_sum": 0.611727597065925,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            52,
+            0,
+            38
+          ],
+          [
+            32,
+            1,
+            47
+          ],
+          [
+            35,
+            1,
+            100
+          ]
+        ]
+      },
+      "training_class_prior": {
+        "rows": 306,
+        "accuracy": 0.4444444444444444,
+        "macro_f1": 0.20512820512820515,
+        "log_loss": 1.072299349990696,
+        "brier_multiclass_sum": 0.6483768553717782,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            0,
+            0,
+            90
+          ],
+          [
+            0,
+            0,
+            80
+          ],
+          [
+            0,
+            0,
+            136
+          ]
+        ]
+      }
+    },
+    "FL1": {
+      "logistic": {
+        "rows": 305,
+        "accuracy": 0.4918032786885246,
+        "macro_f1": 0.3698355737829422,
+        "log_loss": 1.0426152609901804,
+        "brier_multiclass_sum": 0.6267980141299224,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            59,
+            0,
+            31
+          ],
+          [
+            33,
+            0,
+            41
+          ],
+          [
+            49,
+            1,
+            91
+          ]
+        ]
+      },
+      "training_class_prior": {
+        "rows": 305,
+        "accuracy": 0.46229508196721314,
+        "macro_f1": 0.21076233183856505,
+        "log_loss": 1.0622758195709094,
+        "brier_multiclass_sum": 0.6417175954322226,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            0,
+            0,
+            90
+          ],
+          [
+            0,
+            0,
+            74
+          ],
+          [
+            0,
+            0,
+            141
+          ]
+        ]
+      }
+    },
+    "PD": {
+      "logistic": {
+        "rows": 380,
+        "accuracy": 0.48157894736842105,
+        "macro_f1": 0.3476225671347623,
+        "log_loss": 1.0190458856914117,
+        "brier_multiclass_sum": 0.608488352250581,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            50,
+            2,
+            49
+          ],
+          [
+            43,
+            0,
+            50
+          ],
+          [
+            52,
+            1,
+            133
+          ]
+        ]
+      },
+      "training_class_prior": {
+        "rows": 380,
+        "accuracy": 0.48947368421052634,
+        "macro_f1": 0.21908127208480566,
+        "log_loss": 1.0542615159548558,
+        "brier_multiclass_sum": 0.6356677200607338,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            0,
+            0,
+            101
+          ],
+          [
+            0,
+            0,
+            93
+          ],
+          [
+            0,
+            0,
+            186
+          ]
+        ]
+      }
+    },
+    "PL": {
+      "logistic": {
+        "rows": 380,
+        "accuracy": 0.46578947368421053,
+        "macro_f1": 0.3567502716691478,
+        "log_loss": 1.0892933377607619,
+        "brier_multiclass_sum": 0.6619748111039989,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            71,
+            0,
+            43
+          ],
+          [
+            54,
+            0,
+            50
+          ],
+          [
+            55,
+            1,
+            106
+          ]
+        ]
+      },
+      "training_class_prior": {
+        "rows": 380,
+        "accuracy": 0.4263157894736842,
+        "macro_f1": 0.1992619926199262,
+        "log_loss": 1.0808624100271131,
+        "brier_multiclass_sum": 0.6542276615812016,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            0,
+            0,
+            114
+          ],
+          [
+            0,
+            0,
+            104
+          ],
+          [
+            0,
+            0,
+            162
+          ]
+        ]
+      }
+    },
+    "PPL": {
+      "logistic": {
+        "rows": 306,
+        "accuracy": 0.545751633986928,
+        "macro_f1": 0.41865114022319255,
+        "log_loss": 0.9582372469125057,
+        "brier_multiclass_sum": 0.5682951586773365,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            69,
+            0,
+            28
+          ],
+          [
+            35,
+            0,
+            48
+          ],
+          [
+            28,
+            0,
+            98
+          ]
+        ]
+      },
+      "training_class_prior": {
+        "rows": 306,
+        "accuracy": 0.4117647058823529,
+        "macro_f1": 0.19444444444444445,
+        "log_loss": 1.0848443895708804,
+        "brier_multiclass_sum": 0.6572924586501266,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            0,
+            0,
+            97
+          ],
+          [
+            0,
+            0,
+            83
+          ],
+          [
+            0,
+            0,
+            126
+          ]
+        ]
+      }
+    },
+    "SA": {
+      "logistic": {
+        "rows": 380,
+        "accuracy": 0.5052631578947369,
+        "macro_f1": 0.4026611802605407,
+        "log_loss": 1.0218397639695485,
+        "brier_multiclass_sum": 0.61213405422921,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            85,
+            1,
+            47
+          ],
+          [
+            42,
+            3,
+            54
+          ],
+          [
+            43,
+            1,
+            104
+          ]
+        ]
+      },
+      "training_class_prior": {
+        "rows": 380,
+        "accuracy": 0.3894736842105263,
+        "macro_f1": 0.18686868686868685,
+        "log_loss": 1.0893014018411615,
+        "brier_multiclass_sum": 0.661060368348119,
+        "confusion_matrix_true_rows_predicted_columns": [
+          [
+            0,
+            0,
+            133
+          ],
+          [
+            0,
+            0,
+            99
+          ],
+          [
+            0,
+            0,
+            148
+          ]
+        ]
+      }
+    }
+  },
+  "limitations": [
+    "Retrospective reconstructed results; original publication times unverified.",
+    "Model frozen at split; form updates with earlier completed test-period matches.",
+    "Three-hour completion assumption; not a fixed 24-hour-before-kickoff forecast.",
+    "Fixed C=1; no tuning on test data; no claim of betting profitability.",
+    "Sparse roster, coach, value, weather and odds history excluded from model."
+  ]
+}

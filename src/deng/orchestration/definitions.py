@@ -50,6 +50,7 @@ from deng.transformation import (
     run_transformations,
 )
 from deng.transformation.odds_matching import match_events
+from deng.transformation.runner import TRAINING_COUNTED_TABLES, TRAINING_TRANSFORMATION_ORDER
 
 # The 2026/27 league phase starts in mid-September; the first partition sits
 # before it so that the whole season is backfillable.
@@ -102,6 +103,24 @@ STAGING_VENUES = dg.AssetKey(["staging", "venues"])
 STAGING_BOOKMAKER_ODDS = dg.AssetKey(["staging", "bookmaker_odds"])
 STAGING_ODDS_EVENT_MATCH = dg.AssetKey(["staging", "odds_event_match"])
 FACT_BOOKMAKER_ODDS = dg.AssetKey(["curated", "fact_bookmaker_odds"])
+STAGING_CONTEXT = dg.AssetKey(["staging", "team_context_snapshot"])
+MATCH_CONTEXT = dg.AssetKey(["curated", "fact_match_team_context"])
+TEAM_FEATURES = dg.AssetKey(["curated", "team_match_features"])
+TRAINING_FEATURES = dg.AssetKey(["curated", "match_training_features"])
+
+WORLD_RANKING = dg.AssetKey(["staging", "team_world_ranking"])
+
+TRAINING_SPECS = (
+    dg.AssetSpec(WORLD_RANKING, deps=[RAW], group_name="staging"),
+    dg.AssetSpec(STAGING_CONTEXT, deps=[RAW, FACT_MATCH], group_name="staging"),
+    dg.AssetSpec(MATCH_CONTEXT, deps=[STAGING_CONTEXT, FACT_MATCH], group_name="curated"),
+    dg.AssetSpec(TEAM_FEATURES, deps=[FACT_MATCH], group_name="curated"),
+    dg.AssetSpec(
+        TRAINING_FEATURES,
+        deps=[TEAM_FEATURES, MATCH_CONTEXT, FACT_MATCH_WEATHER, WORLD_RANKING],
+        group_name="curated",
+    ),
+)
 
 WEATHER_SPECS: tuple[dg.AssetSpec, ...] = (
     dg.AssetSpec(STAGING_VENUES, deps=[RAW_OSM], group_name="staging"),
@@ -243,6 +262,8 @@ def curated_model(context: AssetExecutionContext):
 )
 def team_crests(context: AssetExecutionContext) -> dg.MaterializeResult:
     """Store the crests that are not stored yet (usually none after the first run)."""
+    if get_settings().ingest_source == "samples":
+        return dg.MaterializeResult(metadata={"fetched": 0, "failed": 0, "note": "offline samples"})
     with connect() as connection:
         result = fetch_crests(connection)
     for team_id, reason in result.failed.items():
@@ -434,6 +455,30 @@ def odds_model(context: AssetExecutionContext):
         )
 
 
+@dg.multi_asset(
+    specs=TRAINING_SPECS,
+    partitions_def=daily_partitions,
+    retry_policy=TRANSIENT_RETRY,
+    can_subset=False,
+    description="Point-in-time team context and one wide model-training row per match.",
+)
+def training_dataset(context: AssetExecutionContext):
+    """Rebuild the training product after daily football and weather have settled."""
+    with connect() as connection:
+        with PipelineRun(connection, "transform_training", _logical_date(context)) as run:
+            result = run_transformations(
+                connection,
+                _logical_date(context),
+                order=TRAINING_TRANSFORMATION_ORDER,
+                counted=TRAINING_COUNTED_TABLES,
+            )
+            run.add_counts(loaded=result.total_rows_written)
+    for spec in TRAINING_SPECS:
+        yield dg.MaterializeResult(
+            asset_key=spec.key, metadata={"row_count": result.row_counts[".".join(spec.key.path)]}
+        )
+
+
 @dg.asset(
     key=DQ_RESULTS,
     deps=[
@@ -443,6 +488,7 @@ def odds_model(context: AssetExecutionContext):
         DIM_TEAM,
         TEAM_CRESTS,
         FACT_MATCH_WEATHER,
+        TRAINING_FEATURES,
     ],
     partitions_def=daily_partitions,
     retry_policy=TRANSIENT_RETRY,
@@ -487,6 +533,7 @@ daily_pipeline = dg.define_asset_job(
         raw_osm_venues,
         raw_open_meteo,
         weather_model,
+        training_dataset,
         data_quality,
     ),
     partitions_def=daily_partitions,
@@ -504,7 +551,9 @@ daily_schedule = dg.build_schedule_from_partitioned_job(
 
 
 def refresh_cron(minutes: int) -> str:
-    """A cron expression that fires every `minutes` (whole hours above 59)."""
+    """Schedule refreshes, capped at daily for the mandatory daily baseline."""
+    if minutes >= 1440:
+        return "0 0 * * *"
     if minutes < 60:
         return f"*/{minutes} * * * *"
     return f"0 */{max(1, round(minutes / 60))} * * *"
@@ -540,6 +589,7 @@ defs = dg.Definitions(
         weather_model,
         raw_odds_api,
         odds_model,
+        training_dataset,
         data_quality,
     ],
     jobs=[daily_pipeline, odds_refresh],

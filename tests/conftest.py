@@ -53,32 +53,63 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
-@pytest.fixture
-def connection():
-    """An open connection to a test-isolated schema state."""
+@pytest.fixture(scope="session")
+def isolated_database():
+    """Create a disposable database; never truncate the configured warehouse."""
     import psycopg
+    from psycopg import sql
+
+    from deng.config import get_settings
+
+    settings = get_settings()
+    database = "deng_test_" + uuid.uuid4().hex
+    try:
+        admin = psycopg.connect(settings.postgres_dsn, autocommit=True)
+        admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
+    except psycopg.Error as exc:
+        pytest.fail(
+            "Integration tests require CREATEDB permission to create an isolated database. "
+            "The configured warehouse has not been modified. "
+            f"Database error type: {type(exc).__name__}"
+        )
+    try:
+        yield database
+    finally:
+        # Only the exact random name created by this fixture may be removed.
+        admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(database)))
+        admin.close()
+
+
+@pytest.fixture
+def connection(isolated_database, monkeypatch):
+    """An open connection to empty tables in the disposable test database."""
+    import psycopg
+    from psycopg import sql
 
     from deng.config import get_settings
     from deng.database import apply_sql_files
 
+    monkeypatch.setenv("POSTGRES_DB", isolated_database)
+    monkeypatch.setenv("FOOTBALL_DATA_COMPETITIONS", "CL")
+    monkeypatch.setenv("TEAM_CONTEXT_CSV_PATH", "")
+    monkeypatch.setenv("FOOTBALL_DATA_TEAM_DETAILS", "false")
     conn = psycopg.connect(get_settings().postgres_dsn)
     apply_sql_files(conn)
-    # Each test starts from empty pipeline tables; the DDL itself stays. Staging
-    # and curated too: a `make run-samples` before `make test` stamps them with
-    # today's date, which a test about "newer data wins" must not inherit.
-    with conn.cursor() as cursor:
-        cursor.execute(
-            "TRUNCATE raw.football_data, meta.dq_results, meta.pipeline_runs, "
-            "staging.matches, staging.teams, staging.standings, "
-            "curated.dim_team, curated.fact_match, curated.fact_team_match_form, "
-            "raw.open_meteo, staging.weather_forecast, curated.dim_venue, "
-            "curated.fact_match_weather, raw.odds_api, staging.bookmaker_odds, "
-            "staging.odds_event_match, curated.fact_match_prediction, "
-            "curated.fact_bookmaker_odds CASCADE"
+    tables = conn.execute(
+        "SELECT schemaname, tablename FROM pg_tables "
+        "WHERE schemaname IN ('raw', 'staging', 'curated', 'meta')"
+    ).fetchall()
+    if tables:
+        conn.execute(
+            sql.SQL("TRUNCATE {} CASCADE").format(
+                sql.SQL(", ").join(sql.Identifier(schema, table) for schema, table in tables)
+            )
         )
     conn.commit()
-    yield conn
-    conn.close()
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 @pytest.fixture

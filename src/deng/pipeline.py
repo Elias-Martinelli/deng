@@ -25,7 +25,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 from deng.clock import pipeline_today
 from deng.config import get_settings
@@ -41,6 +42,7 @@ from deng.transformation import (
     run_transformations,
 )
 from deng.transformation.odds_matching import match_events
+from deng.transformation.runner import TRAINING_COUNTED_TABLES, TRAINING_TRANSFORMATION_ORDER
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_dq()
     if args.command == "run":
         return command_run(args.date or pipeline_today(), from_samples=args.from_samples)
+    if args.command == "export":
+        return command_export(args.output, args.labelled_only, not args.uncompressed)
     if args.command == "verify":
         return command_verify()
     parser.print_help()
@@ -116,6 +120,13 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="ingest, transform and check in one go")
     run.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
     run.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
+
+    export = sub.add_parser("export", help="export match CSV, feature contract and coverage report")
+    export.add_argument("--output", type=Path, help="new output directory")
+    export.add_argument(
+        "--labelled-only", action="store_true", help="only finished 90-minute labels"
+    )
+    export.add_argument("--uncompressed", action="store_true", help="plain CSV instead of CSV.gz")
 
     sub.add_parser("verify", help="run the verification queries and print the results")
     return parser
@@ -202,11 +213,20 @@ def command_transform(logical_date: date) -> int:
             )
             run.add_counts(loaded=staged.total_rows_written + odds.total_rows_written)
 
-    for result in (football, weather, odds):
+        with PipelineRun(connection, "transform_training", logical_date) as run:
+            training = run_transformations(
+                connection,
+                logical_date,
+                order=TRAINING_TRANSFORMATION_ORDER,
+                counted=TRAINING_COUNTED_TABLES,
+            )
+            run.add_counts(loaded=training.total_rows_written)
+
+    for result in (football, weather, odds, training):
         for name, affected in result.statements:
             print(f"  {name:<44} {affected:>6} rows")
     print()
-    for result in (football, weather, odds):
+    for result in (football, weather, odds, training):
         for table, count in result.row_counts.items():
             print(f"  {table:<32} {count:>6} rows")
     print(f"  bookmaker events matched: {matched}, unmatched: {len(unmatched)}")
@@ -287,6 +307,26 @@ def command_backfill(date_from: date, date_to: date, from_samples: bool = False)
     total = (date_to - date_from).days + 1
     print(f"\nbackfill finished: {total - failures}/{total} dates succeeded")
     return 1 if failures else 0
+
+
+def command_export(output: Path | None, labelled_only: bool = False, compress: bool = True) -> int:
+    """Publish a portable data-science dataset without loading it into memory."""
+    from deng.export import export_dataset
+
+    output = output or Path("data/processed") / datetime.now(timezone.utc).strftime(
+        "matches-%Y%m%dT%H%M%S%fZ"
+    )
+    try:
+        with connect() as connection:
+            report = export_dataset(
+                connection, output, labelled_only=labelled_only, compress=compress
+            )
+    except (ValueError, FileExistsError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    print(f"export: {report['rows']} matches, {report['columns']} columns -> {output}")
+    print("files: matches.csv(.gz), manifest.json, data_dictionary.json, coverage.json")
+    return 0
 
 
 def command_verify() -> int:

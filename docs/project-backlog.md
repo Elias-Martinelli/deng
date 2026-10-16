@@ -1,5 +1,20 @@
 # Project Backlog and Plan
 
+## Training enrichment update — 15 October 2026
+
+Live odds now cover eight competitions; weather refreshed; chronological logistic baseline trained and evaluated. Historical valuation/player coverage remains explicitly limited. See [current gaps](training-data-gaps.md) and [measured evidence](evidence/training-enrichment-2026-10-15.md). Earlier checklist entries below are historical planning status.
+
+## Delivered update — 3 October 2026
+
+Eight-league ingestion, cached historical seasons, wide time-aware match
+features, observed squad/coach history, dated valuation import, portable export,
+isolated test database and architecture v0.2 are implemented.
+See [current evidence](evidence/multi-league-dataset.md) and
+[midterm runbook](midterm-runbook.md) for verification and outstanding human tasks.
+Older backlog statements below describe the prior CL-only milestone.
+
+---
+
 Priority: **MUST** (rubric requirement), **SHOULD** (clearly raises quality or
 defensibility), **COULD** (only after all MUSTs of the milestone are done).
 Milestone: **M1** (initial pitch, week 3), **MIDTERM** (repo deadline

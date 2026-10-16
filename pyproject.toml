@@ -27,6 +27,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ml = [
+  "scikit-learn>=1.5,<2",
+  "pandas>=2.2,<3",
+]
+
 dev = [
   "pytest>=8.3",
   "ruff>=0.6",

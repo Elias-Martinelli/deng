@@ -36,7 +36,7 @@ from psycopg.types.json import Jsonb
 from deng.database.raw_loader import hash_payload
 from deng.files import project_file
 from deng.ingestion import raw_reads
-from deng.sources.http import ApiError, RetryableApiError
+from deng.sources.http import ApiError, RetryableApiError, retry_transient
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +206,7 @@ def store(
             ON CONFLICT (source, team_id, ingestion_date) DO UPDATE SET
                 request_params = EXCLUDED.request_params,
                 request_url = EXCLUDED.request_url,
-                ingested_at = now(),
+                ingested_at = clock_timestamp(),
                 run_id = EXCLUDED.run_id,
                 payload = EXCLUDED.payload,
                 payload_hash = EXCLUDED.payload_hash,
@@ -244,6 +244,9 @@ def ingest(
     for index, request in enumerate(plan(connection)):
         status, note, payload, url = _resolve(request, session, from_samples, index, pause_seconds)
         store(connection, request, url, payload, ingestion_date, run_id, status, note)
+        # Each stadium is independent and fetched once. Keep successful answers
+        # if a later request fails, so the next run resumes at missing clubs.
+        connection.commit()
         stored += 1
         logger.info("venue %s (%s): %s", request.team_id, request.team_name, status)
     connection.commit()
@@ -276,7 +279,7 @@ def _resolve(
     else:
         if index:
             time.sleep(pause_seconds)
-        url, payload = fetch(session, request)
+        url, payload = retry_transient(lambda: fetch(session, request))
 
     if payload is None:
         return "NOT_AVAILABLE", f"no OpenStreetMap result for {request.query!r}", None, url

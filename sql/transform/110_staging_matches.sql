@@ -21,13 +21,15 @@ WITH unpacked AS (
       FROM raw.football_data r
       CROSS JOIN LATERAL jsonb_array_elements(r.payload -> 'matches') AS m
      WHERE r.endpoint LIKE '%%/matches'
-       AND r.ingestion_date = %(logical_date)s
-     ORDER BY (m ->> 'id')::bigint, r.ingested_at DESC
+       AND (r.ingestion_date = %(logical_date)s OR
+            (r.ingestion_date <= %(logical_date)s AND r.request_params ? 'season'))
+     ORDER BY (m ->> 'id')::bigint, (m ->> 'lastUpdated')::timestamptz DESC,
+              r.ingestion_date DESC, r.ingested_at DESC
 )
 INSERT INTO staging.matches AS t (
     match_id, season_id, competition_code, utc_kickoff, status, stage, matchday,
     home_team_id, away_team_id, home_goals, away_goals, home_goals_ht, away_goals_ht,
-    winner, duration, last_updated, ingestion_date
+    winner, duration, last_updated, ingestion_date, home_goals_90min, away_goals_90min
 )
 SELECT
     (m ->> 'id')::bigint,
@@ -47,7 +49,18 @@ SELECT
     m -> 'score' ->> 'winner',
     m -> 'score' ->> 'duration',
     (m ->> 'lastUpdated')::timestamptz,
-    %(logical_date)s
+    %(logical_date)s,
+    -- fullTime can include extra time or penalties; the prediction label is 90 minutes.
+    COALESCE(
+        (m -> 'score' -> 'regularTime' ->> 'home')::int,
+        CASE WHEN m -> 'score' ->> 'duration' = 'REGULAR'
+             THEN (m -> 'score' -> 'fullTime' ->> 'home')::int END
+    ),
+    COALESCE(
+        (m -> 'score' -> 'regularTime' ->> 'away')::int,
+        CASE WHEN m -> 'score' ->> 'duration' = 'REGULAR'
+             THEN (m -> 'score' -> 'fullTime' ->> 'away')::int END
+    )
 FROM unpacked
 -- Defensive: a match without both teams cannot be modelled, and the source has
 -- never produced one. Skipping instead of failing keeps one malformed row from
@@ -56,12 +69,17 @@ WHERE m -> 'homeTeam' ->> 'id' IS NOT NULL
   AND m -> 'awayTeam' ->> 'id' IS NOT NULL
 ON CONFLICT (match_id) DO UPDATE SET
     season_id = EXCLUDED.season_id,
+    competition_code = EXCLUDED.competition_code,
+    home_team_id = EXCLUDED.home_team_id,
+    away_team_id = EXCLUDED.away_team_id,
     utc_kickoff = EXCLUDED.utc_kickoff,
     status = EXCLUDED.status,
     stage = EXCLUDED.stage,
     matchday = EXCLUDED.matchday,
     home_goals = EXCLUDED.home_goals,
     away_goals = EXCLUDED.away_goals,
+    home_goals_90min = EXCLUDED.home_goals_90min,
+    away_goals_90min = EXCLUDED.away_goals_90min,
     home_goals_ht = EXCLUDED.home_goals_ht,
     away_goals_ht = EXCLUDED.away_goals_ht,
     winner = EXCLUDED.winner,

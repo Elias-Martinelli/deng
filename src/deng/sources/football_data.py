@@ -65,8 +65,8 @@ class Endpoint:
 # reload of a small, bounded payload is simpler, self-healing after any missed
 # day, and costs one request.
 #
-# FULL is not a blanket rule, though: a *finished* season cannot change, so it is
-# fetched ONCE instead - see season_endpoints() below.
+# Finished seasons are cached after their reported end date. Corrections can
+# be explicitly refreshed with FOOTBALL_DATA_REFRESH_HISTORY=true.
 DAILY_ENDPOINTS: tuple[Endpoint, ...] = (
     Endpoint(
         name="competition",
@@ -101,8 +101,8 @@ DAILY_ENDPOINTS: tuple[Endpoint, ...] = (
 def season_endpoints(seasons: list[str]) -> tuple[Endpoint, ...]:
     """The extra endpoints for past seasons: their matches and their clubs.
 
-    A past season is one question per endpoint and never changes again, so it is
-    fetched once and not every day. `?season=2023` is part of the raw zone's key,
+    A completed season is fetched once; explicit refresh supports corrections.
+    `?season=2023` is part of the raw zone's key,
     so a season answer is its own row next to today's.
 
     Only matches and teams: the matches are the training data, the clubs are
@@ -117,7 +117,7 @@ def season_endpoints(seasons: list[str]) -> tuple[Endpoint, ...]:
                 path="competitions/{code}/matches",
                 params={"season": season},
                 load_strategy="ONCE",
-                rationale="A finished season never changes; fetched once as training data.",
+                rationale="Completed season cached; refresh explicitly for corrections.",
             )
         )
         extra.append(
@@ -138,6 +138,7 @@ def fetch_endpoints(
     endpoints: tuple[Endpoint, ...] = DAILY_ENDPOINTS,
     pace_seconds: float = MIN_SECONDS_BETWEEN_REQUESTS,
     max_attempts: int = 3,
+    pace_first: bool = False,
 ) -> Iterator[tuple[Endpoint, ApiResponse]]:
     """Fetch each endpoint in turn, pacing requests and retrying transient errors.
 
@@ -147,6 +148,7 @@ def fetch_endpoints(
         endpoints: Endpoints to fetch.
         pace_seconds: Minimum delay between two requests.
         max_attempts: Attempts per endpoint before the error is raised.
+        pace_first: Also pause before this batch when continuing a previous one.
 
     Yields:
         `(endpoint, response)` pairs in order.
@@ -159,7 +161,7 @@ def fetch_endpoints(
     # arrives, and an error on the third endpoint surfaces before a fourth
     # request is spent. The caller's transaction still decides what is kept.
     for index, endpoint in enumerate(endpoints):
-        if index:  # no pause before the first request
+        if index or pace_first:
             time.sleep(pace_seconds)
         path = endpoint.path.format(code=competition_code)
         response = _get_with_retry(client, path, endpoint.params, max_attempts, pace_seconds)
@@ -254,6 +256,11 @@ def read_sample_endpoints(
         FileNotFoundError: if a sample file is missing, so the run fails visibly
             instead of quietly ingesting less than expected.
     """
+    if competition_code != "CL":
+        raise ValueError(
+            "Committed football-data samples contain CL only; use "
+            "FOOTBALL_DATA_COMPETITIONS=CL or live API ingestion for other leagues."
+        )
     directory = sample_dir()
     for endpoint in endpoints:
         filename = SAMPLE_FILES.get(endpoint.name)
@@ -266,6 +273,9 @@ def read_sample_endpoints(
                 "or use the API instead of --from-samples"
             )
         payload = json.loads(path.read_text())
+        actual_code = payload.get("competition", payload).get("code")
+        if actual_code and actual_code != competition_code:
+            raise ValueError(f"sample {path.name} belongs to {actual_code}, not {competition_code}")
         url = f"file://{path}"
         logger.info("reading sample payload for %s from %s", endpoint.name, path.name)
         yield endpoint, ApiResponse(url=url, status_code=200, payload=payload)
@@ -416,12 +426,13 @@ class IngestResult:
 
     stored: int = 0
     records: int = 0
+    cached: int = 0
     lines: list[str] = field(default_factory=list)
 
     @property
     def summary(self) -> str:
         """One line for the CLI and the logs."""
-        return f"{self.stored} payload(s), {self.records} records"
+        return f"{self.stored} payload(s), {self.records} records, {self.cached} cached endpoint(s)"
 
 
 def ingest(
@@ -455,25 +466,35 @@ def ingest(
     # their own rows and can never overwrite a real API answer for the same day
     # (and vice versa). Staging takes the newest payload of the day.
     source_name = SAMPLE_SOURCE if from_samples else SOURCE
-    if from_samples:
-        responses = read_sample_endpoints(settings.football_data_competition)
-    else:
-        client = FootballDataClient(
-            api_key=settings.require_football_api_key(),
-            base_url=settings.football_data_base_url,
+    competitions = settings.football_data_competition_list
+    if from_samples and competitions != ["CL"]:
+        raise ValueError(
+            "Committed football-data samples contain CL only; set "
+            "FOOTBALL_DATA_COMPETITIONS=CL for an offline replay."
         )
-        # The current season always without a season parameter - it is the row
-        # every daily transformation expects - plus one request per past season.
-        endpoints = DAILY_ENDPOINTS + season_endpoints(settings.football_data_season_list)
-        responses = fetch_endpoints(client, settings.football_data_competition, endpoints)
-
     result = IngestResult()
     loader = RawLoader(connection, source=source_name)
     try:
+        if from_samples:
+            responses = (
+                (Endpoint(e.name, e.path.format(code="CL"), e.params), response)
+                for e, response in read_sample_endpoints("CL")
+            )
+        else:
+            client = FootballDataClient(
+                api_key=settings.require_football_api_key(),
+                base_url=settings.football_data_base_url,
+            )
+            cached = (
+                set()
+                if settings.football_data_refresh_history
+                else _cached_season_endpoints(connection, logical_date)
+            )
+            responses = _configured_responses(client, settings, cached, result)
         for endpoint, response in responses:
             stored = loader.load(
                 run_id=run_id,
-                endpoint=endpoint.path.format(code=settings.football_data_competition),
+                endpoint=endpoint.path,
                 request_params=endpoint.params,
                 request_url=response.url,
                 payload=response.payload,
@@ -482,17 +503,93 @@ def ingest(
             result.stored += 1
             result.records += stored.record_count or 0
             result.lines.append(
-                f"{endpoint.name:<12} {stored.action:<9} "
+                f"{endpoint.name:<20} {stored.action:<9} "
                 f"records={stored.record_count} hash={stored.payload_hash[:12]}"
             )
-        # One commit for all endpoints of the day: either the whole day's
-        # snapshot is stored or none of it. A half-stored day (teams but no
-        # matches) would let the transformation build an inconsistent state.
         connection.commit()
-    except ApiError:
-        # Covers RetryableApiError too (subclass). Roll back this day's partial
-        # writes, then re-raise so the run is recorded as FAILED.
+    except Exception:
+        # Includes malformed samples and database errors: no partial snapshots.
         connection.rollback()
         raise
     logger.info("football-data.org: %s", result.summary)
     return result
+
+
+def _cached_season_endpoints(
+    connection: psycopg.Connection, logical_date: date
+) -> set[tuple[str, str]]:
+    """Find completed seasons already stored, never sample or future snapshots.
+
+    A requested current season is refreshed until the source's endDate has
+    passed. Merely specifying ?season=2026 does not make it immutable.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT DISTINCT endpoint, request_params ->> 'season'
+              FROM raw.football_data
+             WHERE source = %s
+               AND ingestion_date <= %s
+               AND request_params ? 'season'
+               AND COALESCE(payload -> 'season' ->> 'endDate',
+                            payload -> 'matches' -> 0 -> 'season' ->> 'endDate') < %s
+               AND EXISTS (
+                   SELECT 1 FROM raw.football_data competition
+                    WHERE competition.source = raw.football_data.source
+                      AND competition.endpoint = regexp_replace(
+                          raw.football_data.endpoint, '/(matches|teams)$', '')
+                      AND competition.ingestion_date <= %s
+                      AND left(competition.payload -> 'currentSeason' ->> 'startDate', 4)
+                          > raw.football_data.request_params ->> 'season'
+               )
+            """,
+            (SOURCE, logical_date, logical_date.isoformat(), logical_date),
+        )
+        return {(row[0], row[1]) for row in cursor.fetchall()}
+
+
+def _configured_responses(
+    client: FootballDataClient,
+    settings: Settings,
+    cached: set[tuple[str, str]],
+    result: IngestResult,
+) -> Iterator[tuple[Endpoint, ApiResponse]]:
+    """Fetch all configured leagues with one shared request budget."""
+    planned: list[Endpoint] = []
+    for code in settings.football_data_competition_list:
+        for endpoint in DAILY_ENDPOINTS + season_endpoints(settings.football_data_season_list):
+            path = endpoint.path.format(code=code)
+            if endpoint.load_strategy == "ONCE" and (path, endpoint.params["season"]) in cached:
+                result.cached += 1
+                result.lines.append(f"{code} {endpoint.name:<16} CACHED")
+                continue
+            planned.append(
+                Endpoint(
+                    name=f"{code} {endpoint.name}",
+                    path=path,
+                    params=endpoint.params,
+                    load_strategy=endpoint.load_strategy,
+                    rationale=endpoint.rationale,
+                )
+            )
+
+    current_team_ids: set[int] = set()
+    for endpoint, response in fetch_endpoints(client, "", tuple(planned)):
+        # Only discover actual current teams, never crawl guessed team IDs or
+        # assign today's squads to a historical season.
+        if endpoint.path.endswith("/teams") and not endpoint.params:
+            current_team_ids.update(
+                int(team["id"]) for team in response.payload.get("teams", []) if team.get("id")
+            )
+        yield endpoint, response
+
+    if settings.football_data_team_details:
+        details = tuple(
+            Endpoint(
+                name=f"team {team_id}",
+                path=f"teams/{team_id}",
+                rationale="Current coach and squad; historical membership is not inferred.",
+            )
+            for team_id in sorted(current_team_ids)
+        )
+        yield from fetch_endpoints(client, "", details, pace_first=bool(planned))

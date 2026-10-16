@@ -251,3 +251,26 @@ def test_a_changed_source_on_the_same_day_is_an_update(connection, run_id, sampl
     assert result.action == "UPDATED"
     assert row_count(connection) == 1
     assert loader.existing_hash(ENDPOINT, {}, INGESTION_DATE) == hash_payload(changed)
+
+
+def test_receipt_clock_advances_inside_one_transaction(connection, run_id, sample_payload):
+    """A slow source batch must not backdate all responses to transaction start."""
+    import time
+
+    loader = RawLoader(connection)
+    connection.execute("SELECT now()")
+    started = connection.execute("SELECT transaction_timestamp()").fetchone()[0]
+    time.sleep(0.02)
+    loader.load(
+        run_id=run_id,
+        endpoint="competitions/CL/matches",
+        request_params={},
+        request_url="https://example.test/receipt-clock",
+        payload=sample_payload,
+        ingestion_date=date(2026, 10, 3),
+    )
+    received = connection.execute(
+        "SELECT ingested_at FROM raw.football_data WHERE request_url=%s",
+        ("https://example.test/receipt-clock",),
+    ).fetchone()[0]
+    assert received > started

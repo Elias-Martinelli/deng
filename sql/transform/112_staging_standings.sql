@@ -11,22 +11,27 @@
 -- day's row and cannot touch another day's.
 
 WITH payload AS (
-    SELECT payload
+    SELECT DISTINCT ON (endpoint, request_params) payload, ingested_at
       FROM raw.football_data
      WHERE endpoint LIKE '%%/standings'
        AND ingestion_date = %(logical_date)s
-     ORDER BY ingested_at DESC
-     LIMIT 1
+     ORDER BY endpoint, request_params, ingested_at DESC
 ),
 -- Two levels of nesting: standings[] (one per group or phase) -> table[] (rows).
 tables AS (
     SELECT (payload -> 'season' ->> 'id')::bigint AS season_id,
-           jsonb_array_elements(payload -> 'standings') AS grp
+           ingested_at, jsonb_array_elements(payload -> 'standings') AS grp
       FROM payload
 ),
 rows_ AS (
-    SELECT season_id, jsonb_array_elements(grp -> 'table') AS r
+    SELECT season_id, ingested_at, jsonb_array_elements(grp -> 'table') AS r
       FROM tables
+     WHERE grp ->> 'type' = 'TOTAL'
+),
+latest AS (
+    SELECT DISTINCT ON (season_id, (r -> 'team' ->> 'id')::bigint) season_id, r
+      FROM rows_
+     ORDER BY season_id, (r -> 'team' ->> 'id')::bigint, ingested_at DESC
 )
 INSERT INTO staging.standings AS s (
     season_id, team_id, position, played_games, won, draw, lost,
@@ -45,7 +50,7 @@ SELECT
     (r ->> 'goalsAgainst')::int,
     (r ->> 'goalDifference')::int,
     %(logical_date)s
-FROM rows_
+FROM latest
 WHERE r -> 'team' ->> 'id' IS NOT NULL
 ON CONFLICT (season_id, team_id, ingestion_date) DO UPDATE SET
     position = EXCLUDED.position,

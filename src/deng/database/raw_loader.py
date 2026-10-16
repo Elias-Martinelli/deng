@@ -126,7 +126,7 @@ class RawLoader:
                     record_count = EXCLUDED.record_count,
                     request_url  = EXCLUDED.request_url,
                     run_id       = EXCLUDED.run_id,
-                    ingested_at  = now()
+                    ingested_at  = clock_timestamp()
                 RETURNING (xmax = 0) AS was_inserted,
                           (SELECT payload_hash FROM previous) AS previous_hash
                 """,

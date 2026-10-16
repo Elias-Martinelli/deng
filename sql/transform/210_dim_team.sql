@@ -1,8 +1,8 @@
 -- dim_team from staging.teams.
 --
 -- has_domestic_coverage records whether the club's domestic league is among
--- the free tier's 12 competitions. Descriptive only: form is built from
--- Champions League matches for every club (ADR-004).
+-- the provider's listed domestic competitions. Descriptive only; actual
+-- history coverage is recorded separately in the training feature table.
 
 INSERT INTO curated.dim_team AS d (
     team_id, name, short_name, tla, country, venue, crest_url,

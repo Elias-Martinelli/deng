@@ -67,6 +67,20 @@ ODDS_COUNTED_TABLES: tuple[str, ...] = (
     "curated.fact_bookmaker_odds",
 )
 
+# Rich match product, after football, weather and odds have been built.
+TRAINING_TRANSFORMATION_ORDER: tuple[str, ...] = (
+    "transform/450_team_context.sql",
+    "transform/460_team_world_ranking.sql",
+    "transform/500_match_training_features.sql",
+)
+TRAINING_COUNTED_TABLES: tuple[str, ...] = (
+    "staging.team_context_snapshot",
+    "staging.team_world_ranking",
+    "curated.fact_match_team_context",
+    "curated.team_match_features",
+    "curated.match_training_features",
+)
+
 # Tables whose row counts are reported after a run.
 COUNTED_TABLES: tuple[str, ...] = (
     "staging.matches",
@@ -121,7 +135,9 @@ def run_transformations(
     result = TransformResult(logical_date=logical_date)
 
     try:
-        with connection.cursor() as cursor:
+        # ClientCursor safely adapts parameters before sending multi-statement
+        # SQL files. Server-bound parameters reject a DELETE + INSERT file.
+        with psycopg.ClientCursor(connection) as cursor:
             for relative in order:
                 path = sql_dir / relative
                 statement = path.read_text()
@@ -131,7 +147,9 @@ def run_transformations(
                 # signs in the SQL files are written as %% (e.g. LIKE '%%/teams').
                 cursor.execute(statement, {"logical_date": logical_date})
                 # rows inserted or updated by this statement (upserts count both)
-                affected = cursor.rowcount if cursor.rowcount is not None else 0
+                affected = max(cursor.rowcount or 0, 0)
+                while cursor.nextset():
+                    affected += max(cursor.rowcount or 0, 0)
                 result.statements.append((relative, affected))
                 logger.info("%s -> %s rows", relative, affected)
 

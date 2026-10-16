@@ -18,6 +18,7 @@ from deng.transformation import (
     WEATHER_TRANSFORMATION_ORDER,
     run_transformations,
 )
+from deng.transformation.runner import TRAINING_COUNTED_TABLES, TRAINING_TRANSFORMATION_ORDER
 
 pytestmark = pytest.mark.postgres
 
@@ -48,6 +49,12 @@ def transformed(connection, run_id, all_samples):
     openstreetmap.ingest(connection, LOGICAL_DATE, run_id, from_samples=True)
     run_transformations(
         connection, LOGICAL_DATE, order=WEATHER_TRANSFORMATION_ORDER, counted=WEATHER_COUNTED_TABLES
+    )
+    run_transformations(
+        connection,
+        LOGICAL_DATE,
+        order=TRAINING_TRANSFORMATION_ORDER,
+        counted=TRAINING_COUNTED_TABLES,
     )
     return result
 

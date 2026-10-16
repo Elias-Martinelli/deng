@@ -42,10 +42,14 @@ SELECT DISTINCT ON (team_id)
        t -> 'area' ->> 'name'   AS country,
        r.ingestion_date         AS ingestion_date
   FROM raw.football_data r
-  CROSS JOIN LATERAL jsonb_array_elements(r.payload -> 'teams') AS t
- WHERE r.endpoint LIKE '%/teams'
+  CROSS JOIN LATERAL jsonb_array_elements(
+      CASE WHEN r.endpoint LIKE 'teams/%' THEN jsonb_build_array(r.payload)
+           ELSE r.payload -> 'teams' END
+  ) AS t
+ WHERE (r.endpoint LIKE '%/teams' OR r.endpoint LIKE 'teams/%')
    AND t ->> 'id' IS NOT NULL
- ORDER BY team_id, r.ingestion_date DESC, r.ingested_at DESC;
+ ORDER BY team_id, r.ingestion_date DESC,
+          (NOT (r.request_params ? 'season')) DESC, r.ingested_at DESC;
 
 COMMENT ON VIEW raw.team_catalog IS
     'One row per club, from the newest stored teams payload. Read by the ingestion to know which crests and which stadiums to fetch.';
