@@ -18,3 +18,5 @@ Disadvantages → Consequences. Status is one of **PROPOSED**, **ACCEPTED**,
 Planned (not yet written because the decision is not yet due): transformation
 approach (SQL files vs. dbt), analytical data model and grain, BigQuery
 partitioning/clustering, cloud compute placement.
+
+- [ADR-006 — multi-league training product](ADR-006-multi-league-training-product.md): accepted; supersedes ADR-004.

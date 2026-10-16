@@ -19,6 +19,8 @@ WITH usable AS (
         ON f.venue_team_id = m.home_team_id
        AND f.forecast_hour_utc = date_trunc('hour', m.utc_kickoff, 'UTC')
        AND f.fetched_at < m.utc_kickoff
+       -- Providers can include future hours whose arrays contain only nulls.
+       AND f.temperature_c IS NOT NULL
        AND f.ingestion_date <= %(logical_date)s
      ORDER BY m.match_id, f.ingestion_date DESC, f.fetched_at DESC
 )

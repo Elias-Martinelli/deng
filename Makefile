@@ -135,7 +135,7 @@ ingest:  ## Ask all five sources and store the answers (needs FOOTBALL_DATA_API_
 	$(PY) -m deng.pipeline ingest
 
 ingest-samples:  ## Ingest from the committed sample payloads (no API key needed)
-	$(PY) -m deng.pipeline ingest --from-samples
+	FOOTBALL_DATA_COMPETITIONS=CL $(PY) -m deng.pipeline ingest --from-samples
 
 transform:  ## raw -> staging -> curated for today
 	$(PY) -m deng.pipeline transform
@@ -150,7 +150,7 @@ run:  ## Full daily sequence: ingest all five sources -> transform -> data-quali
 	$(PY) -m deng.pipeline run
 
 run-samples:  ## Same sequence from the committed payloads (no API key needed)
-	$(PY) -m deng.pipeline run --from-samples
+	FOOTBALL_DATA_COMPETITIONS=CL $(PY) -m deng.pipeline run --from-samples
 
 # The CLI backfill re-ingests raw payloads only; `make dagster-backfill` runs
 # the whole chain (ingest -> transform -> crests -> weather -> checks) per day.
@@ -162,7 +162,7 @@ verify:  ## Run the verification queries; non-zero exit when a check fails
 
 docker-ingest: docker-ready  ## Run init + ingestion inside the container image (proves the image works)
 	docker compose run --rm pipeline init
-	docker compose run --rm pipeline ingest --from-samples
+	docker compose run --rm -e FOOTBALL_DATA_COMPETITIONS=CL pipeline ingest --from-samples
 
 docker-app: docker-ready  ## Start the Streamlit viewer in a container on http://localhost:8501
 	docker compose --profile app up -d --build app
@@ -204,3 +204,14 @@ notebook:  ## Start JupyterLab with the project environment
 clean:  ## Remove the virtualenv and caches (keeps .env and data/)
 	rm -rf $(VENV) .pytest_cache .ruff_cache
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
+
+# --- Portable model-training dataset ----------------------------------------
+.PHONY: export dataset
+export:  ## Export one row per match + dictionary, coverage and manifest to data/processed/
+	$(PY) -m deng.pipeline export
+
+dataset: init  ## Load 8 leagues and 2023-2025 history, transform, check, then export
+	FOOTBALL_DATA_COMPETITIONS=CL,PL,BL1,PD,SA,FL1,DED,PPL FOOTBALL_DATA_SEASONS=2023,2024,2025 $(PY) -m deng.pipeline ingest --only football
+	$(PY) -m deng.pipeline transform
+	$(PY) -m deng.pipeline dq
+	$(PY) -m deng.pipeline export

@@ -23,6 +23,7 @@ from deng.transformation import (
     run_transformations,
 )
 from deng.transformation.odds_matching import match_events
+from deng.transformation.runner import TRAINING_COUNTED_TABLES, TRAINING_TRANSFORMATION_ORDER
 
 pytestmark = pytest.mark.postgres
 
@@ -71,6 +72,12 @@ def odds_run(connection, run_id, **kwargs):
     result.events_matched, result.events_unmatched = match_events(connection)
     run_transformations(
         connection, FOOTBALL_DATE, order=ODDS_CURATED_ORDER, counted=ODDS_COUNTED_TABLES
+    )
+    run_transformations(
+        connection,
+        FOOTBALL_DATE,
+        order=TRAINING_TRANSFORMATION_ORDER,
+        counted=TRAINING_COUNTED_TABLES,
     )
     return result
 
@@ -178,7 +185,10 @@ def test_comparison_keeps_model_and_odds_timestamps_apart(connection, replayed):
     assert predicted_at > fetched_at, "the forecast was computed now, the odds are the sample's"
     assert float(model_odds) == round(1 / float(prob), 2)
     assert float(deviation) == round((float(prob) - float(fair)) * 100, 1)
-    assert pre_match is True
+    kickoff = rows(
+        connection, "SELECT utc_kickoff FROM curated.fact_match WHERE match_id = 575341"
+    )[0][0]
+    assert pre_match is (predicted_at < kickoff)
 
 
 def test_replaying_the_samples_again_changes_nothing(connection, run_id, replayed):
@@ -261,3 +271,119 @@ def test_without_a_key_the_step_skips_and_says_so(connection, run_id, football):
     result = ingest_odds(connection, run_id, settings(odds_api_key=""), session=session)
     assert result.plan.fetch is False and "ODDS_API_KEY" in result.summary
     assert session.calls == 0
+
+
+def test_fictional_sample_odds_never_enter_the_training_product(connection, replayed):
+    assert scalar(connection, "SELECT count(*) FROM curated.fact_bookmaker_odds") > 0
+    assert scalar(connection, "SELECT count(*) FROM curated.training_bookmaker_quotes") == 0
+    assert (
+        scalar(
+            connection,
+            "SELECT count(*) FROM curated.match_training_features WHERE odds_bookmaker_count > 0",
+        )
+        == 0
+    )
+
+
+def test_each_sport_has_independent_cadence_and_shared_quota(connection, run_id):
+    session = FakeSession()
+    now = datetime(2026, 10, 15, 10, tzinfo=UTC)
+    config = settings(odds_api_sports="soccer_epl,soccer_germany_bundesliga")
+    result = ingest_odds(connection, run_id, config, session=session, now=now)
+    assert session.calls == 2 and result.plan.fetch
+    assert scalar(connection, "SELECT count(DISTINCT endpoint) FROM raw.odds_api") == 2
+    ingest_odds(connection, run_id, config, session=session, now=now + timedelta(minutes=1))
+    assert session.calls == 2
+
+
+def test_reserve_stops_other_sports_and_allows_only_one_global_daily_probe(connection, run_id):
+    session = FakeSession(remaining=50)
+    now = datetime(2026, 10, 15, 10, tzinfo=UTC)
+    config = settings(odds_api_sports="soccer_epl,soccer_germany_bundesliga")
+    ingest_odds(connection, run_id, config, session=session, now=now)
+    assert session.calls == 1
+    ingest_odds(connection, run_id, config, session=session, now=now + timedelta(days=1))
+    assert session.calls == 2
+
+
+def test_fetch_of_another_sport_does_not_withdraw_existing_quotes(connection, run_id, replayed):
+    from deng.sources.the_odds_api import SAMPLE_SOURCE, OddsRequest, store
+
+    before = scalar(
+        connection, "SELECT count(*) FROM curated.bookmaker_odds_latest WHERE is_current"
+    )
+    store(
+        connection,
+        OddsRequest("soccer_epl"),
+        "file://unrelated",
+        [],
+        run_id,
+        datetime(2026, 9, 23, tzinfo=UTC),
+        source=SAMPLE_SOURCE,
+    )
+    connection.commit()
+    assert (
+        scalar(connection, "SELECT count(*) FROM curated.bookmaker_odds_latest WHERE is_current")
+        == before
+    )
+    store(
+        connection,
+        OddsRequest("soccer_uefa_champs_league"),
+        "file://withdrawn",
+        [],
+        run_id,
+        datetime(2026, 9, 23, tzinfo=UTC),
+        source=SAMPLE_SOURCE,
+    )
+    connection.commit()
+    assert (
+        scalar(connection, "SELECT count(*) FROM curated.bookmaker_odds_latest WHERE is_current")
+        == 0
+    )
+
+
+def test_training_excludes_bad_latest_quote_without_resurrecting_old_one(
+    connection, run_id, replayed
+):
+    import copy
+
+    from deng.sources.the_odds_api import OddsRequest, read_samples, store
+
+    request = OddsRequest("soccer_uefa_champs_league")
+    url, payload, fetched = read_samples(request)[0]
+    store(connection, request, url, payload, run_id, fetched)
+    connection.commit()
+    run_transformations(connection, FOOTBALL_DATE, order=ODDS_STAGING_ORDER, counted=())
+    match_id = scalar(
+        connection,
+        "SELECT match_id FROM staging.odds_event_match WHERE event_id = %s",
+        (payload[0]["id"],),
+    )
+    query = "SELECT odds_bookmaker_count FROM curated.match_training_features WHERE match_id = %s"
+    before = scalar(connection, query, (match_id,))
+    assert before == 4
+    bad = copy.deepcopy(payload[0])
+    bad["bookmakers"] = bad["bookmakers"][:1]
+    for bookmaker in bad["bookmakers"]:
+        bookmaker["last_update"] = "2026-09-22T09:00:00Z"
+        for market in bookmaker["markets"]:
+            market["last_update"] = "2026-09-22T09:00:00Z"
+            for outcome in market["outcomes"]:
+                outcome["price"] = 1.12
+    store(connection, request, url, [bad], run_id, datetime(2026, 9, 22, 9, tzinfo=UTC))
+    connection.commit()
+    run_transformations(connection, FOOTBALL_DATE, order=ODDS_STAGING_ORDER, counted=())
+    assert scalar(connection, query, (match_id,)) == before - 1
+    assert (
+        scalar(
+            connection,
+            "SELECT count(*) FROM curated.training_bookmaker_quotes WHERE overround > 0.30",
+        )
+        == 1
+    )
+
+
+def test_single_plural_sport_overrides_singular_default(connection, run_id):
+    session = FakeSession()
+    ingest_odds(connection, run_id, settings(odds_api_sports="soccer_epl"), session=session)
+    assert rows(connection, "SELECT endpoint FROM raw.odds_api") == [("sports/soccer_epl/odds",)]

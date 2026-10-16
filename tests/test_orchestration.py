@@ -45,6 +45,11 @@ def test_definitions_load_with_one_asset_per_table():
         "staging/bookmaker_odds",
         "staging/odds_event_match",
         "curated/fact_bookmaker_odds",
+        "staging/team_context_snapshot",
+        "staging/team_world_ranking",
+        "curated/fact_match_team_context",
+        "curated/team_match_features",
+        "curated/match_training_features",
     }
 
 
@@ -53,7 +58,14 @@ def test_odds_refresh_runs_on_its_own_unpartitioned_job():
     # to a minute, not a day - hence the second job and its interval schedule.
     job = defs.resolve_job_def("odds_refresh")
     assert job.partitions_def is None
-    assert defs.resolve_schedule_def("odds_refresh_schedule").cron_schedule == "*/15 * * * *"
+    from deng.config import get_settings
+
+    assert defs.resolve_schedule_def("odds_refresh_schedule").cron_schedule == refresh_cron(
+        get_settings().odds_refresh_minutes
+    )
+    assert refresh_cron(15) == "*/15 * * * *"
+    assert refresh_cron(1440) == "0 0 * * *"
+    assert refresh_cron(2880) == "0 0 * * *"
     assert refresh_cron(5) == "*/5 * * * *"
     assert refresh_cron(120) == "0 */2 * * *"
 

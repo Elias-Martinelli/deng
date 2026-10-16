@@ -56,7 +56,7 @@ jobs:
       - name: Install
         # The orchestrator extra too, so the Dagster definitions are loaded and
         # tested in CI instead of being skipped.
-        run: pip install -e ".[dev,orchestrator]"
+        run: pip install -e ".[dev,orchestrator,ml]"
 
       - name: Lint
         # `format --check` fails on unformatted code instead of fixing it: CI

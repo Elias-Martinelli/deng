@@ -29,7 +29,15 @@ import psycopg
 
 from deng.config import Settings
 from deng.database import PipelineRun
-from deng.sources import club_crests, football_data, open_meteo, openstreetmap, the_odds_api
+from deng.sources import (
+    club_crests,
+    football_data,
+    footballdatabase,
+    open_meteo,
+    openstreetmap,
+    team_context,
+    the_odds_api,
+)
 from deng.sources.http import ApiError
 
 logger = logging.getLogger(__name__)
@@ -66,6 +74,28 @@ def _football(context: Context, run_id) -> StepResult:
     return StepResult("football-data.org", result.summary, lines=result.lines)
 
 
+def _ranking(context: Context, run_id) -> StepResult:
+    result = footballdatabase.ingest(
+        context.connection,
+        context.logical_date,
+        run_id,
+        context.settings,
+        from_samples=context.from_samples,
+    )
+    return StepResult("footballdatabase.com", result.summary)
+
+
+def _team_context(context: Context, run_id) -> StepResult:
+    result = team_context.ingest(
+        context.connection,
+        context.logical_date,
+        run_id,
+        csv_path=context.settings.team_context_csv_path,
+        from_samples=context.from_samples,
+    )
+    return StepResult("team-context", result.summary, lines=result.lines)
+
+
 def _openstreetmap(context: Context, run_id) -> StepResult:
     stored = openstreetmap.ingest(
         context.connection,
@@ -77,6 +107,8 @@ def _openstreetmap(context: Context, run_id) -> StepResult:
 
 
 def _crests(context: Context, run_id) -> StepResult:
+    if context.from_samples:
+        return StepResult("club crests", "skipped in offline sample mode")
     result = club_crests.fetch_crests(context.connection, run_id=run_id)
     return StepResult("club crests", result.summary)
 
@@ -114,6 +146,8 @@ class Step:
 
 STEPS: tuple[Step, ...] = (
     Step("football", "ingest_football_raw", _football),
+    Step("ranking", "ingest_world_ranking", _ranking, best_effort=True),
+    Step("team-context", "ingest_team_context", _team_context),
     Step("openstreetmap", "ingest_osm_venues", _openstreetmap),
     Step("crests", "fetch_crests", _crests, best_effort=True),
     Step("weather", "ingest_weather", _weather),

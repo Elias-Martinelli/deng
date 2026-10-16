@@ -89,3 +89,113 @@ def test_rate_limit_headers_tolerate_garbage():
     info = RateLimitInfo.from_headers({"X-Requests-Available-Minute": "n/a"})
     assert info.requests_available_minute is None
     assert info.counter_reset_seconds is None
+
+
+def test_offline_samples_cannot_be_relabelled_as_a_different_league():
+    from deng.sources.football_data import read_sample_endpoints
+
+    with pytest.raises(ValueError, match="CL only"):
+        list(read_sample_endpoints("PL"))
+
+
+def test_configured_leagues_cache_history_and_deduplicate_team_details(monkeypatch):
+    from deng.config import Settings
+    from deng.sources.football_data import ApiResponse, IngestResult, _configured_responses
+
+    sleeps = []
+    monkeypatch.setattr("deng.sources.football_data.time.sleep", sleeps.append)
+    client = MagicMock()
+
+    def answer(path, params):
+        payload = {"teams": [{"id": 1}, {"id": 2}]} if path.endswith("/teams") else {}
+        return ApiResponse(url=path, status_code=200, payload=payload)
+
+    client.get.side_effect = answer
+    settings = Settings(
+        _env_file=None,
+        football_data_competitions="CL,PL",
+        football_data_seasons="2023",
+        football_data_team_details=True,
+    )
+    result = IngestResult()
+    cached = {("competitions/CL/matches", "2023"), ("competitions/CL/teams", "2023")}
+    responses = list(_configured_responses(client, settings, cached, result))
+    paths = [(endpoint.path, endpoint.params) for endpoint, _ in responses]
+    assert len(paths) == 12  # 8 daily + 2 uncached PL history + 2 unique current teams
+    assert ("competitions/CL/matches", {"season": "2023"}) not in paths
+    assert ("competitions/PL/matches", {"season": "2023"}) in paths
+    assert paths[-2:] == [("teams/1", {}), ("teams/2", {})]
+    assert len(sleeps) == len(paths) - 1  # includes competition and detail batch boundaries
+    assert result.cached == 2
+
+
+def test_sample_ingest_refuses_plural_leagues_before_any_database_write():
+    import uuid
+    from datetime import date
+
+    from deng.config import Settings
+    from deng.sources.football_data import ingest
+
+    connection = MagicMock()
+    with pytest.raises(ValueError, match="CL only"):
+        ingest(
+            connection,
+            date(2026, 10, 2),
+            uuid.uuid4(),
+            Settings(_env_file=None, football_data_competitions="CL,PL"),
+            from_samples=True,
+        )
+    connection.cursor.assert_not_called()
+
+
+@pytest.mark.postgres
+def test_completed_history_cache_requires_older_season_and_never_accepts_samples(
+    connection, run_id
+):
+    from datetime import date
+
+    from deng.database.raw_loader import RawLoader
+    from deng.sources.football_data import SAMPLE_SOURCE, _cached_season_endpoints
+
+    today = date(2026, 10, 2)
+    loader = RawLoader(connection)
+    for endpoint, params, payload in [
+        ("competitions/PL", {}, {"currentSeason": {"startDate": "2026-08-01"}}),
+        (
+            "competitions/PL/matches",
+            {"season": "2023"},
+            {"matches": [{"season": {"endDate": "2024-05-30"}}]},
+        ),
+        (
+            "competitions/PL/teams",
+            {"season": "2023"},
+            {"season": {"endDate": "2024-05-30"}, "teams": []},
+        ),
+        (
+            "competitions/PL/matches",
+            {"season": "2026"},
+            {"matches": [{"season": {"endDate": "2026-09-01"}}]},
+        ),
+    ]:
+        loader.load(
+            run_id=run_id,
+            endpoint=endpoint,
+            request_params=params,
+            request_url="https://example.test",
+            payload=payload,
+            ingestion_date=today,
+        )
+    RawLoader(connection, source=SAMPLE_SOURCE).load(
+        run_id=run_id,
+        endpoint="competitions/PL/matches",
+        request_params={"season": "2022"},
+        request_url="file://sample",
+        payload={"matches": [{"season": {"endDate": "2023-05-30"}}]},
+        ingestion_date=today,
+    )
+    assert _cached_season_endpoints(connection, today) == {
+        ("competitions/PL/matches", "2023"),
+        ("competitions/PL/teams", "2023"),
+    }
+    # A backfill date cannot read snapshots that were collected afterwards.
+    assert _cached_season_endpoints(connection, date(2026, 10, 1)) == set()

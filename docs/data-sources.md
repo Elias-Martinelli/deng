@@ -1,5 +1,40 @@
 # Data Sources
 
+## World ranking update — 16 October 2026
+
+FootballDatabase public world rankings are now an optional daily HTML source. No key; dated captures, explicit club mapping and CC BY-SA 4.0 attribution. See [world-ranking.md](world-ranking.md).
+
+## Update — 15 October 2026
+
+The Odds API now fetches eight configured sports, with cadence per request and a shared account quota. Historical odds remain a separate, unimplemented source. Current weather has been refreshed. See [coverage, provider documentation and remaining gaps](training-data-gaps.md).
+
+## Current implementation update — 3 October 2026
+
+The evaluation below records the initial CL scope. The implemented scope now
+includes **CL, PL, BL1, PD, SA, FL1, DED and PPL**, plus configured historical
+start years. See [ADR-006](adr/ADR-006-multi-league-training-product.md).
+
+- Daily football ingestion performs four requests per configured competition.
+- Completed historical matches and teams are cached (two endpoints per season
+  and competition); explicit refresh allows provider corrections.
+- Current team payloads supply squad/coach observations when present. Optional
+  team-detail requests cost one per distinct current club. No extra key is needed.
+- A sixth ingestion step accepts validated dated team CSVs, including licensed
+  EUR valuations. It is disabled without a path. See [team context](team-context.md).
+- Overall form includes all ingested competitions. Separate competition and
+  venue histories preserve their scope.
+- Odds still use the configured sport (CL by default); multi-league football
+  ingestion does not automatically enable multi-league odds.
+- Current weather collection remains forecast-only; historical weather gaps are
+  explicit. Stadium geocoding remains one request per second and should be
+  reviewed for ambiguous grounds.
+
+The live initial bulk load produced 10,103 matches and 3,669 player observations.
+Historical squad membership, injuries, line-ups, xG and market values have not
+been purchased or inferred. Current coverage is recorded in each export.
+
+---
+
 Status: **confirmed 20 Sep 2026 by a real exploration run** – football-data.org
 and Open-Meteo are the chosen core sources. Measured findings, including two
 corrections to the assumptions below, are in

@@ -1,5 +1,30 @@
 # Rubric Checklist
 
+## Training enrichment update — 15 October 2026
+
+Live odds now cover eight competitions; weather refreshed; chronological logistic baseline trained and evaluated. Historical valuation/player coverage remains explicitly limited. See [current gaps](training-data-gaps.md) and [measured evidence](evidence/training-enrichment-2026-10-15.md). Earlier checklist entries below are historical planning status.
+
+## Implementation update — 3 October 2026
+
+The detailed rows below preserve the earlier assessment plan. Current technical
+evidence is in [multi-league-dataset.md](evidence/multi-league-dataset.md) and
+the [midterm runbook](midterm-runbook.md).
+
+- Architecture v0.2 and complete setup/execution/verification instructions are
+  now implemented in the README, architecture document and runbook.
+- The local product now has 10,103 matches across eight competitions and 292
+  columns, with a portable CSV, dictionary, manifest and coverage report.
+- Source ingestion supports historical caching and observed squad/coach context;
+  dated market-value import is implemented, but no live values are claimed.
+- Tests use a disposable database; the previous live-table truncation issue is fixed.
+- Integration tests include an executed Dagster job, temporal guards and export.
+- Independent peer reproduction, oral defence, individual contributions and
+  ILIAS submission remain TODO. Cloud/Terraform remain FINAL work.
+- The latest test and quality counts are in the evidence document, superseding
+  the earlier 137-tests/24-checks measurements below.
+
+---
+
 Translation of the official DENG HS26 project description
 (`DENG_HS26_Project_Description.pdf`) into technical requirements. A row is
 **DONE** only when technical evidence exists in the repository; plans are TODO.

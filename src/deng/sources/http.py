@@ -11,6 +11,13 @@ catches ApiError and gets both.
 
 from __future__ import annotations
 
+import logging
+import time
+from collections.abc import Callable
+from typing import TypeVar
+
+T = TypeVar("T")
+
 
 class ApiError(Exception):
     """Non-retryable API error (client-side mistake, missing permission, not found)."""
@@ -24,3 +31,19 @@ class ApiError(Exception):
 
 class RetryableApiError(ApiError):
     """Transient API error (rate limit, server error, network) - safe to retry."""
+
+
+def retry_transient(operation: Callable[[], T], attempts: int = 3, delay_seconds: float = 1) -> T:
+    """Retry bounded transient failures; permanent errors are never repeated."""
+    if attempts < 1 or delay_seconds < 0:
+        raise ValueError("attempts must be positive and delay must be nonnegative")
+    for attempt in range(attempts):
+        try:
+            return operation()
+        except RetryableApiError:
+            if attempt == attempts - 1:
+                raise
+            delay = min(delay_seconds * 2**attempt, 60)
+            logging.getLogger(__name__).warning("Transient source failure; retrying in %ss", delay)
+            time.sleep(delay)
+    raise AssertionError("unreachable")

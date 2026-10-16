@@ -41,10 +41,21 @@ x-orchestrator: &orchestrator
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY:-}
     FOOTBALL_DATA_COMPETITION: ${FOOTBALL_DATA_COMPETITION:-CL}
+    FOOTBALL_DATA_COMPETITIONS: ${FOOTBALL_DATA_COMPETITIONS:-}
+    FOOTBALLDATABASE_ENABLED: ${FOOTBALLDATABASE_ENABLED:-true}
+    FOOTBALLDATABASE_MAX_PAGES: ${FOOTBALLDATABASE_MAX_PAGES:-63}
+    FOOTBALL_DATA_SEASONS: ${FOOTBALL_DATA_SEASONS:-}
+    FOOTBALL_DATA_TEAM_DETAILS: ${FOOTBALL_DATA_TEAM_DETAILS:-false}
+    FOOTBALL_DATA_REFRESH_HISTORY: ${FOOTBALL_DATA_REFRESH_HISTORY:-false}
+    TEAM_CONTEXT_CSV_PATH: ${TEAM_CONTEXT_CSV_PATH:-}
     INGEST_SOURCE: ${INGEST_SOURCE:-api}
     LOG_LEVEL: ${LOG_LEVEL:-INFO}
     # Bookmaker odds: the key and the budget rules the interval job applies.
     ODDS_API_KEY: ${ODDS_API_KEY:-}
+    ODDS_API_SPORT: ${ODDS_API_SPORT:-soccer_uefa_champs_league}
+    ODDS_API_SPORTS: ${ODDS_API_SPORTS:-}
+    ODDS_API_REGIONS: ${ODDS_API_REGIONS:-eu}
+    ODDS_API_BOOKMAKERS: ${ODDS_API_BOOKMAKERS:-}
     ODDS_REFRESH_MINUTES: ${ODDS_REFRESH_MINUTES:-15}
     ODDS_WATCH_HOURS_BEFORE_KICKOFF: ${ODDS_WATCH_HOURS_BEFORE_KICKOFF:-48}
     ODDS_WATCH_MATCH_IDS: ${ODDS_WATCH_MATCH_IDS:-}
@@ -52,6 +63,8 @@ x-orchestrator: &orchestrator
   volumes:
     - ./sql:/app/sql:ro
     - ./data/sample:/app/data/sample:ro
+    - ./data/context:/app/data/context:ro
+    - ./data/processed:/app/data/processed
   networks: [deng]
 
 services:
@@ -104,8 +117,19 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY:-}
       FOOTBALL_DATA_COMPETITION: ${FOOTBALL_DATA_COMPETITION:-CL}
+      FOOTBALL_DATA_COMPETITIONS: ${FOOTBALL_DATA_COMPETITIONS:-}
+      FOOTBALLDATABASE_ENABLED: ${FOOTBALLDATABASE_ENABLED:-true}
+      FOOTBALLDATABASE_MAX_PAGES: ${FOOTBALLDATABASE_MAX_PAGES:-63}
+      FOOTBALL_DATA_SEASONS: ${FOOTBALL_DATA_SEASONS:-}
+      FOOTBALL_DATA_TEAM_DETAILS: ${FOOTBALL_DATA_TEAM_DETAILS:-false}
+      FOOTBALL_DATA_REFRESH_HISTORY: ${FOOTBALL_DATA_REFRESH_HISTORY:-false}
+      TEAM_CONTEXT_CSV_PATH: ${TEAM_CONTEXT_CSV_PATH:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ODDS_API_KEY: ${ODDS_API_KEY:-}
+      ODDS_API_SPORT: ${ODDS_API_SPORT:-soccer_uefa_champs_league}
+      ODDS_API_SPORTS: ${ODDS_API_SPORTS:-}
+      ODDS_API_REGIONS: ${ODDS_API_REGIONS:-eu}
+      ODDS_API_BOOKMAKERS: ${ODDS_API_BOOKMAKERS:-}
       ODDS_REFRESH_MINUTES: ${ODDS_REFRESH_MINUTES:-15}
       ODDS_WATCH_HOURS_BEFORE_KICKOFF: ${ODDS_WATCH_HOURS_BEFORE_KICKOFF:-48}
       ODDS_WATCH_MATCH_IDS: ${ODDS_WATCH_MATCH_IDS:-}
@@ -120,6 +144,8 @@ services:
       # too. Mounted rather than copied: they are reproducibility fixtures, not
       # part of the image we would ship.
       - ./data/sample:/app/data/sample:ro
+      - ./data/context:/app/data/context:ro
+      - ./data/processed:/app/data/processed
     networks: [deng]
     profiles: ["tools"]   # not started by `up`; invoked with `run`
 
@@ -144,6 +170,10 @@ services:
       # Only to label freshness and say whether a key exists - the app never
       # calls the API, so the key itself stays out of this container.
       ODDS_API_KEY: ${ODDS_API_KEY:+configured}
+      ODDS_API_SPORT: ${ODDS_API_SPORT:-soccer_uefa_champs_league}
+      ODDS_API_SPORTS: ${ODDS_API_SPORTS:-}
+      ODDS_API_REGIONS: ${ODDS_API_REGIONS:-eu}
+      ODDS_API_BOOKMAKERS: ${ODDS_API_BOOKMAKERS:-}
       ODDS_REFRESH_MINUTES: ${ODDS_REFRESH_MINUTES:-15}
       ODDS_WATCH_HOURS_BEFORE_KICKOFF: ${ODDS_WATCH_HOURS_BEFORE_KICKOFF:-48}
       ODDS_QUOTA_RESERVE: ${ODDS_QUOTA_RESERVE:-50}

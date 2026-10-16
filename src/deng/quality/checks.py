@@ -342,7 +342,7 @@ CHECKS: tuple[Check, ...] = (
         severity=WARNING,
         description=(
             "Decimal prices between 1.01 and 1000 and a margin between -2 % and 30 %. "
-            "Outside that the feed changed format, not the market."
+            "Outside that requires source review; extreme markets or feed errors are possible."
         ),
         sql="""
             SELECT count(*)::text AS observed, count(*) = 0 AS passed
@@ -406,6 +406,92 @@ CHECKS: tuple[Check, ...] = (
               FROM curated.dim_team d
              WHERE NOT EXISTS (SELECT 1 FROM curated.team_crest c WHERE c.team_id = d.team_id)
         """,
+    ),
+)
+
+# These checks describe the exported product, independently of its SQL builder.
+CHECKS += (
+    Check(
+        name="training_one_row_per_match",
+        target="curated.match_training_features",
+        severity=CRITICAL,
+        description="Every canonical fixture has exactly one wide training row.",
+        sql="""SELECT count(*)::text, count(*) = 0
+                 FROM curated.fact_match m
+                 LEFT JOIN curated.match_training_features f USING (match_id)
+                WHERE f.match_id IS NULL""",
+    ),
+    Check(
+        name="training_match_key_unique",
+        target="curated.match_training_features",
+        severity=CRITICAL,
+        description="Joining enrichments must never multiply match rows.",
+        sql="""SELECT (count(*) - count(DISTINCT match_id))::text,
+                      count(*) = count(DISTINCT match_id)
+                 FROM curated.match_training_features""",
+    ),
+    Check(
+        name="training_history_before_kickoff",
+        target="curated.team_match_features",
+        severity=CRITICAL,
+        description="Prior results must be available strictly before kickoff.",
+        sql="""SELECT count(*)::text, count(*) = 0
+                 FROM curated.team_match_features f JOIN curated.fact_match m USING (match_id)
+                WHERE f.history_last_available_at >= m.utc_kickoff""",
+    ),
+    Check(
+        name="training_90min_label_consistent",
+        target="curated.match_training_features",
+        severity=CRITICAL,
+        description="The target is the 90-minute result, excluding shootouts.",
+        sql="""SELECT count(*)::text, count(*) = 0 FROM curated.match_training_features
+                WHERE label_outcome_90min IS DISTINCT FROM
+                      CASE WHEN label_home_goals_90min IS NULL OR label_away_goals_90min IS NULL
+                           THEN NULL
+                           WHEN label_home_goals_90min > label_away_goals_90min THEN 'HOME_WIN'
+                           WHEN label_home_goals_90min < label_away_goals_90min THEN 'AWAY_WIN'
+                           ELSE 'DRAW' END""",
+    ),
+    Check(
+        name="team_context_before_kickoff",
+        target="curated.fact_match_team_context",
+        severity=CRITICAL,
+        description="Current squad or coach snapshots cannot enter past games.",
+        sql="""SELECT count(*)::text, count(*) = 0
+                 FROM curated.fact_match_team_context c JOIN curated.fact_match m USING (match_id)
+                WHERE c.context_observed_at >= m.utc_kickoff
+                   OR c.squad_observed_at >= m.utc_kickoff
+                   OR c.coach_observed_at >= m.utc_kickoff
+                   OR c.market_value_observed_at >= m.utc_kickoff""",
+    ),
+    Check(
+        name="world_ranking_before_kickoff",
+        target="curated.match_training_features",
+        severity=CRITICAL,
+        description="World rankings must be captured before kickoff and at most 35 days old.",
+        sql="""SELECT count(*)::text, count(*) = 0
+               FROM curated.match_training_features
+               WHERE audit_home_world_ranking_observed_at >= utc_kickoff
+                  OR audit_away_world_ranking_observed_at >= utc_kickoff
+                  OR audit_home_world_ranking_date >= (utc_kickoff AT TIME ZONE 'UTC')::date
+                  OR audit_away_world_ranking_date >= (utc_kickoff AT TIME ZONE 'UTC')::date
+                  OR (utc_kickoff AT TIME ZONE 'UTC')::date-audit_home_world_ranking_date > 35
+                  OR (utc_kickoff AT TIME ZONE 'UTC')::date-audit_away_world_ranking_date > 35""",
+    ),
+    Check(
+        name="world_ranking_values_consistent",
+        target="curated.match_training_features",
+        severity=CRITICAL,
+        description="Rank/points pairs are complete, positive and differences agree.",
+        sql="""SELECT count(*)::text, count(*) = 0 FROM curated.match_training_features
+               WHERE home_world_rank <= 0 OR away_world_rank <= 0
+                  OR home_world_rating_points <= 0 OR away_world_rating_points <= 0
+                  OR (home_world_rank IS NULL) <> (home_world_rating_points IS NULL)
+                  OR (away_world_rank IS NULL) <> (away_world_rating_points IS NULL)
+                  OR world_rating_points_difference IS DISTINCT FROM
+                     (home_world_rating_points - away_world_rating_points)
+                  OR world_rank_advantage_home IS DISTINCT FROM
+                     (away_world_rank-home_world_rank)""",
     ),
 )
 
