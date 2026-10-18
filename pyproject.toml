@@ -46,6 +46,10 @@ orchestrator = [
   "dagster>=1.13,<1.14",
   "dagster-webserver>=1.13,<1.14",
   "dagster-postgres>=0.29,<0.30",
+  # SQLAlchemy 2.1 maps postgresql:// to psycopg 3 (installed for the pipeline)
+  # instead of psycopg2, and dagster-postgres' NOTIFY with a bound parameter
+  # fails there: no run could be launched, the backfill included.
+  "sqlalchemy>=2.0,<2.1",
 ]
 notebook = [
   "jupyterlab>=4.2",
