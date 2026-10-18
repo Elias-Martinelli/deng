@@ -5,6 +5,7 @@ repository state, 5 for the pitch itself and the answers to questions.
 
 | File | What it is |
 |---|---|
+| [`project-pitch.md`](project-pitch.md) | the short written pitch: idea, sources, outcome, risks, ingestion and storage, Architecture v0.1 |
 | [`slides.md`](slides.md) | the deck - one `##` heading per slide, in the order we present |
 | [`speaker-notes.md`](speaker-notes.md) | what to say per slide, in German, plus the questions we expect and short answers |
 | [`../code-walkthrough.md`](../code-walkthrough.md) | nine stops through the code, for the questions that go past the slides |
