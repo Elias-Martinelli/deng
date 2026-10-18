@@ -62,9 +62,11 @@ echo "Creating virtualenv in .venv"
 "$PYTHON" -m venv .venv
 
 # --- 3. Dependencies --------------------------------------------------------
+# constraints.txt pins every package to the versions CI tested (`make lock`),
+# so a clean clone installs the same environment next month as today.
 echo "Installing the package and its dev dependencies"
 .venv/bin/pip install --quiet --upgrade pip
-.venv/bin/pip install --quiet -e ".[dev]"
+.venv/bin/pip install --quiet -c constraints.txt -e ".[dev]"
 
 # --- 4. Configuration -------------------------------------------------------
 if [ ! -f .env ]; then

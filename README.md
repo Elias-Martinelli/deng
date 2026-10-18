@@ -270,7 +270,7 @@ upgrade is needed), `make`, and on Debian/Ubuntu/WSL the `python3-venv` package
 git clone https://github.com/Elias-Martinelli/deng.git
 cd deng
 
-./setup.sh                 # venv + install + .env + self-check   (or: make setup)
+./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
 make test                  # 137 tests; the database ones skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
@@ -686,6 +686,11 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
+* Every dependency is pinned in [`constraints.txt`](constraints.txt), for all
+  extras and every Python from 3.10 up; `make setup`, the Docker images and CI
+  install with `-c constraints.txt`, so a clone next month gets the versions
+  tested today. After changing `pyproject.toml`, `make lock` re-resolves it
+  (needs [uv](https://docs.astral.sh/uv/), installing does not).
 * CI runs lint, 137 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
