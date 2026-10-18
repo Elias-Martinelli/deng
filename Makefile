@@ -40,7 +40,7 @@ PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-19s %s\n", $$1, $$2}'
 
-setup:  ## Create a virtualenv and install the package with dev dependencies
+setup:  ## Create a virtualenv and install the package, dev tools and the dashboard
 	@if [ -z "$(PYTHON)" ]; then \
 		echo "ERROR: no Python >= $(MIN_PYTHON) that can create a virtualenv was found."; \
 		echo "  Interpreters on PATH:"; \
@@ -60,7 +60,7 @@ setup:  ## Create a virtualenv and install the package with dev dependencies
 	@echo "Using $(PYTHON) ($$($(PYTHON) --version 2>&1))"
 	$(PYTHON) -m venv $(VENV)
 	$(VENV)/bin/pip install --upgrade pip
-	$(VENV)/bin/pip install -c constraints.txt -e ".[dev]"
+	$(VENV)/bin/pip install -c constraints.txt -e ".[dev,app]"
 	@test -f .env || cp .env.example .env
 	@echo ""
 	@echo "Setup complete. Next:"

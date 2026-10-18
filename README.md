@@ -281,8 +281,9 @@ make verify                # verification queries
 
 `setup.sh` picks the newest interpreter ≥ 3.10 that can actually build a
 virtualenv and tells you which one it used; override with
-`make setup PYTHON=python3.12`. Activating the venv is optional — every `make`
-target uses `.venv` directly.
+`make setup PYTHON=python3.12`. It installs the dashboard too, so `make app`
+works right after it. Activating the venv is optional — every `make` target
+uses `.venv` directly.
 
 With an API key (free registration at
 <https://www.football-data.org/client/register>), put it in `.env` and use the
@@ -723,7 +724,7 @@ distribution, form and its coverage, plus a query that **re-verifies the
 leakage guard independently** of the pipeline's own checks.
 
 ```bash
-make setup-app     # installs the Streamlit and Jupyter extras
+make setup-app     # adds the Jupyter extra (Streamlit comes with make setup)
 make notebook      # JupyterLab with the project environment
 ```
 
