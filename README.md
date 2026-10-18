@@ -707,6 +707,8 @@ accepting a `python3.12` whose `ensurepip` is missing.
 
 Worked examples with real output:
 [`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
+The README followed step by step in a fresh environment:
+[`docs/evidence/clean-environment-test.md`](docs/evidence/clean-environment-test.md).
 
 ## Analytics / Notebook
 
