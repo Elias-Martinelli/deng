@@ -285,6 +285,10 @@ virtualenv and tells you which one it used; override with
 works right after it. Activating the venv is optional — every `make` target
 uses `.venv` directly.
 
+`make test` never touches your pipeline data: the integration tests empty the
+tables they use, so they run in their own database, `<POSTGRES_DB>_test`
+(`cl_intelligence_test`), which the first run creates on the same server.
+
 With an API key (free registration at
 <https://www.football-data.org/client/register>), put it in `.env` and use the
 live path:
@@ -706,7 +710,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 137 tests: config, API client, source schemas, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`) | `137 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
+| `make test` | 137 tests: config, API client, source schemas, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `137 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | `24/24 checks passed` with past seasons ingested; `23/24` with the current season only - the open WARNING is the form window early in a season. Exit 0 either way |
@@ -859,8 +863,6 @@ Documented honestly, because hidden failures cost more than known ones:
 * **No live comparison.** During a match the app shows the pre-match forecast
   against the last odds read and says so; the interval job does not fetch for
   matches already kicked off.
-* **Tests share the local database** and empty its tables; run `make
-  run-samples` again after `make test`.
 * The knockout fixtures do not exist until the December draw, so the fixture
   list is currently the 144-match league phase.
 
