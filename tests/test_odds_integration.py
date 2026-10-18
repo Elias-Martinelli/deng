@@ -178,7 +178,12 @@ def test_comparison_keeps_model_and_odds_timestamps_apart(connection, replayed):
     assert predicted_at > fetched_at, "the forecast was computed now, the odds are the sample's"
     assert float(model_odds) == round(1 / float(prob), 2)
     assert float(deviation) == round((float(prob) - float(fair)) * 100, 1)
-    assert pre_match is True
+    # Computed now, so whether it counts as pre-match depends on the calendar:
+    # the flag must say exactly whether the forecast predates the kick-off.
+    kickoff = rows(
+        connection, "SELECT utc_kickoff FROM curated.fact_match WHERE match_id = 575341"
+    )[0][0]
+    assert pre_match is (predicted_at < kickoff)
 
 
 def test_replaying_the_samples_again_changes_nothing(connection, run_id, replayed):

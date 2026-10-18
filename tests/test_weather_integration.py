@@ -4,10 +4,11 @@ No network: a fake session answers with a payload built exactly like the real
 Open-Meteo answer (see data/sample/open-meteo/), for whatever dates are asked.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 import pytest
 
+from deng.clock import PIPELINE_TZ
 from deng.database import RawLoader
 from deng.sources import openstreetmap
 from deng.sources.football_data import ApiError
@@ -98,6 +99,16 @@ def weather_run(connection, run_id, session, logical_date=WEATHER_DATE):
         session=session,
         today=logical_date,
     )
+    # The loader stamps the fetch with now(), but the fixtures' kick-offs are
+    # fixed dates: once the calendar passes them, every forecast would count
+    # as fetched after kick-off. Stamp it with the scheduled 06:00 of the
+    # logical date instead, which is when the real run would have fetched it.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE raw.open_meteo SET ingested_at = %s WHERE ingestion_date = %s",
+            (datetime.combine(logical_date, time(6), PIPELINE_TZ), logical_date),
+        )
+    connection.commit()
     run_transformations(
         connection,
         logical_date,
