@@ -290,7 +290,7 @@ cd deng
 
 ./setup.sh                 # venv + install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 160 tests; the database ones skip without PostgreSQL
+make test                  # 161 tests; the database ones skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, no API key needed
@@ -712,7 +712,7 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
-* CI runs lint, 160 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 161 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -726,7 +726,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 160 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`) | `160 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
+| `make test` | 161 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`) | `161 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | after `make run-samples`: **`22/24`** with network, **`21/24`** offline, no CRITICAL failure, exit 0 - see below. With the live API and past seasons ingested: up to `24/24` |
@@ -939,7 +939,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │
 ├── app/                      # the dashboard: dataset panels, odds section, HTML components
 ├── notebooks/                # exploration
-├── tests/                    # 160 tests: unit, contract, integration, layering rule
+├── tests/                    # 161 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/

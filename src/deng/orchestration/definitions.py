@@ -202,11 +202,15 @@ def raw_football_data(context: AssetExecutionContext) -> dg.MaterializeResult:
     # The DDL runs first so the very first run on an empty volume works without
     # a separate `make init`; on every later run it is a no-op.
     run_step("init", pipeline.command_init)
+    # Football only: every other source is its own asset below. Without
+    # `only`, the CLI command asks all five, so each would run twice and the
+    # daily job would fetch odds, which belong to the odds_refresh job.
     run_step(
         "ingest",
         pipeline.command_ingest,
         logical_date,
         from_samples=source == "samples",
+        only="football",
     )
     payloads = _count("raw.football_data", "WHERE ingestion_date = %s", (logical_date,))
     return dg.MaterializeResult(
@@ -222,8 +226,18 @@ def raw_football_data(context: AssetExecutionContext) -> dg.MaterializeResult:
     description="raw -> staging -> curated in one transaction (sql/transform/).",
 )
 def curated_model(context: AssetExecutionContext):
-    """Run the SQL transformations for the partition's logical date."""
-    run_step("transform", pipeline.command_transform, _logical_date(context))
+    """Run the football chain of the SQL transformations for the partition's date."""
+    # Not `pipeline.command_transform`: that runs all three chains, and the
+    # weather and odds chains are their own assets (weather_model, odds_model).
+    try:
+        with connect() as connection:
+            with PipelineRun(connection, "transform_curated", _logical_date(context)) as run:
+                result = run_transformations(connection, _logical_date(context))
+                run.add_counts(loaded=result.total_rows_written)
+    except TRANSIENT_ERRORS:
+        raise
+    except Exception as exc:
+        raise dg.Failure(description=f"transform: {exc}", allow_retries=False) from exc
     for spec in MODEL_SPECS:
         table = ".".join(spec.key.path)
         yield dg.MaterializeResult(asset_key=spec.key, metadata={"row_count": _count(table)})
@@ -244,7 +258,9 @@ def curated_model(context: AssetExecutionContext):
 def team_crests(context: AssetExecutionContext) -> dg.MaterializeResult:
     """Store the crests that are not stored yet (usually none after the first run)."""
     with connect() as connection:
-        result = fetch_crests(connection)
+        with PipelineRun(connection, "fetch_crests", _logical_date(context)) as run:
+            result = fetch_crests(connection, run_id=run.run_id)
+            run.add_counts(loaded=len(result.fetched))
     for team_id, reason in result.failed.items():
         context.log.warning("crest for team %s not stored: %s", team_id, reason)
     return dg.MaterializeResult(

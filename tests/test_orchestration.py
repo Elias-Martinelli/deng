@@ -129,7 +129,8 @@ def _no_crest_downloads(monkeypatch):
     from deng.sources.club_crests import CrestResult
 
     monkeypatch.setattr(
-        "deng.orchestration.definitions.fetch_crests", lambda connection: CrestResult()
+        "deng.orchestration.definitions.fetch_crests",
+        lambda connection, run_id=None: CrestResult(),
     )
 
 
@@ -159,6 +160,28 @@ def test_scheduled_run_builds_every_table(connection, monkeypatch):
     assert counts["raw/football_data"]["payloads"].value == 4
     assert counts["curated/fact_match"]["row_count"].value == 144
     assert counts["curated/fact_team_match_form"]["row_count"].value == 288
+
+
+@pytest.mark.postgres
+def test_every_step_of_a_scheduled_run_runs_exactly_once(connection, monkeypatch):
+    # Each source and each transformation chain has its own asset. If an asset
+    # called the all-sources CLI command instead, the weather would be asked
+    # twice and the odds fetched from the daily job, spending a credit.
+    monkeypatch.setenv("INGEST_SOURCE", "samples")
+    assert _execute("2026-09-20").success
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pipeline_name, count(*) FROM meta.pipeline_runs GROUP BY 1 ORDER BY 1"
+        )
+        runs = dict(cursor.fetchall())
+    assert runs == {
+        "fetch_crests": 1,
+        "ingest_football_raw": 1,
+        "ingest_osm_venues": 1,
+        "ingest_weather": 1,
+        "transform_curated": 1,
+        "transform_weather": 1,
+    }
 
 
 @pytest.mark.postgres
