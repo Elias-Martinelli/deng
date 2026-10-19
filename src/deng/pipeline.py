@@ -268,7 +268,7 @@ def command_backfill(date_from: date, date_to: date, from_samples: bool = False)
     a backfill re-labels current data under past logical dates rather than
     recovering what the API said back then. It is the right mechanism for
     recovering missed runs and for re-processing, and it is documented as such
-    (see docs/architecture/architecture-v0.2.md once written).
+    (see docs/architecture/architecture-v0.2.md, lesson 7).
     """
     if date_from > date_to:
         print("ERROR: --from must not be after --to", file=sys.stderr)
