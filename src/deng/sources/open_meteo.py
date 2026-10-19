@@ -37,6 +37,7 @@ from psycopg.types.json import Jsonb
 
 from deng.clock import pipeline_today
 from deng.database.raw_loader import hash_payload
+from deng.sources import contracts
 from deng.sources.http import ApiError, RetryableApiError
 
 logger = logging.getLogger(__name__)
@@ -225,6 +226,11 @@ def ingest_weather(
         from_samples: Replay committed samples instead of calling the API.
         session: HTTP session (tests pass a fake one).
         today: Override for "today" (tests).
+
+    Raises:
+        ApiError: on a permanent error, including a ContractError for a forecast
+            whose hourly arrays are missing or misaligned; RetryableApiError on
+            a transient one. Nothing of the day is committed in either case.
     """
     result = WeatherResult()
 
@@ -249,6 +255,9 @@ def ingest_weather(
             url, payload = sample
         else:
             url, payload = fetch_forecast(session, base_url, request)
+        contracts.check_open_meteo(
+            payload, HOURLY_VARIABLES, f"{ENDPOINT} venue {request.venue_team_id}"
+        )
         store(connection, request, url, payload, logical_date, run_id)
         result.stored.append(request.venue_team_id)
     # All venues of the day in one commit, like the football payloads: a

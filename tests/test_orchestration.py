@@ -81,6 +81,29 @@ def test_run_step_lets_transient_errors_through_for_the_retry_policy():
         run_step("ingest", rate_limited)
 
 
+def test_run_step_lets_a_database_outage_through_for_the_retry_policy():
+    # PostgreSQL restarting or not yet up: the same step can succeed a minute later.
+    import psycopg
+
+    def database_down():
+        raise psycopg.OperationalError("connection refused")
+
+    with pytest.raises(psycopg.OperationalError):
+        run_step("ingest", database_down)
+
+
+def test_run_step_forbids_retries_for_schema_drift():
+    from deng.sources.contracts import ContractError
+
+    def drifted():
+        raise ContractError("football-data.org", "competitions/CL/matches", ["matches missing"])
+
+    with pytest.raises(dg.Failure) as caught:
+        run_step("ingest", drifted)
+    assert caught.value.allow_retries is False
+    assert "payload contract broken" in caught.value.description
+
+
 def test_run_step_forbids_retries_for_permanent_errors():
     def forbidden():
         raise ApiError(403, "competition not in plan")

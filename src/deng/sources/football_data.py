@@ -22,6 +22,7 @@ import requests
 
 from deng.config import Settings
 from deng.database.raw_loader import RawLoader
+from deng.sources import contracts
 from deng.sources.http import ApiError, RetryableApiError
 
 logger = logging.getLogger(__name__)
@@ -448,8 +449,10 @@ def ingest(
         How many payloads were stored and how many records they contained.
 
     Raises:
-        ApiError: on a permanent API error; RetryableApiError on a transient one.
-            The day's partial writes are rolled back before the error is re-raised.
+        ApiError: on a permanent API error, including a ContractError for an
+            answer without a required field; RetryableApiError on a transient
+            one. The day's partial writes are rolled back before the error is
+            re-raised.
     """
     # `source` is part of the raw zone's unique key, so replayed samples live in
     # their own rows and can never overwrite a real API answer for the same day
@@ -471,9 +474,13 @@ def ingest(
     loader = RawLoader(connection, source=source_name)
     try:
         for endpoint, response in responses:
+            path = endpoint.path.format(code=settings.football_data_competition)
+            # Before the write, not after: an answer the transformation cannot
+            # read never reaches the raw zone (src/deng/sources/contracts.py).
+            contracts.check_football(endpoint.path, response.payload, path)
             stored = loader.load(
                 run_id=run_id,
-                endpoint=endpoint.path.format(code=settings.football_data_competition),
+                endpoint=path,
                 request_params=endpoint.params,
                 request_url=response.url,
                 payload=response.payload,
