@@ -64,3 +64,22 @@ This container reaches the internet through a TLS-inspecting proxy, so
 `docker build` first failed to verify pypi.org. The images were built with the
 proxy's CA injected through a local copy of the Dockerfile that was not
 committed. On a normal network the unchanged Dockerfile applies.
+
+## Follow-up, 19 October 2026
+
+The two open documentation findings are fixed in the README:
+
+* **Finding 3 (crests):** the README no longer says the sample path works
+  offline. *Local Development* now says that crests are the one part that
+  needs the network, what happens without it (36 failed, run still `OK`,
+  WARNING `every_team_has_a_crest`), and that the next run fetches only the
+  missing ones.
+* **Finding 4 (expected DQ count):** *Verification* now gives the expected
+  count per case: `22/24` with network, `21/24` offline. It also names the
+  WARNING checks that fail on a sample run and why. The sample fixture list
+  is from matchday 1, so `form_window_is_well_populated` always fails there.
+
+Re-checked on 19 October in a fresh database (`make init`, `make run-samples`,
+`make verify`), with crest downloads blocked by the network:
+`data quality: 21/24 checks passed`, `run for 2026-10-19: OK`,
+`verification: 3/3 queries passed`.

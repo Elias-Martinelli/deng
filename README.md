@@ -218,7 +218,10 @@ OpenStreetMap step stored - all of it from answers, never from a built table.
   design with Mermaid diagrams for the conceptual, local and cloud views.
 * [Architecture Decision Records](docs/adr/README.md) — data sources,
   orchestrator, raw storage, Champions League scope.
-* Architecture v0.2 (midterm) will record what implementation changed.
+* [Architecture v0.2](docs/architecture/architecture-v0.2.md) — the midterm
+  state: what changed since v0.1 and why, and the lessons learned building it.
+* [Failure behaviour](docs/failure-behaviour.md) — every failure case, what the
+  pipeline does, and the test that proves it.
 
 ## Batch Ingestion Strategy
 
@@ -260,6 +263,21 @@ cannot help and would spend the request budget. Requests are paced against the
 odds are extras: a failure there is reported and recorded but does not fail the
 run - the football data, which everything else rests on, does.
 
+**Raw validation and schema drift:** every football-data.org answer and every
+Open-Meteo forecast is checked against a small contract *before* it is stored
+([`contracts.py`](src/deng/sources/contracts.py)). Required are only the fields
+the SQL reads as a key, a timestamp or the label - ids, `utcDate`, `status`, the
+score object, the list that holds the records. If one is missing, null or of
+the wrong type, the run fails with a message that names it
+(`matches[7] (id 575330).score.fullTime.home missing`), and the day's earlier
+answers are rolled back, so the raw zone never holds a payload the
+transformation cannot read. New fields and missing optional ones pass: the raw
+zone keeps them anyway.
+
+Every failure case - API down, rate limit, invalid JSON, schema drift, database
+down, a killed process, missing weather - with its behaviour and the test that
+proves it: [`docs/failure-behaviour.md`](docs/failure-behaviour.md).
+
 ## Local Development
 
 Requirements: **Python ≥ 3.10** (the version Ubuntu 22.04 LTS ships, so no
@@ -272,7 +290,7 @@ cd deng
 
 ./setup.sh                 # venv + install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 137 tests; the database ones skip without PostgreSQL
+make test                  # 160 tests; the database ones skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, no API key needed
@@ -302,8 +320,8 @@ make odds                  # = ingest --only odds; fetches if the budget rules a
 
 Without a key the step skips itself and says so; `make run-samples` replays two
 committed sample fetches (fictional prices,
-[`data/sample/the-odds-api/`](data/sample/the-odds-api/README.md)), so the whole
-path works offline.
+[`data/sample/the-odds-api/`](data/sample/the-odds-api/README.md)), so the odds
+path needs no key either.
 
 Stadium coordinates need no key and are asked once per season:
 
@@ -314,6 +332,14 @@ make venues                # = ingest --only openstreetmap
 Offline, the committed answers in
 [`data/sample/openstreetmap/`](data/sample/openstreetmap/) are replayed instead,
 so `make run-samples` fills the venues too.
+
+**One exception: club crests need the network.** `make run-samples` replays
+every API answer from `data/sample/`, but the crest images are not committed -
+they are downloaded from `crests.football-data.org` (no key needed). Without
+that host all 36 downloads fail. That is best effort by design: the run still
+ends `OK` with exit 0, the dashboard shows the three-letter club code instead of
+the logo, and the WARNING check `every_team_has_a_crest` reports the gap. The
+next run with network fetches only the missing crests.
 
 Past seasons as training data: set `FOOTBALL_DATA_SEASONS=2023,2024` in `.env`
 and run `make ingest` once. Each season costs two requests; the answers stay in
@@ -686,7 +712,7 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
-* CI runs lint, 137 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 160 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -700,10 +726,19 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 137 tests: config, API client, source schemas, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`) | `137 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
+| `make test` | 160 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`) | `160 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
-| `make dq` | curated-layer data quality | `24/24 checks passed` with past seasons ingested; `23/24` with the current season only - the open WARNING is the form window early in a season. Exit 0 either way |
+| `make dq` | curated-layer data quality | after `make run-samples`: **`22/24`** with network, **`21/24`** offline, no CRITICAL failure, exit 0 - see below. With the live API and past seasons ingested: up to `24/24` |
+
+**Why a sample run never shows 24/24.** All 16 CRITICAL checks pass; up to three
+WARNING checks fail, and each failure is expected:
+
+| WARNING that fails | Why, on a sample run |
+|---|---|
+| `form_window_is_well_populated` | always: the committed fixture list is from matchday 1, so no club has three completed matches yet |
+| `no_forecast_missing_inside_horizon` | almost always: the check counts the sample's matches inside 16 days of *today*, but only one sample forecast is committed. It passes only when no sample match falls inside that window |
+| `every_team_has_a_crest` | only offline: the crests are downloaded, not replayed (see [Local Development](#local-development)) |
 
 Worked examples with real output:
 [`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
@@ -863,7 +898,7 @@ Documented honestly, because hidden failures cost more than known ones:
 | Milestone | Deadline | Status |
 |---|---|---|
 | Milestone 1 — initial pitch | week 3 | **complete** — use case, verified sources, Architecture v0.1, ADRs, backlog |
-| Midterm — local pipeline | 22 Oct 2026, 15:30 | **largely complete** — ingestion, raw zone, transformations, curated model, data quality, Dagster orchestration, Docker Compose verified, Streamlit, notebook. Open: raw validation, Architecture v0.2, clean-environment test |
+| Midterm — local pipeline | 22 Oct 2026, 15:30 | **complete** — ingestion with payload contracts, raw zone, transformations, curated model, data quality, Dagster orchestration, Docker Compose, Streamlit, notebook, Architecture v0.2, failure matrix, clean-environment test (18 Oct, [evidence](docs/evidence/clean-environment-test.md)). Open: the second run on the other student's machine, tag `midterm` |
 | Final — cloud pipeline | 10 Dec 2026, 20:00 | not started |
 
 Rubric coverage: [`docs/rubric-checklist.md`](docs/rubric-checklist.md) ·
@@ -888,7 +923,8 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │   ├── sources/              # one file per source, each answering the same two questions
 │   │                         #   (plan: what to fetch · fetch: how):
 │   │                         #   football_data · openstreetmap · club_crests ·
-│   │                         #   open_meteo · the_odds_api  (+ http.py: the two error types)
+│   │                         #   open_meteo · the_odds_api  (+ http.py: the two error types,
+│   │                         #   contracts.py: what an answer must contain before it is stored)
 │   ├── ingestion/            # runner.py: THE ingestion — the five sources, in order
 │   │                         #   raw_reads.py: the few questions it may ask the raw zone
 │   ├── database/             # connections, idempotent raw loader, run log
@@ -903,12 +939,12 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │
 ├── app/                      # the dashboard: dataset panels, odds section, HTML components
 ├── notebooks/                # exploration
-├── tests/                    # 137 tests: unit, contract, integration, layering rule
+├── tests/                    # 160 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/
     ├── architecture-overview.svg · architecture-detail.svg · architecture-target.svg
-    ├── use-case.md · data-sources.md · data-model.md
+    ├── use-case.md · data-sources.md · data-model.md · failure-behaviour.md
     ├── rubric-checklist.md · project-backlog.md
     ├── architecture/ · adr/ · evidence/
 ```

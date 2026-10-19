@@ -52,7 +52,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 2.5 | Extract job: head2head for upcoming matches – first retest with a pairing known to have met | COULD | FINAL | [ ] |
 | 2.6 | Weather extract: forecast for matches ≤ 16 days ahead | MUST | MIDTERM | [x] `sources/open_meteo.py`; first live forecast 28 Sep |
 | 2.7 | Weather extract: archive actuals for finished matches | SHOULD | FINAL | [ ] |
-| 2.8 | Minimal raw validation (top-level keys, non-empty lists, required ids) – fail fast | MUST | MIDTERM | [ ] |
+| 2.8 | Minimal raw validation (top-level keys, non-empty lists, required ids) – fail fast | MUST | MIDTERM | [x] `src/deng/sources/contracts.py`: every football-data.org answer and every Open-Meteo forecast is checked *before* it is stored; `tests/test_contracts.py` (21 tests) |
 | 2.9 | Full vs. incremental decision per endpoint, documented in README | MUST | MIDTERM | [x] table in README, rationale in code |
 | 2.10 | Structured run logging (run_id, rows, duration, status) into `meta.pipeline_runs` | SHOULD | MIDTERM | [x] `database/run_log.py`, evidence §4 |
 | 2.11 | One ingestion for all five sources: ask every source, store every answer, transform afterwards | MUST | MIDTERM | [x] `src/deng/sources/` (one file per source) + `src/deng/ingestion/runner.py`; CLI `ingest [--only …]` |
@@ -82,11 +82,11 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
 | 5.1 | Spike Dagster in Compose (schedule, partition, backfill); decide ADR-002 | MUST | MIDTERM | [x] ADR-002 ACCEPTED |
-| 5.2 | Daily job with dependencies extract → validate → load → transform → dq | MUST | MIDTERM | [~] `daily_pipeline` ingest → transform → dq; validate step waits for 2.8 |
+| 5.2 | Daily job with dependencies extract → validate → load → transform → dq | MUST | MIDTERM | [x] `daily_pipeline` ingest → transform → dq; validate runs inside ingest, between extract and load (2.8), so a broken answer is never stored - why it is not a separate asset: architecture v0.2 §3 #5 |
 | 5.3 | Retry policies (transient only) | MUST | MIDTERM | [x] `TRANSIENT_RETRY` + `run_step`, tested |
 | 5.4 | Daily partitions; backfill for a date range tested and documented | MUST | MIDTERM | [x] CLI (§3) and Dagster (§12) |
 | 5.5 | Rerun test: run twice, compare counts (evidence) | MUST | MIDTERM | [x] evidence §2 + integration test |
-| 5.6 | Failure-behaviour matrix implemented (API down, 429, invalid JSON, DB down, missing weather) | MUST | MIDTERM | [ ] |
+| 5.6 | Failure-behaviour matrix implemented (API down, 429, invalid JSON, DB down, missing weather) | MUST | MIDTERM | [x] `docs/failure-behaviour.md`: 15 cases, each with its behaviour, the code and the test that proves it; linked from the README |
 
 ## EPIC 6 – Transformations
 
@@ -108,14 +108,14 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 7.1 | SQL checks: not null, unique keys, home ≠ away, valid status, referential integrity, row count > 0 | MUST | MIDTERM | [x] `quality/checks.py`, 24 checks in total (football, form, weather, venue, forecast, odds, crests) |
 | 7.2 | Plausibility: goals in range (temperature with the weather work) | SHOULD | MIDTERM | [x] `goals_are_plausible`, `weather_values_plausible` |
 | 7.3 | Results persisted in `meta.dq_results`; critical failures fail the run | MUST | MIDTERM | [x] persisted per run, CRITICAL exits non-zero |
-| 7.4 | Schema-drift handling: required-field validation with clear error, optional fields tolerant | MUST | MIDTERM | [ ] |
+| 7.4 | Schema-drift handling: required-field validation with clear error, optional fields tolerant | MUST | MIDTERM | [x] the contracts of 2.8: a missing required field fails with its path (`matches[7] (id 575330).score.fullTime.home missing`), new or missing optional fields pass; The Odds API and OpenStreetMap only type-checked (limitation in `docs/failure-behaviour.md`) |
 | 7.5 | Same checks against BigQuery | MUST | FINAL | [ ] |
 
 ## EPIC 8 – Testing
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 137 tests in total, CI |
+| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 160 tests in total, CI |
 | 8.1b | Contract tests against the real samples (schema, keys, referential integrity) | SHOULD | M1 | [x] 13 tests in `tests/test_sample_payloads.py` |
 | 8.2 | Tests for parsing and transformations against Postgres, also in CI | MUST | MIDTERM | [x] 18 transformation tests; CI has a Postgres service |
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
@@ -175,9 +175,9 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 14.1 | README skeleton with all rubric sections | MUST | M1 | [x] |
 | 14.2 | Use case, data sources, Architecture v0.1, ADRs, backlog | MUST | M1 | [x] `docs/` |
 | 14.3 | Rubric checklist kept current | SHOULD | all | [~] `docs/rubric-checklist.md` |
-| 14.4 | Architecture v0.2 with lessons learned (five sources, one ingestion, the layering rule) | MUST | MIDTERM | [~] the three new diagrams exist (`docs/architecture-overview.svg`, `-detail.svg`, `-target.svg`); the written document is open |
-| 14.5 | Setup / execution / verification instructions tested by the other student | MUST | MIDTERM | [ ] |
-| 14.6 | Evidence folder: run logs, verification output, rerun/backfill proof | MUST | MIDTERM | [ ] |
+| 14.4 | Architecture v0.2 with lessons learned (five sources, one ingestion, the layering rule) | MUST | MIDTERM | [x] `docs/architecture/architecture-v0.2.md`: 11 changes since v0.1 with the reason for each, 7 lessons learned, the gaps carried into the final; plus the three diagrams |
+| 14.5 | Setup / execution / verification instructions tested by the other student | MUST | MIDTERM | [~] followed top to bottom in a fresh container on 18 Oct (`docs/evidence/clean-environment-test.md`); its two documentation findings are fixed in the README (crests need the network, the expected DQ count per case); the run on the other student's own machine is open |
+| 14.6 | Evidence folder: run logs, verification output, rerun/backfill proof | MUST | MIDTERM | [x] `docs/evidence/`: `local-pipeline-run.md` (runs, reruns, backfill, Dagster), `weather.md`, `restructure.md`, `api-exploration.md`, `clean-environment-test.md`, screenshots |
 | 14.7 | Final architecture and evolution v0.1 → v0.2 → final | MUST | FINAL | [ ] |
 | 14.8 | Known limitations section honest and current | MUST | all | [~] |
 | 14.9 | Oral-defence question bank with both students' answers | SHOULD | MIDTERM/FINAL | [~] 16 questions with short answers in `docs/pitch/speaker-notes.md` (M1 level: raw zone, reruns, source failure, leakage, past seasons, full vs. incremental, 100x data, Dagster vs. Airflow, data quality, licences); the midterm additions (orchestration failure modes, evidence walkthrough) are open |
