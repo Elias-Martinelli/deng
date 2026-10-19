@@ -24,6 +24,7 @@ tables back from 20 September to 10 September.
 # Dagster inspects the type of the `context` parameter at import time and
 # rejects it when annotations are postponed strings.
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from datetime import date
 from typing import Any
 
@@ -173,6 +174,13 @@ def _logical_date(context: AssetExecutionContext) -> date:
     return date.fromisoformat(context.partition_key)
 
 
+def _clock(context: AssetExecutionContext) -> AbstractContextManager:
+    # INGEST_SOURCE=samples replays a snapshot: the partition's 06:00 run is
+    # "now", exactly as for `run --from-samples` (deng.clock), so a sample
+    # backfill gives the same tables whatever day it is executed.
+    return pipeline.sample_clock(_logical_date(context), get_settings().ingest_source == "samples")
+
+
 def _count(table: str, where: str = "", params: tuple[Any, ...] = ()) -> int:
     # Row counts become asset metadata in the UI - a quick plausibility check
     # per run ("fact_match 144") without opening psql. `table` only ever comes
@@ -223,7 +231,8 @@ def raw_football_data(context: AssetExecutionContext) -> dg.MaterializeResult:
 )
 def curated_model(context: AssetExecutionContext):
     """Run the SQL transformations for the partition's logical date."""
-    run_step("transform", pipeline.command_transform, _logical_date(context))
+    with _clock(context):
+        run_step("transform", pipeline.command_transform, _logical_date(context))
     for spec in MODEL_SPECS:
         table = ".".join(spec.key.path)
         yield dg.MaterializeResult(asset_key=spec.key, metadata={"row_count": _count(table)})
@@ -243,6 +252,9 @@ def curated_model(context: AssetExecutionContext):
 )
 def team_crests(context: AssetExecutionContext) -> dg.MaterializeResult:
     """Store the crests that are not stored yet (usually none after the first run)."""
+    if get_settings().ingest_source == "samples":
+        # Same rule as the CLI's sample run: no sample for an image, no request.
+        return dg.MaterializeResult(metadata={"fetched": 0, "failed": 0, "note": "samples"})
     with connect() as connection:
         result = fetch_crests(connection)
     for team_id, reason in result.failed.items():
@@ -301,7 +313,7 @@ def raw_open_meteo(context: AssetExecutionContext) -> dg.MaterializeResult:
     """Load the venues and fetch today's forecasts."""
     settings = get_settings()
     logical_date = _logical_date(context)
-    with connect(settings) as connection:
+    with _clock(context), connect(settings) as connection:
         with PipelineRun(connection, "ingest_weather", logical_date) as run:
             try:
                 result = ingest_weather(
@@ -453,7 +465,7 @@ def odds_model(context: AssetExecutionContext):
 def data_quality(context: AssetExecutionContext) -> dg.MaterializeResult:
     """Run every check; a CRITICAL failure fails the run, a WARNING only shows up."""
     try:
-        with connect() as connection:
+        with _clock(context), connect() as connection:
             results = run_checks(connection)
     except TRANSIENT_ERRORS:
         raise

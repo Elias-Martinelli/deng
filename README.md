@@ -272,10 +272,10 @@ cd deng
 
 ./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 128 tests (137 after make setup-orchestrator); DB tests skip without PostgreSQL
+make test                  # 136 tests (146 after make setup-orchestrator); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
-make run-samples           # ingest + transform + data quality, no API key needed
+make run-samples           # ingest + transform + data quality, offline, no API key needed
 make verify                # verification queries
 ```
 
@@ -309,6 +309,14 @@ Without a key the step skips itself and says so; `make run-samples` replays two
 committed sample fetches (fictional prices,
 [`data/sample/the-odds-api/`](data/sample/the-odds-api/README.md)), so the whole
 path works offline.
+
+`make run-samples` makes no network request at all and gives the same result
+on any day. The samples are a snapshot from 20-22 September 2026, so the run
+replays the scheduled 06:00 run of **2026-09-23**: that is its logical date and,
+through `meta.pipeline_now()`, its clock for everything the SQL decides about
+time ("still to come", "computed before kick-off", "odds fresh"). Crest images
+have no sample and are not downloaded, so the dashboard shows the three-letter
+codes. `--date` replays another day instead.
 
 Stadium coordinates need no key and are asked once per season:
 
@@ -546,7 +554,8 @@ make dagster-backfill FROM=2026-09-15 TO=2026-09-17   # one run per day, one at 
   `make dagster-backfill`. Safe because the raw load is an upsert and staging
   never overwrites newer data with older.
 * **No API key?** Set `INGEST_SOURCE=samples` in `.env`; schedule and backfills
-  then replay the committed payloads.
+  then replay the committed payloads, each partition on its own 06:00 clock and
+  without crest downloads, like `make run-samples`.
 * **Without Docker:** `make setup-orchestrator && make dagster-dev`.
 
 The assets call the same functions as the CLI, so the manual path still works
@@ -557,7 +566,7 @@ of it:
 python -m deng.pipeline init                    # create the schemas and tables (idempotent)
 python -m deng.pipeline ingest                  # ask all five sources, store every answer
 python -m deng.pipeline ingest --only weather   # one source: football|openstreetmap|crests|weather|odds
-python -m deng.pipeline ingest --from-samples   # replay the committed answers, no API key needed
+python -m deng.pipeline ingest --from-samples   # replay the committed answers (as of 2026-09-23), offline
 python -m deng.pipeline transform               # raw -> staging -> curated, all sources
 python -m deng.pipeline dq                      # the 24 data-quality checks
 python -m deng.pipeline run --date 2026-09-18   # ingest + transform + dq, in that order
@@ -690,13 +699,15 @@ Treated as a feature in its own right:
 * `setup.sh` / `make setup` need no pyenv, direnv or conda — only the standard
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
-  reviewer can reproduce every result **before registering an API key**.
+  reviewer can reproduce every result **before registering an API key**. It
+  is offline and pinned to the samples' day (2026-09-23), so it gives the same
+  tables and the same `22/24` on any day it is run.
 * Every dependency is pinned in [`constraints.txt`](constraints.txt), for all
   extras and every Python from 3.10 up; `make setup`, the Docker images and CI
   install with `-c constraints.txt`, so a clone next month gets the versions
   tested today. After changing `pyproject.toml`, `make lock` re-resolves it
   (needs [uv](https://docs.astral.sh/uv/), installing does not).
-* CI runs lint, 137 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 146 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -710,10 +721,10 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 137 tests: config, API client, source schemas, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `137 passed` with PostgreSQL up and `make setup-orchestrator`. Without the orchestrator extra pytest collects 128 (`test_orchestration.py` skips as one); without a database `77 passed, 51 skipped` |
+| `make test` | 146 tests: config, API client, source schemas, loader, transformations, weather, crests, odds, DQ, orchestration, the sample replay, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `146 passed` with PostgreSQL up and `make setup-orchestrator`. Without the orchestrator extra pytest collects 136 (`test_orchestration.py` skips as one); without a database `83 passed, 53 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
-| `make dq` | curated-layer data quality | `24/24 checks passed` with past seasons ingested; `23/24` with the current season only - the open WARNING is the form window early in a season. Exit 0 either way |
+| `make dq` | curated-layer data quality | `24/24 checks passed` with past seasons ingested; `23/24` with the current season only - the open WARNING is the form window early in a season. After `make run-samples` always `22/24`: the form window and the crests (a sample run downloads none). Exit 0 in every case |
 
 Worked examples with real output:
 [`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
@@ -911,7 +922,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │
 ├── app/                      # the dashboard: dataset panels, odds section, HTML components
 ├── notebooks/                # exploration
-├── tests/                    # 137 tests: unit, contract, integration, layering rule
+├── tests/                    # 146 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/

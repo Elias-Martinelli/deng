@@ -183,14 +183,16 @@ def store(
             """
             INSERT INTO raw.open_meteo AS r
                 (endpoint, venue_team_id, request_params, request_url, ingestion_date,
-                 run_id, payload, payload_hash)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                 run_id, payload, payload_hash, ingested_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, meta.pipeline_now())
             ON CONFLICT (source, endpoint, venue_team_id, ingestion_date) DO UPDATE SET
                 request_params = EXCLUDED.request_params, request_url = EXCLUDED.request_url,
                 -- A rerun refreshes the fetch time on purpose: the leakage guard
                 -- compares it with the kick-off, so a rerun after kick-off makes
                 -- that day's forecast unusable and the previous day's is taken.
-                ingested_at = now(), run_id = EXCLUDED.run_id,
+                -- The pipeline clock, not now(): it is the fetch time the leakage
+                -- guard reads, so a sample replay stamps its replayed moment.
+                ingested_at = meta.pipeline_now(), run_id = EXCLUDED.run_id,
                 payload = EXCLUDED.payload, payload_hash = EXCLUDED.payload_hash
             """,
             (

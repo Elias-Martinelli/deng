@@ -152,6 +152,20 @@ def test_rerunning_a_partition_does_not_duplicate(connection, monkeypatch):
 
 
 @pytest.mark.postgres
+def test_a_sample_partition_is_offline_and_runs_on_its_own_day(connection, monkeypatch):
+    def no_download(connection):
+        raise AssertionError("INGEST_SOURCE=samples must not request a crest")
+
+    monkeypatch.setenv("INGEST_SOURCE", "samples")
+    monkeypatch.setattr("deng.orchestration.definitions.fetch_crests", no_download)
+    assert _execute("2026-09-20").success
+    # Judged at the partition's 06:00, not today: every unplayed fixture of the
+    # snapshot is still to come.
+    upcoming = _scalar(connection, "SELECT count(*) FROM curated.fact_match WHERE is_upcoming")
+    assert upcoming == 126
+
+
+@pytest.mark.postgres
 def test_a_permanent_error_fails_the_run_without_retrying(connection, monkeypatch):
     # No API key is a configuration error: retrying cannot fix it. If the
     # classification regressed, the step would be queued for a retry instead.

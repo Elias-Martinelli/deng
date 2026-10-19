@@ -115,7 +115,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 137 tests in total, CI |
+| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 146 tests in total, CI |
 | 8.1b | Contract tests against the real samples (schema, keys, referential integrity) | SHOULD | M1 | [x] 13 tests in `tests/test_sample_payloads.py` |
 | 8.2 | Tests for parsing and transformations against Postgres, also in CI | MUST | MIDTERM | [x] 18 transformation tests; CI has a Postgres service |
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
