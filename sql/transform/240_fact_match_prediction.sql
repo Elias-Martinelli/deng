@@ -105,8 +105,10 @@ SELECT
     r.match_id,
     'form-poisson-v1',
     %(logical_date)s,
-    now(),
-    now() < r.utc_kickoff,
+    -- The pipeline clock (012): in a sample replay "computed before kick-off"
+    -- is judged at the replayed moment, not on the day the replay happens.
+    meta.pipeline_now(),
+    meta.pipeline_now() < r.utc_kickoff,
     round(o.home_prob, 5),
     round(o.draw_prob, 5),
     round(o.away_prob, 5),
@@ -119,7 +121,7 @@ FROM rates r
 JOIN outcome o ON o.match_id = r.match_id
 -- A rerun of the same day replaces that day's forecast; a new day adds one.
 ON CONFLICT (match_id, model_version, as_of_date) DO UPDATE SET
-    predicted_at = now(),
+    predicted_at = meta.pipeline_now(),
     is_pre_match = EXCLUDED.is_pre_match,
     home_prob = EXCLUDED.home_prob,
     draw_prob = EXCLUDED.draw_prob,

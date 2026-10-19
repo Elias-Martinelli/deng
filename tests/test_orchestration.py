@@ -174,8 +174,9 @@ def test_every_step_of_a_scheduled_run_runs_exactly_once(connection, monkeypatch
             "SELECT pipeline_name, count(*) FROM meta.pipeline_runs GROUP BY 1 ORDER BY 1"
         )
         runs = dict(cursor.fetchall())
+    # No fetch_crests: a sample run downloads no crest, so it logs no run either
+    # (test_a_sample_partition_is_offline_and_runs_on_its_own_day below).
     assert runs == {
-        "fetch_crests": 1,
         "ingest_football_raw": 1,
         "ingest_osm_venues": 1,
         "ingest_weather": 1,
@@ -195,6 +196,20 @@ def test_rerunning_a_partition_does_not_duplicate(connection, monkeypatch):
         ("2026-09-20",),
     )
     assert raw_rows == 4
+
+
+@pytest.mark.postgres
+def test_a_sample_partition_is_offline_and_runs_on_its_own_day(connection, monkeypatch):
+    def no_download(connection):
+        raise AssertionError("INGEST_SOURCE=samples must not request a crest")
+
+    monkeypatch.setenv("INGEST_SOURCE", "samples")
+    monkeypatch.setattr("deng.orchestration.definitions.fetch_crests", no_download)
+    assert _execute("2026-09-20").success
+    # Judged at the partition's 06:00, not today: every unplayed fixture of the
+    # snapshot is still to come.
+    upcoming = _scalar(connection, "SELECT count(*) FROM curated.fact_match WHERE is_upcoming")
+    assert upcoming == 126
 
 
 @pytest.mark.postgres

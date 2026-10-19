@@ -15,6 +15,7 @@ from pathlib import Path
 
 import psycopg
 
+from deng.clock import pinned_moment
 from deng.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,13 @@ def connect(settings: Settings | None = None) -> Iterator[psycopg.Connection]:
     # configuration without a measurable benefit. The Streamlit app, which
     # serves repeated requests, keeps one cached connection instead.
     with psycopg.connect(settings.postgres_dsn) as connection:
+        pinned = pinned_moment()
+        if pinned is not None:
+            # A sample replay (deng.clock.replaying): meta.pipeline_now() answers
+            # with the replayed moment instead of the wall clock. Session-wide
+            # and committed, so it holds for every transaction on this connection.
+            connection.execute("SELECT set_config('deng.as_of', %s, false)", (pinned.isoformat(),))
+            connection.commit()
         yield connection
 
 

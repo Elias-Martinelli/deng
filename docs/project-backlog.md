@@ -62,7 +62,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 3.1 | Schemas `raw`, `staging`, `curated`, `meta`; DDL under `sql/` | MUST | MIDTERM | [x] `sql/schema/001..011` |
+| 3.1 | Schemas `raw`, `staging`, `curated`, `meta`; DDL under `sql/` | MUST | MIDTERM | [x] `sql/schema/001..012` |
 | 3.2 | Raw tables (JSONB + metadata, unique key per source/endpoint/params/date) | MUST | MIDTERM | [x] one per source: `raw.football_data`, `raw.open_meteo`, `raw.odds_api`, `raw.team_crests`, `raw.osm_venues` |
 | 3.3 | Idempotent raw loader (`ON CONFLICT`) | MUST | MIDTERM | [x] `raw_loader.py`, evidence §2 |
 | 3.4 | Verification queries (`sql/verify/*.sql`) | MUST | MIDTERM | [x] 14 checks in 3 files, `make verify` |
@@ -115,7 +115,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 161 tests in total, CI |
+| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 170 tests in total, CI |
 | 8.1b | Contract tests against the real samples (schema, keys, referential integrity) | SHOULD | M1 | [x] 13 tests in `tests/test_sample_payloads.py` |
 | 8.2 | Tests for parsing and transformations against Postgres, also in CI | MUST | MIDTERM | [x] 18 transformation tests; CI has a Postgres service |
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
