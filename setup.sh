@@ -62,9 +62,12 @@ echo "Creating virtualenv in .venv"
 "$PYTHON" -m venv .venv
 
 # --- 3. Dependencies --------------------------------------------------------
-echo "Installing the package and its dev dependencies"
+# The app extra too: the quick start ends with `make app`, which needs Streamlit.
+# constraints.txt pins every package to the versions CI tested (`make lock`),
+# so a clean clone installs the same environment next month as today.
+echo "Installing the package, its dev dependencies and the dashboard"
 .venv/bin/pip install --quiet --upgrade pip
-.venv/bin/pip install --quiet -e ".[dev]"
+.venv/bin/pip install --quiet -c constraints.txt -e ".[dev,app]"
 
 # --- 4. Configuration -------------------------------------------------------
 if [ ! -f .env ]; then

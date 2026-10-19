@@ -121,7 +121,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
 | 8.4 | Data-quality check tests incl. a deliberately broken row | SHOULD | MIDTERM | [x] `test_a_critical_violation_is_detected` |
 | 8.5 | GitHub Actions: lint + tests on every push | SHOULD | M1 | [x] `.github/workflows/ci.yml` |
-| 8.6 | Separate test database, so `make test` does not empty the local pipeline data | SHOULD | MIDTERM | [ ] `tests/conftest.py` truncates raw, staging and curated, so a test run costs the ingested seasons and the odds credits already spent |
+| 8.6 | Separate test database, so `make test` does not empty the local pipeline data | SHOULD | MIDTERM | [x] `tests/conftest.py` points the session at `<POSTGRES_DB>_test` and creates it on first use |
 | 8.7 | Architecture rule as a test: ingestion never reads staging or curated | MUST | MIDTERM | [x] `tests/test_layering.py` (see 2.12) |
 
 ## EPIC 9 – Google Cloud Storage

@@ -24,13 +24,12 @@ WORKDIR /app
 
 # Docker caches each instruction as a layer and re-runs it only when its inputs
 # change. Because the package is installed from src/, any code change re-runs
-# this pip install (about 20 s here, dependencies included). Separating the
-# dependencies into their own layer would need a pinned requirements file - not
-# worth it at this size, and it would be the first step if builds got slow.
-# README.md is copied because pyproject.toml declares it as the package readme.
-COPY pyproject.toml README.md ./
+# this pip install (about 20 s here, dependencies included).
+# README.md is copied because pyproject.toml declares it as the package readme;
+# constraints.txt pins every dependency to the versions CI tested (`make lock`).
+COPY pyproject.toml README.md constraints.txt ./
 COPY src/ ./src/
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir -c constraints.txt .
 
 COPY sql/ ./sql/
 # Reference data is part of the product (venue coordinates for the weather), unlike
@@ -58,7 +57,7 @@ CMD ["--help"]
 FROM pipeline AS app
 # root only for installing; the last USER line switches back before anything runs
 USER root
-RUN pip install --no-cache-dir ".[app]"
+RUN pip install --no-cache-dir -c constraints.txt ".[app]"
 COPY app/ /app/app/
 # Theme and toolbar settings; Streamlit reads them from the working directory.
 COPY .streamlit/config.toml /app/.streamlit/config.toml
@@ -79,7 +78,7 @@ CMD []
 # chosen by the Compose service.
 FROM pipeline AS orchestrator
 USER root
-RUN pip install --no-cache-dir ".[orchestrator]"
+RUN pip install --no-cache-dir -c constraints.txt ".[orchestrator]"
 ENV DAGSTER_HOME=/opt/dagster/dagster_home
 COPY orchestrator/dagster.yaml orchestrator/workspace.yaml /opt/dagster/dagster_home/
 RUN chown -R pipeline:pipeline /opt/dagster /app

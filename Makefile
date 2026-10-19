@@ -32,7 +32,7 @@ PYTHON ?= $(shell for c in python3.13 python3.12 python3.11 python3.10 python3; 
 	{ echo $$c; break; }; done)
 PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 
-.PHONY: help setup setup-app test test-integration lint format explore doctor clean \
+.PHONY: help setup setup-app lock test test-integration lint format explore doctor clean \
         up down logs ps psql init ingest ingest-samples transform dq run run-samples odds \
         backfill verify docker-ingest docker-app reset app notebook \
         setup-orchestrator orchestrator dagster-dev dagster-backfill venues docker-ready
@@ -40,7 +40,7 @@ PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-19s %s\n", $$1, $$2}'
 
-setup:  ## Create a virtualenv and install the package with dev dependencies
+setup:  ## Create a virtualenv and install the package, dev tools and the dashboard
 	@if [ -z "$(PYTHON)" ]; then \
 		echo "ERROR: no Python >= $(MIN_PYTHON) that can create a virtualenv was found."; \
 		echo "  Interpreters on PATH:"; \
@@ -60,13 +60,22 @@ setup:  ## Create a virtualenv and install the package with dev dependencies
 	@echo "Using $(PYTHON) ($$($(PYTHON) --version 2>&1))"
 	$(PYTHON) -m venv $(VENV)
 	$(VENV)/bin/pip install --upgrade pip
-	$(VENV)/bin/pip install -e ".[dev]"
+	$(VENV)/bin/pip install -c constraints.txt -e ".[dev,app]"
 	@test -f .env || cp .env.example .env
 	@echo ""
 	@echo "Setup complete. Next:"
 	@echo "  1. add your free key to .env  (FOOTBALL_DATA_API_KEY=...)"
 	@echo "  2. make doctor   – check the environment"
 	@echo "  3. make test     – run the unit tests (no network needed)"
+
+# constraints.txt pins every dependency of every extra for all supported Python
+# versions at once (--universal), so pip on 3.10 and on 3.13 both find their
+# line. Without it a clean clone installs whatever is newest that day - which
+# is how SQLAlchemy 2.1 once broke Dagster runs. uv is only needed here, never
+# for installing: setup, Docker and CI use plain pip with `-c constraints.txt`.
+lock:  ## Re-resolve constraints.txt after changing pyproject.toml (needs uv)
+	uv pip compile pyproject.toml --all-extras --universal --python-version $(MIN_PYTHON) \
+		--custom-compile-command "make lock" --quiet -o constraints.txt
 
 doctor:  ## Check that the environment is ready (interpreter, package, .env, API key)
 	@$(PY) scripts/doctor.py
@@ -173,7 +182,7 @@ test-integration:  ## Run only the tests that need PostgreSQL
 # --- Orchestration (Dagster) --------------------------------------------------
 
 setup-orchestrator:  ## Install the Dagster extra into .venv (for dagster-dev and its tests)
-	$(VENV)/bin/pip install -e ".[dev,orchestrator]"
+	$(VENV)/bin/pip install -c constraints.txt -e ".[dev,orchestrator]"
 
 orchestrator: docker-ready  ## Start PostgreSQL + Dagster (webserver, daemon); UI on http://localhost:3000
 	docker compose up -d --build postgres dagster-webserver dagster-daemon
@@ -193,7 +202,7 @@ dagster-backfill: docker-ready  ## Backfill through Dagster: make dagster-backfi
 # `pip install -e` (editable): the package points at src/, so code changes take
 # effect without reinstalling. The extras in [...] come from pyproject.toml.
 setup-app:  ## Install the extras for Streamlit and Jupyter
-	$(VENV)/bin/pip install -e ".[dev,app,notebook]"
+	$(VENV)/bin/pip install -c constraints.txt -e ".[dev,app,notebook]"
 
 app:  ## Start the Streamlit viewer (reads curated tables only)
 	$(PY) -m streamlit run app/streamlit_app.py

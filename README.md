@@ -288,9 +288,9 @@ upgrade is needed), `make`, and on Debian/Ubuntu/WSL the `python3-venv` package
 git clone https://github.com/Elias-Martinelli/deng.git
 cd deng
 
-./setup.sh                 # venv + install + .env + self-check   (or: make setup)
+./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 161 tests; the database ones skip without PostgreSQL
+make test                  # 161 tests (149 without make setup-orchestrator); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, no API key needed
@@ -299,8 +299,13 @@ make verify                # verification queries
 
 `setup.sh` picks the newest interpreter ≥ 3.10 that can actually build a
 virtualenv and tells you which one it used; override with
-`make setup PYTHON=python3.12`. Activating the venv is optional — every `make`
-target uses `.venv` directly.
+`make setup PYTHON=python3.12`. It installs the dashboard too, so `make app`
+works right after it. Activating the venv is optional — every `make` target
+uses `.venv` directly.
+
+`make test` never touches your pipeline data: the integration tests empty the
+tables they use, so they run in their own database, `<POSTGRES_DB>_test`
+(`cl_intelligence_test`), which the first run creates on the same server.
 
 With an API key (free registration at
 <https://www.football-data.org/client/register>), put it in `.env` and use the
@@ -712,6 +717,11 @@ Treated as a feature in its own right:
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**.
+* Every dependency is pinned in [`constraints.txt`](constraints.txt), for all
+  extras and every Python from 3.10 up; `make setup`, the Docker images and CI
+  install with `-c constraints.txt`, so a clone next month gets the versions
+  tested today. After changing `pyproject.toml`, `make lock` re-resolves it
+  (needs [uv](https://docs.astral.sh/uv/), installing does not).
 * CI runs lint, 161 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
@@ -726,7 +736,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 161 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`) | `161 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
+| `make test` | 161 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `161 passed` with PostgreSQL up and `make setup-orchestrator`. Without the orchestrator extra pytest collects 149 (`test_orchestration.py` skips as one); without a database `97 passed, 52 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | after `make run-samples`: **`22/24`** with network, **`21/24`** offline, no CRITICAL failure, exit 0 - see below. With the live API and past seasons ingested: up to `24/24` |
@@ -753,7 +763,7 @@ distribution, form and its coverage, plus a query that **re-verifies the
 leakage guard independently** of the pipeline's own checks.
 
 ```bash
-make setup-app     # installs the Streamlit and Jupyter extras
+make setup-app     # adds the Jupyter extra (Streamlit comes with make setup)
 make notebook      # JupyterLab with the project environment
 ```
 
@@ -888,8 +898,6 @@ Documented honestly, because hidden failures cost more than known ones:
 * **No live comparison.** During a match the app shows the pre-match forecast
   against the last odds read and says so; the interval job does not fetch for
   matches already kicked off.
-* **Tests share the local database** and empty its tables; run `make
-  run-samples` again after `make test`.
 * The knockout fixtures do not exist until the December draw, so the fixture
   list is currently the 144-match league phase.
 
