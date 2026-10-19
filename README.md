@@ -922,7 +922,8 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── docker-compose.yml        # postgres + Dagster + pipeline + app on one network
 ├── Dockerfile                # three stages: pipeline, app, orchestrator
 ├── orchestrator/             # Dagster instance + workspace config (DAGSTER_HOME)
-├── pyproject.toml            # dependencies and extras (dev / app / notebook)
+├── pyproject.toml            # dependencies and extras (dev / app / orchestrator / notebook)
+├── constraints.txt           # every dependency pinned (`make lock` regenerates it)
 ├── .env.example              # configuration template — copy to .env
 │
 ├── src/deng/
@@ -947,14 +948,19 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │
 ├── app/                      # the dashboard: dataset panels, odds section, HTML components
 ├── notebooks/                # exploration
+├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
+├── .github/workflows/        # CI: lint, tests, idempotency smoke test
 ├── tests/                    # 161 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/
     ├── architecture-overview.svg · architecture-detail.svg · architecture-target.svg
     ├── use-case.md · data-sources.md · data-model.md · failure-behaviour.md
+    ├── code-walkthrough.md     # one match through the code, nine stops
     ├── rubric-checklist.md · project-backlog.md
-    ├── architecture/ · adr/ · evidence/
+    ├── architecture/           # v0.1 (the pitch) and v0.2 (the midterm)
+    ├── adr/ · evidence/
+    └── pitch/                  # slides, speaker notes, written pitch, deck
 ```
 
 Two sentences that explain the whole layout: **`sources/` asks, `sql/` builds,

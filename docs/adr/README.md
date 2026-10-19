@@ -11,7 +11,7 @@ Disadvantages → Consequences. Status is one of **PROPOSED**, **ACCEPTED**,
 |---|---|---|---|
 | [ADR-001](ADR-001-football-data-source.md) | Football and weather data sources | ACCEPTED | 2026-09-20 |
 | [ADR-002](ADR-002-workflow-orchestrator.md) | Workflow orchestrator | ACCEPTED (Dagster) | 2026-09-21 |
-| [ADR-003](ADR-003-raw-data-storage.md) | Raw data storage strategy | PROPOSED | 2026-09-18 |
+| [ADR-003](ADR-003-raw-data-storage.md) | Raw data storage strategy | ACCEPTED | 2026-09-20 |
 | [ADR-004](ADR-004-champions-league-scope.md) | Scope: Champions League matches only, free tier only | ACCEPTED | 2026-09-21 |
 | [ADR-005](ADR-005-bookmaker-odds-source.md) | Bookmaker odds: The Odds API, fetched by the pipeline under a credit budget | ACCEPTED | 2026-09-22 |
 

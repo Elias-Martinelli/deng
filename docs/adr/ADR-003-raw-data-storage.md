@@ -1,7 +1,14 @@
 # ADR-003 – Raw data storage strategy
 
-Status: **PROPOSED** (2026-09-18). Becomes ACCEPTED with the first raw load into
-PostgreSQL.
+Status: **ACCEPTED** (2026-09-20, with the first raw load into PostgreSQL in
+`5ba52b7`). Proposed 2026-09-18.
+
+As implemented, two details differ from the table below: the raw zone has one
+table per *source* (`raw.football_data`, `raw.open_meteo`, `raw.odds_api`,
+`raw.team_crests`, `raw.osm_venues`), not per endpoint family, and
+`raw.odds_api` is unique per fetch time (`ingested_at`) instead of per day,
+because the intraday history is the point of that source
+([ADR-005](ADR-005-bookmaker-odds-source.md)).
 
 ## Context
 
