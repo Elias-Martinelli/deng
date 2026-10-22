@@ -386,8 +386,9 @@ CHECKS: tuple[Check, ...] = (
                    coalesce(
                        NOT EXISTS (SELECT 1 FROM curated.fact_match
                                     WHERE NOT is_finished
-                                      AND utc_kickoff BETWEEN now() AND now() + interval '24 hours')
-                       OR max(ingested_at) > now() - interval '24 hours',
+                                      AND utc_kickoff - meta.pipeline_now()
+                                          BETWEEN interval '0' AND interval '24 hours')
+                       OR max(ingested_at) > meta.pipeline_now() - interval '24 hours',
                        false) AS passed
               FROM raw.odds_api
         """,

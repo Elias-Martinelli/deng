@@ -52,11 +52,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+          cache-dependency-path: constraints.txt
 
       - name: Install
         # The orchestrator extra too, so the Dagster definitions are loaded and
-        # tested in CI instead of being skipped.
-        run: pip install -e ".[dev,orchestrator]"
+        # tested in CI instead of being skipped. constraints.txt: the pinned
+        # versions a reviewer's `make setup` installs, so CI tests exactly those.
+        run: pip install -c constraints.txt -e ".[dev,orchestrator]"
 
       - name: Lint
         # `format --check` fails on unformatted code instead of fixing it: CI

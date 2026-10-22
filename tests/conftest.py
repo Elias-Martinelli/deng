@@ -2,7 +2,9 @@
 
 Integration tests need a PostgreSQL. They skip automatically when none is
 reachable, so `make test` stays green on a machine without Docker; `make
-test-integration` runs them against the Compose stack.
+test-integration` runs them against the Compose stack. They run in their own
+database, `<POSTGRES_DB>_test`, created on first use: they empty the pipeline
+tables, and the database `make run-samples` fills must keep its data.
 """
 
 import json
@@ -14,26 +16,63 @@ from pathlib import Path
 import pytest
 
 SAMPLE_DIR = Path(__file__).resolve().parents[1] / "data" / "sample" / "football-data"
+TEST_DATABASE_SUFFIX = "_test"
 
 
-def postgres_available() -> bool:
-    """Return True when a PostgreSQL matching the environment can be reached."""
+def use_a_separate_test_database() -> None:
+    """Point every connection of this test session at `<POSTGRES_DB>_test`.
+
+    The integration tests TRUNCATE raw, staging and curated. Against the
+    pipeline's own database that would cost the ingested seasons and the odds
+    credits already spent. An environment variable beats `.env` (config.py), so
+    this one setting redirects the fixtures, the CLI and the Dagster assets alike.
+    """
+    from deng.config import get_settings
+
+    name = get_settings().postgres_db
+    if not name.endswith(TEST_DATABASE_SUFFIX):
+        os.environ["POSTGRES_DB"] = name + TEST_DATABASE_SUFFIX
+
+
+def create_test_database_if_missing(dsn: str) -> None:
+    """Create the test database on the same server, connecting via `postgres`."""
+    import psycopg
+    from psycopg import sql
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    name = conninfo_to_dict(dsn)["dbname"]
+    with psycopg.connect(
+        make_conninfo(dsn, dbname="postgres"), connect_timeout=3, autocommit=True
+    ) as conn:
+        if conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone():
+            return
+        conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+
+
+def postgres_unavailable_reason() -> str | None:
+    """None when the test database is reachable, otherwise why it is not."""
     try:
         import psycopg
 
         from deng.config import get_settings
 
-        with psycopg.connect(get_settings().postgres_dsn, connect_timeout=3):
-            return True
-    except Exception:  # noqa: BLE001 - any failure means "not available"
-        return False
+        dsn = get_settings().postgres_dsn
+        create_test_database_if_missing(dsn)
+        with psycopg.connect(dsn, connect_timeout=3):
+            return None
+    except Exception as error:  # noqa: BLE001 - any failure means "not available"
+        if getattr(error, "sqlstate", None) == "42501":  # insufficient_privilege
+            name = os.environ.get("POSTGRES_DB")
+            return f"cannot create the test database {name} - create it once, or grant CREATEDB"
+        return "no PostgreSQL reachable - start it with `make up`"
 
 
 def pytest_configure(config):
-    """Register the marker so `-m postgres` works and pytest does not warn."""
+    """Register the marker and move the session onto the test database."""
     config.addinivalue_line(
         "markers", "postgres: needs a reachable PostgreSQL (started with `make up`)"
     )
+    use_a_separate_test_database()
 
 
 def pytest_collection_modifyitems(config, items):
@@ -45,9 +84,10 @@ def pytest_collection_modifyitems(config, items):
     `python -m pytest` and false for a bare `pytest` - exactly the difference
     that made CI fail while local runs passed.
     """
-    if postgres_available():
+    reason = postgres_unavailable_reason()
+    if reason is None:
         return
-    skip = pytest.mark.skip(reason="no PostgreSQL reachable - start it with `make up`")
+    skip = pytest.mark.skip(reason=reason)
     for item in items:
         if "postgres" in item.keywords:
             item.add_marker(skip)
@@ -55,7 +95,7 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture
 def connection():
-    """An open connection to a test-isolated schema state."""
+    """An open connection to the test database, its pipeline tables emptied."""
     import psycopg
 
     from deng.config import get_settings
@@ -64,8 +104,8 @@ def connection():
     conn = psycopg.connect(get_settings().postgres_dsn)
     apply_sql_files(conn)
     # Each test starts from empty pipeline tables; the DDL itself stays. Staging
-    # and curated too: a `make run-samples` before `make test` stamps them with
-    # today's date, which a test about "newer data wins" must not inherit.
+    # and curated too: a previous test's rows carry their own dates, which a
+    # test about "newer data wins" must not inherit.
     with conn.cursor() as cursor:
         cursor.execute(
             "TRUNCATE raw.football_data, meta.dq_results, meta.pipeline_runs, "

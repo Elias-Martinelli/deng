@@ -77,6 +77,10 @@ def _openstreetmap(context: Context, run_id) -> StepResult:
 
 
 def _crests(context: Context, run_id) -> StepResult:
+    # No sample for an image: a sample run makes no request at all, so it gives
+    # the same result offline. The viewer falls back to the three-letter code.
+    if context.from_samples:
+        return StepResult("club crests", "skipped: a sample run downloads nothing")
     result = club_crests.fetch_crests(context.connection, run_id=run_id)
     return StepResult("club crests", result.summary)
 

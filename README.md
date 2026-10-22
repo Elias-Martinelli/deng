@@ -218,7 +218,10 @@ OpenStreetMap step stored - all of it from answers, never from a built table.
   design with Mermaid diagrams for the conceptual, local and cloud views.
 * [Architecture Decision Records](docs/adr/README.md) — data sources,
   orchestrator, raw storage, Champions League scope.
-* Architecture v0.2 (midterm) will record what implementation changed.
+* [Architecture v0.2](docs/architecture/architecture-v0.2.md) — the midterm
+  state: what changed since v0.1 and why, and the lessons learned building it.
+* [Failure behaviour](docs/failure-behaviour.md) — every failure case, what the
+  pipeline does, and the test that proves it.
 
 ## Batch Ingestion Strategy
 
@@ -260,6 +263,21 @@ cannot help and would spend the request budget. Requests are paced against the
 odds are extras: a failure there is reported and recorded but does not fail the
 run - the football data, which everything else rests on, does.
 
+**Raw validation and schema drift:** every football-data.org answer and every
+Open-Meteo forecast is checked against a small contract *before* it is stored
+([`contracts.py`](src/deng/sources/contracts.py)). Required are only the fields
+the SQL reads as a key, a timestamp or the label - ids, `utcDate`, `status`, the
+score object, the list that holds the records. If one is missing, null or of
+the wrong type, the run fails with a message that names it
+(`matches[7] (id 575330).score.fullTime.home missing`), and the day's earlier
+answers are rolled back, so the raw zone never holds a payload the
+transformation cannot read. New fields and missing optional ones pass: the raw
+zone keeps them anyway.
+
+Every failure case - API down, rate limit, invalid JSON, schema drift, database
+down, a killed process, missing weather - with its behaviour and the test that
+proves it: [`docs/failure-behaviour.md`](docs/failure-behaviour.md).
+
 ## Local Development
 
 Requirements: **Python ≥ 3.10** (the version Ubuntu 22.04 LTS ships, so no
@@ -270,19 +288,24 @@ upgrade is needed), `make`, and on Debian/Ubuntu/WSL the `python3-venv` package
 git clone https://github.com/Elias-Martinelli/deng.git
 cd deng
 
-./setup.sh                 # venv + install + .env + self-check   (or: make setup)
+./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 137 tests; the database ones skip without PostgreSQL
+make test                  # 172 tests (159 without make setup-orchestrator); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
-make run-samples           # ingest + transform + data quality, no API key needed
+make run-samples           # ingest + transform + data quality, offline, no API key needed
 make verify                # verification queries
 ```
 
 `setup.sh` picks the newest interpreter ≥ 3.10 that can actually build a
 virtualenv and tells you which one it used; override with
-`make setup PYTHON=python3.12`. Activating the venv is optional — every `make`
-target uses `.venv` directly.
+`make setup PYTHON=python3.12`. It installs the dashboard too, so `make app`
+works right after it. Activating the venv is optional — every `make` target
+uses `.venv` directly.
+
+`make test` never touches your pipeline data: the integration tests empty the
+tables they use, so they run in their own database, `<POSTGRES_DB>_test`
+(`cl_intelligence_test`), which the first run creates on the same server.
 
 With an API key (free registration at
 <https://www.football-data.org/client/register>), put it in `.env` and use the
@@ -302,8 +325,16 @@ make odds                  # = ingest --only odds; fetches if the budget rules a
 
 Without a key the step skips itself and says so; `make run-samples` replays two
 committed sample fetches (fictional prices,
-[`data/sample/the-odds-api/`](data/sample/the-odds-api/README.md)), so the whole
-path works offline.
+[`data/sample/the-odds-api/`](data/sample/the-odds-api/README.md)), so the odds
+path needs no key either.
+
+`make run-samples` makes no network request at all and gives the same result
+on any day. The samples are a snapshot from 20-22 September 2026, so the run
+replays the scheduled 06:00 run of **2026-09-23**: that is its logical date and,
+through `meta.pipeline_now()`, its clock for everything the SQL decides about
+time ("still to come", "computed before kick-off", "odds fresh"). Crest images
+have no sample and are not downloaded, so the dashboard shows the three-letter
+codes. `--date` replays another day instead.
 
 Stadium coordinates need no key and are asked once per season:
 
@@ -314,6 +345,14 @@ make venues                # = ingest --only openstreetmap
 Offline, the committed answers in
 [`data/sample/openstreetmap/`](data/sample/openstreetmap/) are replayed instead,
 so `make run-samples` fills the venues too.
+
+**One exception: club crests need the network.** `make run-samples` replays
+every API answer from `data/sample/`, but the crest images are not committed -
+they are downloaded from `crests.football-data.org` (no key needed). Without
+that host all 36 downloads fail. That is best effort by design: the run still
+ends `OK` with exit 0, the dashboard shows the three-letter club code instead of
+the logo, and the WARNING check `every_team_has_a_crest` reports the gap. The
+next run with network fetches only the missing crests.
 
 Past seasons as training data: set `FOOTBALL_DATA_SEASONS=2023,2024` in `.env`
 and run `make ingest` once. Each season costs two requests; the answers stay in
@@ -541,7 +580,8 @@ make dagster-backfill FROM=2026-09-15 TO=2026-09-17   # one run per day, one at 
   `make dagster-backfill`. Safe because the raw load is an upsert and staging
   never overwrites newer data with older.
 * **No API key?** Set `INGEST_SOURCE=samples` in `.env`; schedule and backfills
-  then replay the committed payloads.
+  then replay the committed payloads, each partition on its own 06:00 clock and
+  without crest downloads, like `make run-samples`.
 * **Without Docker:** `make setup-orchestrator && make dagster-dev`.
 
 The assets call the same functions as the CLI, so the manual path still works
@@ -549,19 +589,26 @@ and is what the orchestrator runs. The CLI has seven commands, and that is all
 of it:
 
 ```bash
-python -m deng.pipeline init                    # create the schemas and tables (idempotent)
-python -m deng.pipeline ingest                  # ask all five sources, store every answer
-python -m deng.pipeline ingest --only weather   # one source: football|openstreetmap|crests|weather|odds
-python -m deng.pipeline ingest --from-samples   # replay the committed answers, no API key needed
-python -m deng.pipeline transform               # raw -> staging -> curated, all sources
-python -m deng.pipeline dq                      # the 24 data-quality checks
-python -m deng.pipeline run --date 2026-09-18   # ingest + transform + dq, in that order
+python -m deng.pipeline init                      # create the schemas and tables (idempotent)
+python -m deng.pipeline ingest                    # ask all five sources, store every answer
+python -m deng.pipeline ingest --only weather     # one source: football|openstreetmap|crests|weather|odds
+python -m deng.pipeline transform                 # raw -> staging -> curated, all sources
+python -m deng.pipeline dq                        # the 24 data-quality checks
+python -m deng.pipeline run --date 2026-09-18     # ingest + transform + dq, in that order
 python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
-python -m deng.pipeline verify                  # the verification queries
+python -m deng.pipeline verify                    # the verification queries
+
+# offline, from the committed answers (as of 2026-09-23) - all steps or none:
+python -m deng.pipeline ingest --from-samples
+python -m deng.pipeline transform --from-samples
+python -m deng.pipeline dq --from-samples         # = make run-samples, step by step
 ```
 
 `ingest`, `transform` and `run` take `--date`, `backfill` takes `--from` and
-`--to`, the rest need no date. There is no separate `crests`, `weather` or
+`--to`, the rest need no date. `--from-samples` replays the samples' own day on
+its own clock, so give it to every step or to none: a plain `transform` after a
+sample ingest would look for answers stored today, find none, and stop with an
+error that names the day that does have them. There is no separate `crests`, `weather` or
 `odds` command any more: fetching is part of `ingest`, building tables is part
 of `transform`. The `make` targets are one-line wrappers around exactly these
 calls.
@@ -685,8 +732,15 @@ Treated as a feature in its own right:
 * `setup.sh` / `make setup` need no pyenv, direnv or conda — only the standard
   library's `venv`.
 * `--from-samples` runs the entire pipeline against committed payloads, so a
-  reviewer can reproduce every result **before registering an API key**.
-* CI runs lint, 137 tests and a two-run idempotency smoke test against a real
+  reviewer can reproduce every result **before registering an API key**. It
+  is offline and pinned to the samples' day (2026-09-23), so it gives the same
+  tables and the same `22/24` on any day it is run.
+* Every dependency is pinned in [`constraints.txt`](constraints.txt), for all
+  extras and every Python from 3.10 up; `make setup`, the Docker images and CI
+  install with `-c constraints.txt`, so a clone next month gets the versions
+  tested today. After changing `pyproject.toml`, `make lock` re-resolves it
+  (needs [uv](https://docs.astral.sh/uv/), installing does not).
+* CI runs lint, 172 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -700,10 +754,10 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 137 tests: config, API client, source schemas, loader, transformations, weather, crests, odds, DQ, orchestration, app components, and the architecture rule (`test_layering.py`) | `137 passed` (fewer without a database: the integration tests skip; the orchestration tests need `make setup-orchestrator`) |
+| `make test` | 172 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, the sample replay, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `170 passed` with PostgreSQL up and `make setup-orchestrator`. Without the orchestrator extra pytest collects 157 (`test_orchestration.py` skips as one); without a database `103 passed, 54 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
-| `make dq` | curated-layer data quality | `24/24 checks passed` with past seasons ingested; `23/24` with the current season only - the open WARNING is the form window early in a season. Exit 0 either way |
+| `make dq` | curated-layer data quality | `24/24 checks passed` with past seasons ingested; `23/24` with the current season only - the open WARNING is the form window early in a season. After `make run-samples` always `22/24`: the form window and the crests (a sample run downloads none). Exit 0 in every case |
 
 Worked examples with real output:
 [`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
@@ -718,7 +772,7 @@ distribution, form and its coverage, plus a query that **re-verifies the
 leakage guard independently** of the pipeline's own checks.
 
 ```bash
-make setup-app     # installs the Streamlit and Jupyter extras
+make setup-app     # adds the Jupyter extra (Streamlit comes with make setup)
 make notebook      # JupyterLab with the project environment
 ```
 
@@ -853,8 +907,6 @@ Documented honestly, because hidden failures cost more than known ones:
 * **No live comparison.** During a match the app shows the pre-match forecast
   against the last odds read and says so; the interval job does not fetch for
   matches already kicked off.
-* **Tests share the local database** and empty its tables; run `make
-  run-samples` again after `make test`.
 * The knockout fixtures do not exist until the December draw, so the fixture
   list is currently the 144-match league phase.
 
@@ -863,7 +915,7 @@ Documented honestly, because hidden failures cost more than known ones:
 | Milestone | Deadline | Status |
 |---|---|---|
 | Milestone 1 — initial pitch | week 3 | **complete** — use case, verified sources, Architecture v0.1, ADRs, backlog |
-| Midterm — local pipeline | 22 Oct 2026, 15:30 | **largely complete** — ingestion, raw zone, transformations, curated model, data quality, Dagster orchestration, Docker Compose verified, Streamlit, notebook. Open: raw validation, Architecture v0.2, clean-environment test |
+| Midterm — local pipeline | 22 Oct 2026, 15:30 | **complete** — ingestion with payload contracts, raw zone, transformations, curated model, data quality, Dagster orchestration, Docker Compose, Streamlit, notebook, Architecture v0.2, failure matrix, clean-environment test (18 Oct, [evidence](docs/evidence/clean-environment-test.md)). Open: the second run on the other student's machine, tag `midterm` |
 | Final — cloud pipeline | 10 Dec 2026, 20:00 | not started |
 
 Rubric coverage: [`docs/rubric-checklist.md`](docs/rubric-checklist.md) ·
@@ -879,7 +931,8 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── docker-compose.yml        # postgres + Dagster + pipeline + app on one network
 ├── Dockerfile                # three stages: pipeline, app, orchestrator
 ├── orchestrator/             # Dagster instance + workspace config (DAGSTER_HOME)
-├── pyproject.toml            # dependencies and extras (dev / app / notebook)
+├── pyproject.toml            # dependencies and extras (dev / app / orchestrator / notebook)
+├── constraints.txt           # every dependency pinned (`make lock` regenerates it)
 ├── .env.example              # configuration template — copy to .env
 │
 ├── src/deng/
@@ -888,7 +941,8 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │   ├── sources/              # one file per source, each answering the same two questions
 │   │                         #   (plan: what to fetch · fetch: how):
 │   │                         #   football_data · openstreetmap · club_crests ·
-│   │                         #   open_meteo · the_odds_api  (+ http.py: the two error types)
+│   │                         #   open_meteo · the_odds_api  (+ http.py: the two error types,
+│   │                         #   contracts.py: what an answer must contain before it is stored)
 │   ├── ingestion/            # runner.py: THE ingestion — the five sources, in order
 │   │                         #   raw_reads.py: the few questions it may ask the raw zone
 │   ├── database/             # connections, idempotent raw loader, run log
@@ -897,20 +951,25 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │   └── quality/              # the twenty-four data-quality checks
 │
 ├── sql/
-│   ├── schema/               # 11 DDL files (applied by `make init`)
+│   ├── schema/               # 12 DDL files (applied by `make init`)
 │   ├── transform/            # 13 files: raw → staging → curated
 │   └── verify/               # verification queries
 │
 ├── app/                      # the dashboard: dataset panels, odds section, HTML components
 ├── notebooks/                # exploration
-├── tests/                    # 137 tests: unit, contract, integration, layering rule
+├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
+├── .github/workflows/        # CI: lint, tests, idempotency smoke test
+├── tests/                    # 172 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/
     ├── architecture-overview.svg · architecture-detail.svg · architecture-target.svg
-    ├── use-case.md · data-sources.md · data-model.md
+    ├── use-case.md · data-sources.md · data-model.md · failure-behaviour.md
+    ├── code-walkthrough.md     # one match through the code, nine stops
     ├── rubric-checklist.md · project-backlog.md
-    ├── architecture/ · adr/ · evidence/
+    ├── architecture/           # v0.1 (the pitch) and v0.2 (the midterm)
+    ├── adr/ · evidence/
+    └── pitch/                  # slides, speaker notes, written pitch, deck
 ```
 
 Two sentences that explain the whole layout: **`sources/` asks, `sql/` builds,

@@ -81,6 +81,29 @@ def test_run_step_lets_transient_errors_through_for_the_retry_policy():
         run_step("ingest", rate_limited)
 
 
+def test_run_step_lets_a_database_outage_through_for_the_retry_policy():
+    # PostgreSQL restarting or not yet up: the same step can succeed a minute later.
+    import psycopg
+
+    def database_down():
+        raise psycopg.OperationalError("connection refused")
+
+    with pytest.raises(psycopg.OperationalError):
+        run_step("ingest", database_down)
+
+
+def test_run_step_forbids_retries_for_schema_drift():
+    from deng.sources.contracts import ContractError
+
+    def drifted():
+        raise ContractError("football-data.org", "competitions/CL/matches", ["matches missing"])
+
+    with pytest.raises(dg.Failure) as caught:
+        run_step("ingest", drifted)
+    assert caught.value.allow_retries is False
+    assert "payload contract broken" in caught.value.description
+
+
 def test_run_step_forbids_retries_for_permanent_errors():
     def forbidden():
         raise ApiError(403, "competition not in plan")
@@ -106,7 +129,8 @@ def _no_crest_downloads(monkeypatch):
     from deng.sources.club_crests import CrestResult
 
     monkeypatch.setattr(
-        "deng.orchestration.definitions.fetch_crests", lambda connection: CrestResult()
+        "deng.orchestration.definitions.fetch_crests",
+        lambda connection, run_id=None: CrestResult(),
     )
 
 
@@ -139,6 +163,29 @@ def test_scheduled_run_builds_every_table(connection, monkeypatch):
 
 
 @pytest.mark.postgres
+def test_every_step_of_a_scheduled_run_runs_exactly_once(connection, monkeypatch):
+    # Each source and each transformation chain has its own asset. If an asset
+    # called the all-sources CLI command instead, the weather would be asked
+    # twice and the odds fetched from the daily job, spending a credit.
+    monkeypatch.setenv("INGEST_SOURCE", "samples")
+    assert _execute("2026-09-20").success
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pipeline_name, count(*) FROM meta.pipeline_runs GROUP BY 1 ORDER BY 1"
+        )
+        runs = dict(cursor.fetchall())
+    # No fetch_crests: a sample run downloads no crest, so it logs no run either
+    # (test_a_sample_partition_is_offline_and_runs_on_its_own_day below).
+    assert runs == {
+        "ingest_football_raw": 1,
+        "ingest_osm_venues": 1,
+        "ingest_weather": 1,
+        "transform_curated": 1,
+        "transform_weather": 1,
+    }
+
+
+@pytest.mark.postgres
 def test_rerunning_a_partition_does_not_duplicate(connection, monkeypatch):
     monkeypatch.setenv("INGEST_SOURCE", "samples")
     assert _execute("2026-09-20").success
@@ -149,6 +196,20 @@ def test_rerunning_a_partition_does_not_duplicate(connection, monkeypatch):
         ("2026-09-20",),
     )
     assert raw_rows == 4
+
+
+@pytest.mark.postgres
+def test_a_sample_partition_is_offline_and_runs_on_its_own_day(connection, monkeypatch):
+    def no_download(connection):
+        raise AssertionError("INGEST_SOURCE=samples must not request a crest")
+
+    monkeypatch.setenv("INGEST_SOURCE", "samples")
+    monkeypatch.setattr("deng.orchestration.definitions.fetch_crests", no_download)
+    assert _execute("2026-09-20").success
+    # Judged at the partition's 06:00, not today: every unplayed fixture of the
+    # snapshot is still to come.
+    upcoming = _scalar(connection, "SELECT count(*) FROM curated.fact_match WHERE is_upcoming")
+    assert upcoming == 126
 
 
 @pytest.mark.postgres

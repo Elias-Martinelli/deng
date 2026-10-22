@@ -28,10 +28,11 @@ SELECT
     m.matchday,
     m.status,
     m.status = 'FINISHED',
-    -- Wall clock (now()), not the logical date, on purpose: fact_match is the
+    -- The pipeline clock, not the logical date, on purpose: fact_match is the
     -- *current* state and feeds "which fixtures are still to come" in the app.
-    -- What was known on a past day is the job of the snapshot table.
-    m.status <> 'FINISHED' AND m.utc_kickoff > now(),
+    -- What was known on a past day is the job of the snapshot table. The clock
+    -- is the wall clock, or the replayed moment of a sample run (012).
+    m.status <> 'FINISHED' AND m.utc_kickoff > meta.pipeline_now(),
     m.home_team_id,
     m.away_team_id,
     m.home_goals,

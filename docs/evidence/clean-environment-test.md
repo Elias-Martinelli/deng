@@ -43,20 +43,24 @@ before match 575341 kicks off. CI on `main` turned red on 18 October for this
 reason alone. The tests now stamp the fetch with the logical date and compare
 the flag against the kick-off.
 
-**3. The sample run is not fully offline (documentation or code, open).**
-`make run-samples` still downloads crests from `crests.football-data.org`.
-Without that host, all 36 fail and `every_team_has_a_crest` turns into a
-WARNING. The README says the whole sample path works offline.
+**3. The sample run is not fully offline (code, fixed in `b49b95d`).**
+`make run-samples` still downloaded crests from `crests.football-data.org`.
+Without that host, all 36 failed and `every_team_has_a_crest` turned into a
+WARNING. A sample run now downloads nothing; the crest WARNING is its
+constant, documented result.
 
-**4. The expected data-quality count depends on the date (documentation,
-open).** The README expects `23/24` with the current season. On 18 October the
-sample run gives `21/24`: the crest WARNING (finding 3) and
+**4. The expected data-quality count depends on the date (code, fixed in
+`b49b95d`).** The README expected `23/24` with the current season. On 18
+October the sample run gave `21/24`: the crest WARNING (finding 3) and
 `no_forecast_missing_inside_horizon`, because 17 upcoming matches fall inside
 the 16-day horizon but only one sample forecast exists. Both are WARNINGs, so
-the exit code stays 0.
+the exit code stayed 0. A sample run now replays the scheduled run of
+2026-09-23 in Python and SQL (`meta.pipeline_now()`) and gives `22/24` with
+identical tables on 19 Oct 2026, 1 Dec 2026 and 15 Mar 2027 (checked with the
+database and the pipeline under a faked clock).
 
-**5. Known and documented:** `make test` empties the pipeline tables, so run
-`make run-samples` again after it.
+**5. `make test` emptied the pipeline tables (code, fixed in `de4fb97`).** The
+integration tests now run in their own database, `<POSTGRES_DB>_test`.
 
 ## Environment-specific, not a repository problem
 
@@ -64,3 +68,22 @@ This container reaches the internet through a TLS-inspecting proxy, so
 `docker build` first failed to verify pypi.org. The images were built with the
 proxy's CA injected through a local copy of the Dockerfile that was not
 committed. On a normal network the unchanged Dockerfile applies.
+
+## Follow-up, 19 October 2026
+
+The two open documentation findings are fixed in the README:
+
+* **Finding 3 (crests):** the README no longer says the sample path works
+  offline. *Local Development* now says that crests are the one part that
+  needs the network, what happens without it (36 failed, run still `OK`,
+  WARNING `every_team_has_a_crest`), and that the next run fetches only the
+  missing ones.
+* **Finding 4 (expected DQ count):** *Verification* now gives the expected
+  count per case: `22/24` with network, `21/24` offline. It also names the
+  WARNING checks that fail on a sample run and why. The sample fixture list
+  is from matchday 1, so `form_window_is_well_populated` always fails there.
+
+Re-checked on 19 October in a fresh database (`make init`, `make run-samples`,
+`make verify`), with crest downloads blocked by the network:
+`data quality: 21/24 checks passed`, `run for 2026-10-19: OK`,
+`verification: 3/3 queries passed`.
