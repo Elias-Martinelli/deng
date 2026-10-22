@@ -290,7 +290,7 @@ cd deng
 
 ./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 170 tests (157 without make setup-orchestrator); DB tests skip without PostgreSQL
+make test                  # 172 tests (159 without make setup-orchestrator); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, offline, no API key needed
@@ -589,19 +589,26 @@ and is what the orchestrator runs. The CLI has seven commands, and that is all
 of it:
 
 ```bash
-python -m deng.pipeline init                    # create the schemas and tables (idempotent)
-python -m deng.pipeline ingest                  # ask all five sources, store every answer
-python -m deng.pipeline ingest --only weather   # one source: football|openstreetmap|crests|weather|odds
-python -m deng.pipeline ingest --from-samples   # replay the committed answers (as of 2026-09-23), offline
-python -m deng.pipeline transform               # raw -> staging -> curated, all sources
-python -m deng.pipeline dq                      # the 24 data-quality checks
-python -m deng.pipeline run --date 2026-09-18   # ingest + transform + dq, in that order
+python -m deng.pipeline init                      # create the schemas and tables (idempotent)
+python -m deng.pipeline ingest                    # ask all five sources, store every answer
+python -m deng.pipeline ingest --only weather     # one source: football|openstreetmap|crests|weather|odds
+python -m deng.pipeline transform                 # raw -> staging -> curated, all sources
+python -m deng.pipeline dq                        # the 24 data-quality checks
+python -m deng.pipeline run --date 2026-09-18     # ingest + transform + dq, in that order
 python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
-python -m deng.pipeline verify                  # the verification queries
+python -m deng.pipeline verify                    # the verification queries
+
+# offline, from the committed answers (as of 2026-09-23) - all steps or none:
+python -m deng.pipeline ingest --from-samples
+python -m deng.pipeline transform --from-samples
+python -m deng.pipeline dq --from-samples         # = make run-samples, step by step
 ```
 
 `ingest`, `transform` and `run` take `--date`, `backfill` takes `--from` and
-`--to`, the rest need no date. There is no separate `crests`, `weather` or
+`--to`, the rest need no date. `--from-samples` replays the samples' own day on
+its own clock, so give it to every step or to none: a plain `transform` after a
+sample ingest would look for answers stored today, find none, and stop with an
+error that names the day that does have them. There is no separate `crests`, `weather` or
 `odds` command any more: fetching is part of `ingest`, building tables is part
 of `transform`. The `make` targets are one-line wrappers around exactly these
 calls.
@@ -733,7 +740,7 @@ Treated as a feature in its own right:
   install with `-c constraints.txt`, so a clone next month gets the versions
   tested today. After changing `pyproject.toml`, `make lock` re-resolves it
   (needs [uv](https://docs.astral.sh/uv/), installing does not).
-* CI runs lint, 170 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 172 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -747,7 +754,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 170 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, the sample replay, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `170 passed` with PostgreSQL up and `make setup-orchestrator`. Without the orchestrator extra pytest collects 157 (`test_orchestration.py` skips as one); without a database `103 passed, 54 skipped` |
+| `make test` | 172 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, the sample replay, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `170 passed` with PostgreSQL up and `make setup-orchestrator`. Without the orchestrator extra pytest collects 157 (`test_orchestration.py` skips as one); without a database `103 passed, 54 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | `24/24 checks passed` with past seasons ingested; `23/24` with the current season only - the open WARNING is the form window early in a season. After `make run-samples` always `22/24`: the form window and the crests (a sample run downloads none). Exit 0 in every case |
@@ -952,7 +959,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── notebooks/                # exploration
 ├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
 ├── .github/workflows/        # CI: lint, tests, idempotency smoke test
-├── tests/                    # 170 tests: unit, contract, integration, layering rule
+├── tests/                    # 172 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/

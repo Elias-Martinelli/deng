@@ -76,9 +76,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "backfill":
         return command_backfill(args.date_from, args.date_to, from_samples=args.from_samples)
     if args.command == "transform":
-        return command_transform(args.date or pipeline_today())
+        logical_date = default_date(args.date, args.from_samples)
+        with sample_clock(logical_date, args.from_samples):
+            return command_transform(logical_date)
     if args.command == "dq":
-        return command_dq()
+        with sample_clock(SAMPLES_DATE, args.from_samples):
+            return command_dq()
     if args.command == "run":
         return command_run(
             default_date(args.date, args.from_samples), from_samples=args.from_samples
@@ -131,9 +134,19 @@ def build_parser() -> argparse.ArgumentParser:
     backfill.add_argument("--from-samples", action="store_true", help="see `ingest --from-samples`")
 
     transform = sub.add_parser("transform", help="raw -> staging -> curated (all sources)")
-    transform.add_argument("--date", type=date.fromisoformat, help=DATE_HELP)
+    transform.add_argument("--date", type=date.fromisoformat, help=SAMPLES_DATE_HELP)
+    transform.add_argument(
+        "--from-samples",
+        action="store_true",
+        help="transform the replayed sample day on its own clock (see `ingest --from-samples`)",
+    )
 
-    sub.add_parser("dq", help="run the data-quality checks and persist the results")
+    dq = sub.add_parser("dq", help="run the data-quality checks and persist the results")
+    dq.add_argument(
+        "--from-samples",
+        action="store_true",
+        help="judge the replayed sample day by its own clock (see `ingest --from-samples`)",
+    )
 
     run = sub.add_parser("run", help="ingest, transform and check in one go")
     run.add_argument("--date", type=date.fromisoformat, help=SAMPLES_DATE_HELP)
@@ -183,6 +196,36 @@ def command_ingest(logical_date: date, from_samples: bool = False, only: str | N
     return 0
 
 
+class NothingToTransform(Exception):
+    """No football answer is stored for the logical date, so there is nothing to build."""
+
+
+def require_football_answers(connection, logical_date: date) -> None:
+    """Fail loudly instead of rebuilding the tables from an empty day.
+
+    The football chain, and everything built on `fact_match`, starts from the
+    football answers stored under the logical date (110 filters on
+    `ingestion_date`). A date with none - a typo, or a sample replay that was
+    stored under the samples' own day - used to "succeed" with zero rows.
+
+    Raises:
+        NothingToTransform: naming the newest day that does have answers.
+    """
+    found, newest = connection.execute(
+        "SELECT count(*) FILTER (WHERE ingestion_date = %s), max(ingestion_date) "
+        "FROM raw.football_data",
+        (logical_date,),
+    ).fetchone()
+    if found:
+        return
+    if newest is None:
+        raise NothingToTransform("the raw zone is empty - run `ingest` or `run --from-samples`")
+    raise NothingToTransform(
+        f"no football answers are stored for {logical_date}, the newest are from {newest} - "
+        f"run `transform --date {newest}`, or `transform --from-samples` after a sample ingest"
+    )
+
+
 def command_transform(logical_date: date) -> int:
     """Build every table from the raw zone: staging, then curated.
 
@@ -199,9 +242,15 @@ def command_transform(logical_date: date) -> int:
     never half-built.
     """
     with connect() as connection:
-        with PipelineRun(connection, "transform_curated", logical_date) as run:
-            football = run_transformations(connection, logical_date)
-            run.add_counts(loaded=football.total_rows_written)
+        try:
+            with PipelineRun(connection, "transform_curated", logical_date) as run:
+                require_football_answers(connection, logical_date)
+                football = run_transformations(connection, logical_date)
+                run.add_counts(loaded=football.total_rows_written)
+        except NothingToTransform as exc:
+            # PipelineRun has already recorded the run as FAILED with this text.
+            print(f"ERROR: nothing to transform: {exc}", file=sys.stderr)
+            return 1
 
         with PipelineRun(connection, "transform_weather", logical_date) as run:
             weather = run_transformations(
