@@ -220,5 +220,5 @@ It is a failing test if we break it."
 
 Longer versions of the same reasoning: the [README](../README.md) for the
 design, [`docs/evidence/restructure.md`](evidence/restructure.md) for the
-measurements, and [`docs/pitch/speaker-notes.md`](pitch/speaker-notes.md) for
-the questions and short answers in German.
+measurements, and [`docs/pitch/questions.md`](pitch/questions.md) for the
+questions and short answers in German.
