@@ -53,6 +53,16 @@ Every row above ends the same way: fix the cause, then rerun the same date.
 
 ## What is not covered
 
+* **A rejected answer is not archived.** The contracts run before the write
+  (#5), so on the day a source drifts its answer is not stored. For the
+  football data that costs little: the next full reload brings the matches
+  back, only that day's standings are gone. For a weather forecast it is
+  permanent - a forecast cannot be fetched again once its day has passed, and
+  the raw zone is the only archive we have. The alternative was to store first
+  and fail in staging. We chose a raw zone the SQL can always read: a payload
+  it cannot read would fail that day's transformation, and every rebuild from
+  raw would trip over the same day again. If drift became frequent, a
+  quarantine table for rejected answers would keep both properties.
 * **Schema drift in the side sources.** The contracts cover football-data.org
   (every endpoint) and Open-Meteo. The Odds API is best effort and its payload
   is only checked to be a list. OpenStreetMap answers are stored as-is and
