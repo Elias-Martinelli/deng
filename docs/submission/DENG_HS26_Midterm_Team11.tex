@@ -1,0 +1,53 @@
+% Midterm repository submission for DENG HS26, Team 11.
+% Build: latexmk -pdf DENG_HS26_Midterm_Team11.tex
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+
+% --- Submission data: set the assessed commit before building -------------
+\newcommand{\teamnumber}{11}
+\newcommand{\repourl}{https://github.com/Elias-Martinelli/deng}
+% Full 40-character hash, e.g. from: git rev-parse origin/main
+\newcommand{\commithash}{TODO}
+% ---------------------------------------------------------------------------
+
+\newcommand{\commiturl}{\repourl/commit/\commithash}
+% Prints its argument, or a red warning while \commithash is still the placeholder.
+\newcommand{\todomarker}{TODO}
+\newcommand{\checkedvalue}[1]{%
+  \ifx\commithash\todomarker
+    \textcolor{red}{\textbf{TODO: set \texttt{\textbackslash commithash}}}%
+  \else#1\fi}
+
+\hypersetup{
+  pdftitle={DENG HS26 Midterm Repository Submission, Team \teamnumber},
+  pdfauthor={Elias Martinelli, Noah Rodriguez},
+}
+
+\pagestyle{empty}
+
+\begin{document}
+
+{\Large\bfseries DENG HS26 -- Midterm Repository Submission\par}
+\vspace{0.5em}
+{\large Team \teamnumber\par}
+\vspace{2em}
+
+\renewcommand{\arraystretch}{1.6}
+\begin{tabular}{@{}p{0.27\textwidth}p{0.68\textwidth}@{}}
+  \toprule
+  Team number    & \teamnumber \\
+  Students       & Elias Martinelli \newline Noah Rodriguez \\
+  Repository URL & \url{\repourl} \\
+  Commit hash    & \checkedvalue{\texttt{\commithash}} \\
+  Commit link    & \checkedvalue{\url{\commiturl}} \\
+  \bottomrule
+\end{tabular}
+
+\end{document}
