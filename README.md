@@ -290,7 +290,7 @@ cd deng
 
 ./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 172 tests (159 without make setup-orchestrator); DB tests skip without PostgreSQL
+make test                  # 176 tests (163 without make setup-orchestrator); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, offline, no API key needed
@@ -740,7 +740,7 @@ Treated as a feature in its own right:
   install with `-c constraints.txt`, so a clone next month gets the versions
   tested today. After changing `pyproject.toml`, `make lock` re-resolves it
   (needs [uv](https://docs.astral.sh/uv/), installing does not).
-* CI runs lint, 172 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 176 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -754,7 +754,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 172 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, the sample replay, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `170 passed` with PostgreSQL up and `make setup-orchestrator`. Without the orchestrator extra pytest collects 157 (`test_orchestration.py` skips as one); without a database `103 passed, 54 skipped` |
+| `make test` | 176 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, the sample replay, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `170 passed` with PostgreSQL up and `make setup-orchestrator`. Without the orchestrator extra pytest collects 157 (`test_orchestration.py` skips as one); without a database `103 passed, 54 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | `24/24 checks passed` with past seasons ingested; `23/24` with the current season only - the open WARNING is the form window early in a season. After `make run-samples` always `22/24`: the form window and the crests (a sample run downloads none). Exit 0 in every case |
@@ -959,7 +959,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── notebooks/                # exploration
 ├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
 ├── .github/workflows/        # CI: lint, tests, idempotency smoke test
-├── tests/                    # 172 tests: unit, contract, integration, layering rule
+├── tests/                    # 176 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/

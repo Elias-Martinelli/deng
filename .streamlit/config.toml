@@ -1,9 +1,60 @@
 # Streamlit settings for the viewer (read from the working directory).
+# Shared keys live in [theme]; the two colour sets live in [theme.light] and
+# [theme.dark]. With both present and no `base`, Streamlit builds an auto theme
+# from prefers-color-scheme - the same signal app/style.py keys on. Every value
+# here must stay equal to the matching token in app/style.py.
+#
+# The font values are plain family stacks, not URLs: Streamlit only emits a
+# <link> when a value contains a ":", so the page still loads nothing from the
+# internet. This file is copied into the image, not mounted, so `make
+# docker-app` has to rebuild before a change here shows up.
 
 [theme]
-# Champions League navy as the accent; the cards in app/components.py use the
-# same colour for the match header.
-primaryColor = "#1a3a8f"
+font = "system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial"
+codeFont = "ui-monospace, SFMono-Regular, Cascadia Mono, Segoe UI Mono, Consolas"
+baseRadius = "3px"
+buttonRadius = "3px"
+showWidgetBorder = true
+showSidebarBorder = true
+linkUnderline = true
+metricValueFontSize = "1.35rem"
+metricValueFontWeight = 600
+
+[theme.light]
+primaryColor = "#1a3a8f"                     # --cl-accent
+backgroundColor = "#eef1f5"                  # --cl-bg-0
+secondaryBackgroundColor = "#e3e8ee"         # --cl-bg-2
+textColor = "#1b2129"                        # --cl-text-0
+borderColor = "#78828f"                      # --cl-line-ui
+dataframeBorderColor = "#bec7d1"             # --cl-line-2
+dataframeHeaderBackgroundColor = "#e3e8ee"
+codeBackgroundColor = "#e3e8ee"
+linkColor = "#1a3a8f"
+chartCategoricalColors = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100",
+                          "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
+
+[theme.light.sidebar]
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#e3e8ee"
+borderColor = "#bec7d1"
+
+[theme.dark]
+primaryColor = "#63a2f7"                     # --cl-accent (dark)
+backgroundColor = "#14181e"                  # --cl-bg-0
+secondaryBackgroundColor = "#2a3038"         # --cl-bg-2
+textColor = "#e9edf2"                        # --cl-text-0
+borderColor = "#7a8695"                      # --cl-line-ui
+dataframeBorderColor = "#4e5866"             # --cl-line-2
+dataframeHeaderBackgroundColor = "#2a3038"
+codeBackgroundColor = "#20252c"
+linkColor = "#63a2f7"
+chartCategoricalColors = ["#3987e5", "#d95926", "#199e70", "#c98500",
+                          "#d55181", "#008300", "#9085e9", "#e66767"]
+
+[theme.dark.sidebar]
+backgroundColor = "#20252c"
+secondaryBackgroundColor = "#2a3038"
+borderColor = "#4e5866"
 
 [client]
 # The page is a product view, not a developer tool: hide the deploy/rerun menu.

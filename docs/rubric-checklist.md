@@ -33,7 +33,7 @@ Status values: TODO · IN PROGRESS · DONE · NOT APPLICABLE
 | Architecture v0.1 incl. division of responsibilities | M1 | DONE | `docs/architecture/architecture-v0.1.md` (Mermaid, §6), rendered as `docs/architecture-overview.svg` / `-detail.svg` / `-target.svg` | §6 names both students per area with the other as reviewer; the same table is slide 10 of the pitch | – |
 | Initial README | M1 | DONE | `README.md` | – | – |
 | Short project plan / backlog | M1 | DONE | `docs/project-backlog.md` | – | – |
-| Pitch (10 min): feasibility, source understanding, ingestion/storage reasoning, answers to questions | M1 | IN PROGRESS | `docs/pitch/slides.md` (10 slides, one per §1.5 requirement), `docs/pitch/speaker-notes.md` (German, per slide) | timing table for two speakers, 16 expected questions with short answers incl. full vs. incremental, behaviour at 100× data, Dagster vs. Airflow, data quality and licences; `docs/code-walkthrough.md` for questions that go past the slides | rehearse out loud, both speakers, once against the clock |
+| Pitch (10 min): feasibility, source understanding, ingestion/storage reasoning, answers to questions | M1 | DONE | delivered on 1 Oct 2026: `docs/pitch/initial-project-pitch-2026-10-01.pptx` (8 slides), outline `docs/pitch/slides.md`, notes `docs/pitch/speaker-notes.md` | the deck as presented; `docs/pitch/questions.md`: 16 expected questions with short answers incl. full vs. incremental, behaviour at 100× data, Dagster vs. Airflow, data quality and licences; `docs/code-walkthrough.md` for questions that go past the slides | – |
 
 ## Midterm (§1.6, §2.3 – 40 points)
 
