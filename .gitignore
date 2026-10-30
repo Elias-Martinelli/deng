@@ -268,3 +268,6 @@ airflow_home/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Licensed local enrichment extracts (never commit acquired data)
+data/context/
