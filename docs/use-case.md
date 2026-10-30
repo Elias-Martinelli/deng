@@ -1,5 +1,22 @@
 # Use Case
 
+## Current product — 3 October 2026
+
+The primary user remains a data scientist building a 90-minute match-outcome
+classifier. The canonical deliverable is now
+**curated.match_training_features**, one row per fixture across eight
+competitions, with an export contract that separates predictors, labels and
+audit fields. The measured first bulk load contains 10,103 fixtures and
+292 columns. See [data model](data-model.md), [README](../README.md) and
+[ADR-006](adr/ADR-006-multi-league-training-product.md).
+
+Prediction time is immediately before kickoff. Prior results are reconstructed
+by event time with a three-hour completion buffer. Snapshot enrichments require
+pre-kickoff observations. This is not a certified archive at T-24h.
+The original use-case discussion below documents the earlier CL scope.
+
+---
+
 ## Project title
 
 **Champions League Match Intelligence Data Platform**
