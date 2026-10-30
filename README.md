@@ -527,11 +527,11 @@ start cannot fail with "connection refused". The app is a second build stage,
 which keeps the pipeline image free of a web framework.
 
 > **Docker not running?** Every Docker target first runs
-> `scripts/ensure_docker.sh`: on Windows/WSL and macOS it starts Docker Desktop
-> itself and waits until the engine answers (up to 3 minutes). On Linux it
-> prints the command to start the daemon. If Docker Desktop starts but WSL
-> still cannot see it, enable *Settings → Resources → WSL integration* for your
-> distro once.
+> `scripts/check_docker.sh`, which stops at once and prints how to start Docker
+> on your platform: Docker Desktop on Windows/WSL and macOS, `sudo systemctl
+> start docker` on Linux. It never starts Docker itself. If Docker Desktop runs
+> but WSL still cannot see it, enable *Settings → Resources → WSL integration*
+> for your distro once.
 
 > **Port 5432 already taken?** If PostgreSQL is also installed natively, it
 > keeps `localhost:5432` and host-side commands (`make init`, `make test`)
