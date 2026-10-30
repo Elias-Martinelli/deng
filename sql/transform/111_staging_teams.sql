@@ -13,10 +13,16 @@
 WITH unpacked AS (
     SELECT DISTINCT ON ((t ->> 'id')::bigint) t
       FROM raw.football_data r
-      CROSS JOIN LATERAL jsonb_array_elements(r.payload -> 'teams') AS t
-     WHERE r.endpoint LIKE '%%/teams'
-       AND r.ingestion_date = %(logical_date)s
-     ORDER BY (t ->> 'id')::bigint, r.ingested_at DESC
+      CROSS JOIN LATERAL jsonb_array_elements(
+          CASE WHEN r.endpoint LIKE 'teams/%%' THEN jsonb_build_array(r.payload)
+               ELSE r.payload -> 'teams' END
+      ) AS t
+     WHERE (r.endpoint LIKE '%%/teams' OR r.endpoint LIKE 'teams/%%')
+       AND (r.ingestion_date = %(logical_date)s OR
+            (r.ingestion_date <= %(logical_date)s AND r.request_params ? 'season'))
+     ORDER BY (t ->> 'id')::bigint,
+              (NOT (r.request_params ? 'season')) DESC,
+              r.ingestion_date DESC, r.ingested_at DESC
 )
 INSERT INTO staging.teams AS s (
     team_id, name, short_name, tla, crest_url, founded, club_colors,

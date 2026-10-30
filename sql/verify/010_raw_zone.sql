@@ -19,14 +19,20 @@ FROM raw.football_data
 
 UNION ALL
 
--- The newest ingestion day must hold all four endpoints; fewer means a partial
--- run was stored (should be impossible - one commit per day).
+-- Every observed competition has all four current endpoints on the latest day.
 SELECT
-    'all four daily endpoints ingested today',
-    string_agg(DISTINCT endpoint, ', ' ORDER BY endpoint),
-    count(DISTINCT endpoint) >= 4
-FROM raw.football_data
-WHERE ingestion_date = (SELECT max(ingestion_date) FROM raw.football_data)
+    'four current endpoints per competition',
+    count(*)::text || ' complete competition/source groups',
+    count(*) > 0 AND bool_and(endpoint_count = 4)
+FROM (
+    SELECT source, split_part(endpoint, '/', 2) AS competition,
+           count(DISTINCT endpoint) AS endpoint_count
+    FROM raw.football_data
+    WHERE ingestion_date = (SELECT max(ingestion_date) FROM raw.football_data)
+      AND request_params = '{}'::jsonb
+      AND endpoint ~ '^competitions/[^/]+(/teams|/matches|/standings)?$'
+    GROUP BY source, split_part(endpoint, '/', 2)
+) latest_competitions
 
 UNION ALL
 

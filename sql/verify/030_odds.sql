@@ -53,4 +53,10 @@ SELECT
     coalesce(to_char(max(ingested_at), 'YYYY-MM-DD HH24:MI') || ' ('
              || coalesce(max(requests_remaining)::text, 'unknown') || ' credits left)', 'none'),
     true
-FROM raw.odds_api;
+FROM (
+    SELECT ingested_at, requests_remaining
+      FROM raw.odds_api
+     WHERE source = 'the-odds-api.com'
+     ORDER BY ingested_at DESC, raw_id DESC
+     LIMIT 1
+) latest_real_fetch;

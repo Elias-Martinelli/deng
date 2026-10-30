@@ -168,6 +168,13 @@ def _teams(payload: dict[str, Any], problems: list[str]) -> None:
         require(team, "name", "str", problems, where)
 
 
+def _team(payload: dict[str, Any], problems: list[str]) -> None:
+    # One club's details (FOOTBALL_DATA_TEAM_DETAILS): the same object a
+    # `teams` list holds, which sql/transform/111 and 450 read as one more row.
+    require(payload, "id", "int", problems)
+    require(payload, "name", "str", problems)
+
+
 def _standings(payload: dict[str, Any], problems: list[str]) -> None:
     require(payload, "season.id", "int", problems)
     # May be empty: before matchday 1 a competition can answer without a table.
@@ -192,13 +199,15 @@ def _matches(payload: dict[str, Any], problems: list[str]) -> None:
         require(match, "score.fullTime.away", "int", problems, where, nullable=True)
 
 
-# Keyed by the endpoint's path template, as in football_data.DAILY_ENDPOINTS;
-# past seasons use the same paths and therefore the same contract.
+# Keyed by the endpoint's path template, as in football_data.DAILY_ENDPOINTS
+# (football_data.path_template maps a concrete path back to it); past seasons
+# and every further league use the same paths and therefore the same contract.
 FOOTBALL_CONTRACTS: dict[str, Callable[[dict[str, Any], list[str]], None]] = {
     "competitions/{code}": _competition,
     "competitions/{code}/teams": _teams,
     "competitions/{code}/standings": _standings,
     "competitions/{code}/matches": _matches,
+    "teams/{id}": _team,
 }
 
 

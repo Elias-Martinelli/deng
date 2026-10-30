@@ -94,31 +94,40 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture
-def connection():
+def connection(monkeypatch):
     """An open connection to the test database, its pipeline tables emptied."""
     import psycopg
+    from psycopg import sql
 
     from deng.config import get_settings
     from deng.database import apply_sql_files
 
+    # The committed samples are Champions League only, and a developer's .env
+    # may list more leagues or a team-context file: pin what the tests assume.
+    monkeypatch.setenv("FOOTBALL_DATA_COMPETITIONS", "CL")
+    monkeypatch.setenv("TEAM_CONTEXT_CSV_PATH", "")
+    monkeypatch.setenv("FOOTBALL_DATA_TEAM_DETAILS", "false")
     conn = psycopg.connect(get_settings().postgres_dsn)
     apply_sql_files(conn)
-    # Each test starts from empty pipeline tables; the DDL itself stays. Staging
-    # and curated too: a previous test's rows carry their own dates, which a
-    # test about "newer data wins" must not inherit.
-    with conn.cursor() as cursor:
-        cursor.execute(
-            "TRUNCATE raw.football_data, meta.dq_results, meta.pipeline_runs, "
-            "staging.matches, staging.teams, staging.standings, "
-            "curated.dim_team, curated.fact_match, curated.fact_team_match_form, "
-            "raw.open_meteo, staging.weather_forecast, curated.dim_venue, "
-            "curated.fact_match_weather, raw.odds_api, staging.bookmaker_odds, "
-            "staging.odds_event_match, curated.fact_match_prediction, "
-            "curated.fact_bookmaker_odds CASCADE"
+    # Each test starts from empty pipeline tables; the DDL itself stays. Every
+    # table of the four schemas, not a hand-kept list: a previous test's rows
+    # carry their own dates, which a test about "newer data wins" must not
+    # inherit, and a new table must not be forgotten here.
+    tables = conn.execute(
+        "SELECT schemaname, tablename FROM pg_tables "
+        "WHERE schemaname IN ('raw', 'staging', 'curated', 'meta')"
+    ).fetchall()
+    if tables:
+        conn.execute(
+            sql.SQL("TRUNCATE {} CASCADE").format(
+                sql.SQL(", ").join(sql.Identifier(schema, table) for schema, table in tables)
+            )
         )
     conn.commit()
-    yield conn
-    conn.close()
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 @pytest.fixture

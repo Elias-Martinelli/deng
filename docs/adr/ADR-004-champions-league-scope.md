@@ -1,5 +1,7 @@
 # ADR-004 – Scope: Champions League matches only, free tier only
 
+**Superseded by [ADR-006](ADR-006-multi-league-training-product.md)** for overall form and ingestion scope. Retained as the historical decision.
+
 Status: **ACCEPTED** (2026-09-21)
 
 ## Context
