@@ -59,6 +59,8 @@ click==8.5.0
     #   dagster-webserver
     #   streamlit
     #   uvicorn
+cloudpickle==3.1.2
+    # via joblib
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   ipython
@@ -188,6 +190,8 @@ jinja2==3.1.6
     #   jupyterlab-server
     #   nbconvert
     #   pydeck
+joblib==1.6.0
+    # via scikit-learn
 json5==0.17.3
     # via jupyterlab-server
 jsonpointer==3.3
@@ -263,7 +267,9 @@ mistune==3.3.4
 multidict==7.1.0
     # via yarl
 narwhals==2.27.1
-    # via altair
+    # via
+    #   altair
+    #   scikit-learn
 nbclient==0.11.0
     # via nbconvert
 nbconvert==7.17.2
@@ -283,6 +289,8 @@ numpy==2.2.6 ; python_full_version < '3.11'
     #   matplotlib
     #   pandas
     #   pydeck
+    #   scikit-learn
+    #   scipy
     #   streamlit
 numpy==2.4.6 ; python_full_version == '3.11.*'
     # via
@@ -290,6 +298,8 @@ numpy==2.4.6 ; python_full_version == '3.11.*'
     #   matplotlib
     #   pandas
     #   pydeck
+    #   scikit-learn
+    #   scipy
     #   streamlit
 numpy==2.5.4 ; python_full_version >= '3.12'
     # via
@@ -297,6 +307,8 @@ numpy==2.5.4 ; python_full_version >= '3.12'
     #   matplotlib
     #   pandas
     #   pydeck
+    #   scikit-learn
+    #   scipy
     #   streamlit
 overrides==7.7.0 ; python_full_version < '3.12'
     # via jupyter-server
@@ -477,6 +489,16 @@ rpds-py==2026.9.1 ; python_full_version >= '3.11'
     #   referencing
 ruff==0.17.1
     # via deng (pyproject.toml)
+scikit-learn==1.7.2 ; python_full_version < '3.11'
+    # via deng (pyproject.toml)
+scikit-learn==1.9.1 ; python_full_version >= '3.11'
+    # via deng (pyproject.toml)
+scipy==1.15.3 ; python_full_version < '3.11'
+    # via scikit-learn
+scipy==1.17.1 ; python_full_version == '3.11.*'
+    # via scikit-learn
+scipy==1.18.1 ; python_full_version >= '3.12'
+    # via scikit-learn
 send2trash==2.1.0
     # via jupyter-server
 six==1.17.0
@@ -517,6 +539,8 @@ terminado==0.18.1
     # via
     #   jupyter-server
     #   jupyter-server-terminals
+threadpoolctl==3.7.0
+    # via scikit-learn
 tinycss2==1.5.1
     # via bleach
 toml==0.10.2 ; python_full_version < '3.11'
