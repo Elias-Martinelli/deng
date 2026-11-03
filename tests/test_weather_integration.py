@@ -215,3 +215,27 @@ def test_no_forecast_for_a_past_logical_date(connection, run_id, football):
     )
     assert session.calls == 0
     assert "not today" in result.skipped_reason
+
+
+def test_null_forecast_hours_remain_missing_instead_of_crashing(connection, run_id, football):
+    weather_run(connection, run_id, FakeSession())
+    connection.execute("UPDATE staging.weather_forecast SET temperature_c = NULL")
+    connection.commit()
+    run_transformations(
+        connection,
+        WEATHER_DATE,
+        order=("transform/330_fact_match_weather.sql",),
+        counted=("curated.fact_match_weather",),
+    )
+    assert (
+        connection.execute(
+            "SELECT count(*) FROM curated.fact_match_weather WHERE weather_status='AVAILABLE'"
+        ).fetchone()[0]
+        == 0
+    )
+    assert (
+        connection.execute(
+            "SELECT count(*) FROM curated.fact_match_weather WHERE weather_status='MISSING'"
+        ).fetchone()[0]
+        > 0
+    )

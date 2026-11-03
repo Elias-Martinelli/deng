@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from deng.sources.contracts import ContractError, check_football, check_open_meteo
+from deng.sources.football_data import path_template
 from deng.sources.http import ApiError, RetryableApiError
 from deng.sources.open_meteo import HOURLY_VARIABLES
 
@@ -150,6 +151,32 @@ def test_drift_is_permanent_so_it_is_never_retried():
 def test_an_endpoint_without_a_contract_cannot_be_ingested():
     with pytest.raises(KeyError):
         check_football("competitions/{code}/scorers", {}, "competitions/CL/scorers")
+
+
+@pytest.mark.parametrize(
+    "path,template",
+    [
+        ("competitions/CL", "competitions/{code}"),
+        ("competitions/PL/matches", "competitions/{code}/matches"),
+        ("competitions/BL1/teams", "competitions/{code}/teams"),
+        ("teams/86", "teams/{id}"),
+        ("competitions/CL/scorers", "competitions/{code}/scorers"),
+    ],
+)
+def test_every_league_and_team_path_finds_its_template(path, template):
+    # Ingestion stores concrete paths, one per league and per team; the contract
+    # is chosen by the template, so a new league needs no new contract.
+    assert path_template(path) == template
+
+
+def test_a_team_detail_answer_needs_its_id_and_name():
+    team = _sample("teams.json")["teams"][0]
+    check_football("teams/{id}", team, f"teams/{team['id']}")
+
+    del team["name"]
+    with pytest.raises(ContractError) as caught:
+        check_football("teams/{id}", team, f"teams/{team['id']}")
+    assert any("name" in problem for problem in caught.value.problems)
 
 
 def test_a_forecast_array_one_hour_short_is_rejected():

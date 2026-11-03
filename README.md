@@ -34,7 +34,8 @@ not: [Project Status](#project-status).
 [Architecture](#architecture) · [Ingestion](#batch-ingestion-strategy) ·
 [Local development](#local-development) · [PostgreSQL](#postgresql) · [Docker](#docker) ·
 [Orchestration](#workflow-orchestration) · [Transformation](#transformation) ·
-[Data model](#data-model) · [Data quality](#data-quality) ·
+[Data model](#data-model) · [Training dataset](#multi-league-training-dataset) ·
+[Data quality](#data-quality) ·
 [Reproducibility](#reproducibility) · [Verification](#verification) ·
 [Notebook](#analytics--notebook) · [Streamlit](#streamlit-application) ·
 [Cloud](#google-cloud-architecture) · [Limitations](#known-limitations) ·
@@ -202,7 +203,7 @@ One daily run, orchestrated by Dagster, in three steps:
 | --- | --- | --- |
 | **1. Ingest** | daily 06:00 Europe/Zurich, plus backfill on demand | Asks all five sources in order and stores every answer unchanged in `raw` - one row per source, question and day, written with an idempotent upsert. Nothing is transformed here |
 | **2. Transform** | after a successful ingest | SQL files in order: `raw` → typed `staging` → `curated` facts, dimensions and the features that were known before kick-off |
-| **3. Quality checks** | after the transformation | 24 checks stored in `meta.dq_results`; a CRITICAL failure fails the run, a WARNING stays visible |
+| **3. Quality checks** | after the transformation | 31 checks stored in `meta.dq_results`; a CRITICAL failure fails the run, a WARNING stays visible |
 | **Odds refresh** (own job) | every 15 min, configurable | Decides whether to spend a credit - once a day always, at the interval only while a watched match is within 48 h of kick-off, never below the quota reserve - then stores the fetch and rebuilds the odds change history |
 
 **The rule that keeps this simple:** the ingestion may read the APIs, the files
@@ -290,7 +291,7 @@ cd deng
 
 ./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 176 tests (163 without make setup-orchestrator); DB tests skip without PostgreSQL
+make test                  # 252 tests (237 without the orchestrator and ml extras); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, offline, no API key needed
@@ -683,7 +684,7 @@ statements in a different dialect rather than a rewrite.
 
 Grains, keys, facts and dimensions: [`docs/data-model.md`](docs/data-model.md).
 Every grain is also a `COMMENT ON TABLE` in the database, so the documentation
-cannot drift away from the schema. Eleven DDL files in
+cannot drift away from the schema. Seventeen DDL files in
 [`sql/schema/`](sql/schema/) create all of it, and `make init` can be re-run at
 any time.
 
@@ -695,9 +696,45 @@ table because it only joins curated tables that already exist, so there is
 nothing to keep in sync; the snapshot table planned for the final milestone
 adds the missing dimension, one row per match *per day*.
 
+## Multi-League Training Dataset
+
+The Champions League alone gives a model too little history (458 matches with
+two past seasons). [ADR-006](docs/adr/ADR-006-multi-league-training-product.md)
+widens the ingestion to eight competitions and builds a second, wider product
+on top of the tables above: **`curated.match_training_features`, one row per
+match**, with rolling 3/5/10-match form, rest and load, head-to-head, squad,
+coach and value context, weather, odds and the FootballDatabase world ranking,
+and the label `label_outcome_90min` (the result after 90 minutes, extra time
+excluded). `curated.model_features` stays as the smaller view the dashboard's
+match page reads.
+
+| Code | Competition | Code | Competition |
+|---|---|---|---|
+| CL | UEFA Champions League | SA | Serie A |
+| PL | Premier League | FL1 | Ligue 1 |
+| BL1 | Bundesliga | DED | Eredivisie |
+| PD | La Liga | PPL | Primeira Liga |
+
+```bash
+make dataset   # init, eight leagues + seasons 2023-2025 (football only), transform, dq, export
+make export    # the CSV plus manifest.json, data_dictionary.json and coverage.json
+```
+
+`make dataset` needs `FOOTBALL_DATA_API_KEY`; a finished season is fetched once
+and then served from the raw zone (`FOOTBALL_DATA_REFRESH_HISTORY=true` asks
+again for corrections). The committed samples are Champions League only, so
+`make run-samples` replays CL and stays key-free. Measured on 3 October: 10,103
+matches, 203 clubs, 7,985 with a label ([evidence](docs/evidence/multi-league-dataset.md)).
+
+Design and limits: [Architecture v0.3](docs/architecture/architecture-v0.3.md) ·
+contract and grains: [data model](docs/data-model.md#multi-league-training-product-adr-006) ·
+[team context](docs/team-context.md) · [world ranking](docs/world-ranking.md) ·
+[baseline model](docs/model-baseline.md) · [coverage gaps](docs/training-data-gaps.md) ·
+[runbook](docs/midterm-runbook.md).
+
 ## Data Quality
 
-Twenty-four checks - 16 CRITICAL, 8 WARNING - run after every transformation
+Thirty-one checks - 23 CRITICAL, 8 WARNING - run after every transformation
 ([`src/deng/quality/checks.py`](src/deng/quality/checks.py)) and are persisted
 to `meta.dq_results`, so "was the data good on 18 September?" is a query rather
 than an archaeology exercise in old logs.
@@ -706,7 +743,10 @@ than an archaeology exercise in old logs.
   keys, matches lost between staging and curated, a team playing itself, a
   finished match without an outcome, an outcome that disagrees with the goals,
   a match without exactly two form rows, form counts that do not add up, form
-  built on matches that were not yet played, a team missing from `dim_team`.
+  built on matches that were not yet played, a team missing from `dim_team`;
+  for the training product, one row per match, a unique match key, history
+  and observed context strictly before kick-off, a 90-minute label that agrees
+  with the regular-time score, and consistent world-ranking values.
 * **WARNING** failures are recorded and visible but do not stop the pipeline:
   implausible scores, and how well populated the form window currently is
   (early in a season most teams have fewer than three completed matches — real
@@ -734,13 +774,13 @@ Treated as a feature in its own right:
 * `--from-samples` runs the entire pipeline against committed payloads, so a
   reviewer can reproduce every result **before registering an API key**. It
   is offline and pinned to the samples' day (2026-09-23), so it gives the same
-  tables and the same `22/24` on any day it is run.
+  tables and the same `29/31` on any day it is run.
 * Every dependency is pinned in [`constraints.txt`](constraints.txt), for all
   extras and every Python from 3.10 up; `make setup`, the Docker images and CI
   install with `-c constraints.txt`, so a clone next month gets the versions
   tested today. After changing `pyproject.toml`, `make lock` re-resolves it
   (needs [uv](https://docs.astral.sh/uv/), installing does not).
-* CI runs lint, 176 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 252 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -754,10 +794,10 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 176 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, the sample replay, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `170 passed` with PostgreSQL up and `make setup-orchestrator`. Without the orchestrator extra pytest collects 157 (`test_orchestration.py` skips as one); without a database `103 passed, 54 skipped` |
+| `make test` | 252 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `252 passed` with PostgreSQL up, `make setup-orchestrator` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `235 passed, 2 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each); without a database `155 passed, 82 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
-| `make verify` | raw zone, business keys, run log, odds and forecast | `3/3 queries passed`, exit 0 |
-| `make dq` | curated-layer data quality | `24/24 checks passed` with past seasons ingested; `23/24` with the current season only - the open WARNING is the form window early in a season. After `make run-samples` always `22/24`: the form window and the crests (a sample run downloads none). Exit 0 in every case |
+| `make verify` | raw zone, business keys, run log, odds and forecast, the training dataset | `4/4 queries passed`, exit 0 |
+| `make dq` | curated-layer data quality | After `make run-samples` always `29/31`: the two open WARNINGs are the form window and the crests (a sample run downloads none). With an API key the form window passes once past seasons are ingested - early in a season most clubs have fewer than three matches - and the crests once `fetch_crests` has run. Exit 0 in every case |
 
 Worked examples with real output:
 [`docs/evidence/local-pipeline-run.md`](docs/evidence/local-pipeline-run.md).
@@ -952,14 +992,14 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │
 ├── sql/
 │   ├── schema/               # 12 DDL files (applied by `make init`)
-│   ├── transform/            # 13 files: raw → staging → curated
+│   ├── transform/            # 16 files: raw → staging → curated
 │   └── verify/               # verification queries
 │
 ├── app/                      # the dashboard: dataset panels, odds section, HTML components
 ├── notebooks/                # exploration
 ├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
 ├── .github/workflows/        # CI: lint, tests, idempotency smoke test
-├── tests/                    # 176 tests: unit, contract, integration, layering rule
+├── tests/                    # 252 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/

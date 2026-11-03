@@ -89,9 +89,8 @@ def _dataset(features: pd.DataFrame) -> None:
         },
     )
     st.caption(
-        "More seasons is the lever: one league phase has 144 matches, a finished season with "
-        "the knockout rounds has up to 189. Which seasons are fetched is a setting "
-        "(FOOTBALL_DATA_SEASONS), and each one costs a single request."
+        "The full training product is available in Curated Dataset with league filters, "
+        "90-minute labels, extended history, squad and coach context."
     )
 
 

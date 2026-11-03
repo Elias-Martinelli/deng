@@ -62,7 +62,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 3.1 | Schemas `raw`, `staging`, `curated`, `meta`; DDL under `sql/` | MUST | MIDTERM | [x] `sql/schema/001..012` |
+| 3.1 | Schemas `raw`, `staging`, `curated`, `meta`; DDL under `sql/` | MUST | MIDTERM | [x] `sql/schema/001..012`; 013–017 add the multi-league training product (EPIC 15) |
 | 3.2 | Raw tables (JSONB + metadata, unique key per source/endpoint/params/date) | MUST | MIDTERM | [x] one per source: `raw.football_data`, `raw.open_meteo`, `raw.odds_api`, `raw.team_crests`, `raw.osm_venues` |
 | 3.3 | Idempotent raw loader (`ON CONFLICT`) | MUST | MIDTERM | [x] `raw_loader.py`, evidence §2 |
 | 3.4 | Verification queries (`sql/verify/*.sql`) | MUST | MIDTERM | [x] 14 checks in 3 files, `make verify` |
@@ -105,7 +105,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 7.1 | SQL checks: not null, unique keys, home ≠ away, valid status, referential integrity, row count > 0 | MUST | MIDTERM | [x] `quality/checks.py`, 24 checks in total (football, form, weather, venue, forecast, odds, crests) |
+| 7.1 | SQL checks: not null, unique keys, home ≠ away, valid status, referential integrity, row count > 0 | MUST | MIDTERM | [x] `quality/checks.py`, 31 checks in total (training product, football, form, weather, venue, forecast, odds, crests) |
 | 7.2 | Plausibility: goals in range (temperature with the weather work) | SHOULD | MIDTERM | [x] `goals_are_plausible`, `weather_values_plausible` |
 | 7.3 | Results persisted in `meta.dq_results`; critical failures fail the run | MUST | MIDTERM | [x] persisted per run, CRITICAL exits non-zero |
 | 7.4 | Schema-drift handling: required-field validation with clear error, optional fields tolerant | MUST | MIDTERM | [x] the contracts of 2.8: a missing required field fails with its path (`matches[7] (id 575330).score.fullTime.home missing`), new or missing optional fields pass; The Odds API and OpenStreetMap only type-checked (limitation in `docs/failure-behaviour.md`) |
@@ -115,7 +115,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 176 tests in total, CI |
+| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 252 tests in total, CI |
 | 8.1b | Contract tests against the real samples (schema, keys, referential integrity) | SHOULD | M1 | [x] 13 tests in `tests/test_sample_payloads.py` |
 | 8.2 | Tests for parsing and transformations against Postgres, also in CI | MUST | MIDTERM | [x] 18 transformation tests; CI has a Postgres service |
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
@@ -185,6 +185,24 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 14.11 | Documentation drift after the restructure: `README.md`, `docs/data-model.md`, `docs/data-sources.md`, ADR-001, architecture v0.1 and one DQ description still name the deleted `data/reference/venues.csv`, and none of them mentions `raw.osm_venues`, the raw planning views or `curated.model_features` | MUST | MIDTERM | [x] no document presents `venues.csv` or `scripts/build_venues.py` as current (only as history); `raw.osm_venues`, the three raw planning views and `curated.model_features` are in `docs/data-model.md` and the README; ADR-001 and architecture v0.1 carry a note saying what changed |
 | 14.12 | Pitch material for Milestone 1: 10 slides mapped to the six points of §1.5, German speaker notes per slide, timing for two speakers; data-quality checks deliberately left out | MUST | M1 | [x] `docs/pitch/` - `README.md` (what §1.5 and §2.2 ask for, timing, how to present), `slides.md`, `speaker-notes.md` |
 | 14.13 | A reading path through the code for the defence: one match from the CLI to `curated.model_features`, and a lookup table from question to file | SHOULD | MIDTERM | [x] `docs/code-walkthrough.md`, nine stops, linked from the README and from `docs/pitch/README.md` |
+
+## EPIC 15 – Multi-league training product (ADR-006)
+
+Built on the branch of PR #134 before the midterm, not assessed at the midterm;
+ported onto `main` afterwards.
+
+| # | Task | Prio | Milestone | Status |
+|---|---|---|---|---|
+| 15.1 | Ingest eight competitions (CL, PL, BL1, PD, SA, FL1, DED, PPL) with cached historical seasons (#135) | SHOULD | FINAL | [x] `FOOTBALL_DATA_COMPETITIONS`, `_configured_responses` and `_cached_season_endpoints` in `src/deng/sources/football_data.py`; ADR-006 |
+| 15.2 | Dated squad, coach and market-value context (#136) | COULD | FINAL | [x] `src/deng/sources/team_context.py`, `sql/schema/013_team_context.sql`, `sql/transform/450_team_context.sql`, `docs/team-context.md` |
+| 15.3 | `curated.match_training_features`: one wide row per match (#137) | SHOULD | FINAL | [x] `sql/schema/016_training_features.sql`, `sql/transform/500_match_training_features.sql`, `tests/test_training_features_integration.py` |
+| 15.4 | Export with feature contract and coverage report (#138) | SHOULD | FINAL | [x] `src/deng/export.py`, `make export`, `tests/test_export.py` |
+| 15.5 | Retry transient failures of the auxiliary sources (#139) | SHOULD | FINAL | [x] `retry_transient` in `src/deng/sources/http.py`, `tests/test_source_retry.py` |
+| 15.6 | True receipt time inside long transactions (#140) | SHOULD | FINAL | [x] `sql/schema/015_receipt_timestamps.sql`: `clock_timestamp()` defaults, `meta.receipt_time()` for the weather leakage guard (keeps the sample replay clock) |
+| 15.7 | Dashboard page over the training product (#141) | COULD | FINAL | [x] `app/table_view.py` over `curated.match_training_features` |
+| 15.8 | FootballDatabase world ranking as a dated source | COULD | FINAL | [x] `src/deng/sources/footballdatabase.py`, `sql/schema/014_footballdatabase.sql`, `docs/world-ranking.md` |
+| 15.9 | Chronological baseline evaluation (12.2) | COULD | FINAL | [x] `src/deng/model_baseline.py`, `docs/model-baseline.md`, `docs/evidence/baseline-2026-10-15.json` |
+| 15.10 | Runbook for a key-free and a live run (#143) | SHOULD | FINAL | [x] `docs/midterm-runbook.md` |
 
 ## Division of responsibilities
 

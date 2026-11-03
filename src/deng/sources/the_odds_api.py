@@ -2,10 +2,10 @@
 
 What is fetched, and why this way:
 
-* **One request per fetch, for the whole competition.** `GET
+* **One request per configured sport per fetch.** `GET
   /v4/sports/soccer_uefa_champs_league/odds?regions=eu&markets=h2h` answers
   with every upcoming event and every bookmaker's 1X2 prices in one document.
-  One region and one market cost one credit; the free tier has 500 a month.
+  One region and one market cost one credit; the example configuration budgets for 500 a month.
 * **The budget is the design constraint.** Fetching every 15 minutes around
   the clock would cost ~2 900 credits a month. So the pipeline fetches once a
   day as a baseline and at the configured interval only while a watched match
@@ -127,12 +127,15 @@ class OddsResult:
     inserted: bool = False
     event_count: int = 0
     quota: Quota = field(default_factory=Quota)
+    sport_summaries: list[str] = field(default_factory=list)
     events_matched: int = 0
     events_unmatched: list[str] = field(default_factory=list)
 
     @property
     def summary(self) -> str:
         """One line for logs and CLI output."""
+        if self.sport_summaries:
+            return "; ".join(self.sport_summaries)
         if self.plan is not None and not self.plan.fetch:
             return f"skipped: {self.plan.reason}"
         state = "stored" if self.inserted else "already stored"
@@ -225,18 +228,26 @@ def _fmt(moment: datetime | None) -> str:
     return moment.astimezone(PIPELINE_TZ).strftime("%d %b %H:%M") if moment else "?"
 
 
-def latest_state(connection: psycopg.Connection) -> tuple[datetime | None, int | None]:
-    """When the real API was last called and how many credits it reported left."""
+def latest_state(
+    connection: psycopg.Connection, request: OddsRequest | None = None
+) -> tuple[datetime | None, int | None]:
+    """Latest global quota observation or last fetch for one exact request."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
             SELECT ingested_at, requests_remaining
               FROM raw.odds_api
              WHERE source = %s
-             ORDER BY ingested_at DESC
+               AND (%s::text IS NULL OR (endpoint = %s AND request_params = %s::jsonb))
+             ORDER BY ingested_at DESC, raw_id DESC
              LIMIT 1
             """,
-            (SOURCE,),
+            (
+                SOURCE,
+                request.endpoint if request else None,
+                request.endpoint if request else None,
+                Jsonb(request.params()) if request else None,
+            ),
         )
         row = cursor.fetchone()
     return (row[0], row[1]) if row else (None, None)
@@ -376,7 +387,7 @@ def ingest_odds(
     session: requests.Session | None = None,
     now: datetime | None = None,
 ) -> OddsResult:
-    """Fetch the odds if the budget rules allow, store them, and resolve the events.
+    """Fetch configured sports within their cadence and the shared account budget.
 
     Args:
         connection: Open connection; committed after the raw row.
@@ -387,9 +398,31 @@ def ingest_odds(
         session: HTTP session (tests pass a fake one).
         now: Override for the current time (tests).
     """
+    if len(settings.odds_api_sport_list) > 1:
+        combined = OddsResult(plan=FetchPlan(False, "all sports skipped"))
+        for sport in settings.odds_api_sport_list:
+            child = ingest_odds(
+                connection,
+                run_id,
+                settings.model_copy(update={"odds_api_sport": sport, "odds_api_sports": ""}),
+                from_samples=from_samples,
+                force=force,
+                session=session,
+                now=now,
+            )
+            combined.sport_summaries.append(f"{sport}: {child.summary}")
+            combined.event_count += child.event_count
+            combined.inserted = combined.inserted or child.inserted
+            if child.plan and child.plan.fetch:
+                combined.plan = FetchPlan(True, "multi-sport fetch")
+            if child.fetched_at is not None:
+                combined.fetched_at = child.fetched_at
+            if child.quota.remaining is not None:
+                combined.quota = child.quota
+        return combined
     result = OddsResult()
     request = OddsRequest(
-        sport=settings.odds_api_sport,
+        sport=settings.odds_api_sport_list[0],
         regions=settings.odds_api_regions,
         bookmakers=settings.odds_api_bookmakers,
     )
@@ -408,7 +441,12 @@ def ingest_odds(
         connection.commit()
         return result
 
-    last_fetch_at, last_remaining = latest_state(connection)
+    global_fetch_at, last_remaining = latest_state(connection)
+    last_fetch_at, _ = latest_state(connection, request)
+    # Quota belongs to the account; cadence belongs to each sport/region/market.
+    # At the reserve only ONE global daily probe may run, not one per sport.
+    if last_remaining is not None and last_remaining <= settings.odds_quota_reserve:
+        last_fetch_at = global_fetch_at
     result.plan = plan_fetch(
         now=now,
         has_key=bool(settings.odds_api_key.get_secret_value()),

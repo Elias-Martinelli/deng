@@ -38,7 +38,7 @@ from psycopg.types.json import Jsonb
 from deng.clock import pipeline_today
 from deng.database.raw_loader import hash_payload
 from deng.sources import contracts
-from deng.sources.http import ApiError, RetryableApiError
+from deng.sources.http import ApiError, RetryableApiError, retry_transient
 
 logger = logging.getLogger(__name__)
 
@@ -185,15 +185,16 @@ def store(
             INSERT INTO raw.open_meteo AS r
                 (endpoint, venue_team_id, request_params, request_url, ingestion_date,
                  run_id, payload, payload_hash, ingested_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, meta.pipeline_now())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, meta.receipt_time())
             ON CONFLICT (source, endpoint, venue_team_id, ingestion_date) DO UPDATE SET
                 request_params = EXCLUDED.request_params, request_url = EXCLUDED.request_url,
                 -- A rerun refreshes the fetch time on purpose: the leakage guard
                 -- compares it with the kick-off, so a rerun after kick-off makes
                 -- that day's forecast unusable and the previous day's is taken.
-                -- The pipeline clock, not now(): it is the fetch time the leakage
-                -- guard reads, so a sample replay stamps its replayed moment.
-                ingested_at = meta.pipeline_now(), run_id = EXCLUDED.run_id,
+                -- meta.receipt_time(), not now(): the moment this answer arrived,
+                -- not the transaction start, and the replayed moment during a
+                -- sample replay (sql/schema/015_receipt_timestamps.sql).
+                ingested_at = meta.receipt_time(), run_id = EXCLUDED.run_id,
                 payload = EXCLUDED.payload, payload_hash = EXCLUDED.payload_hash
             """,
             (
@@ -256,7 +257,9 @@ def ingest_weather(
                 continue
             url, payload = sample
         else:
-            url, payload = fetch_forecast(session, base_url, request)
+            url, payload = retry_transient(
+                lambda request=request: fetch_forecast(session, base_url, request)
+            )
         contracts.check_open_meteo(
             payload, HOURLY_VARIABLES, f"{ENDPOINT} venue {request.venue_team_id}"
         )

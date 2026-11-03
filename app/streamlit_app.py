@@ -60,7 +60,7 @@ from deng.config import get_settings  # noqa: E402
 DISPLAY_TZ = "Europe/Zurich"
 
 st.set_page_config(
-    page_title="CL Match Intelligence",
+    page_title="Football Match Intelligence",
     page_icon="⚽",
     layout="wide",
     # Diagnostics live in the sidebar; on a phone it would cover the page.
@@ -166,7 +166,7 @@ def result_rows(frame: pd.DataFrame) -> list[ResultRow]:
 # Page
 # --------------------------------------------------------------------------
 
-st.markdown(title("Champions League Match Data"), unsafe_allow_html=True)
+st.markdown(title("Football Match Data"), unsafe_allow_html=True)
 st.caption(
     "An analysis dashboard for the data a match-outcome model would be trained on. "
     "Everything shown is read from the curated tables; this page makes no API call."
@@ -277,9 +277,10 @@ st.markdown(
 # --- Fixture picker --------------------------------------------------------
 fixtures = query(
     """
-    SELECT m.match_id, m.utc_kickoff, m.matchday,
+    SELECT m.match_id, m.utc_kickoff, m.matchday, s.competition_code,
            h.short_name AS home, a.short_name AS away
       FROM curated.fact_match m
+      JOIN curated.match_training_features s USING (match_id)
       JOIN curated.dim_team h ON h.team_id = m.home_team_id
       JOIN curated.dim_team a ON a.team_id = m.away_team_id
      -- Upcoming, plus matches in play (kicked off, not finished, under three
@@ -299,6 +300,8 @@ if fixtures.empty:
 fixtures["label"] = (
     fixtures["utc_kickoff"].dt.tz_convert(DISPLAY_TZ).dt.strftime("%a %d %b, %H:%M")
     + "  ·  "
+    + fixtures["competition_code"]
+    + " · "
     + fixtures["home"]
     + " – "
     + fixtures["away"]
@@ -423,7 +426,8 @@ def team_form(prefix: str) -> TeamForm:
 st.markdown(
     section(
         "Form going into this match",
-        "Champions League matches only, finished before kick-off, most recent first. A form "
+        "Matches from the ingested competitions, finished before kick-off, most recent first. "
+        "A form "
         "built on one match is not comparable to one built on five - the window size is always "
         "shown.",
     )
@@ -456,8 +460,7 @@ st.markdown(
     section("Previous meetings")
     + result_list(
         result_rows(h2h),
-        "No previous meeting in our data. We hold the current season; earlier seasons are "
-        "available from the source but not ingested yet.",
+        "No previous meeting in the competitions and seasons loaded so far.",
     ),
     unsafe_allow_html=True,
 )
