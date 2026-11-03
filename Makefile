@@ -102,10 +102,11 @@ explore:  ## API exploration: fetch small samples from football-data.org (needs 
 
 # --- Docker environment -----------------------------------------------------
 
-# Every target that needs the Docker daemon depends on this one: it starts
-# Docker Desktop (WSL, macOS) when it is not running and waits until it answers.
-docker-ready:  ## Make sure Docker is running (starts Docker Desktop on WSL/macOS if needed)
-	@scripts/ensure_docker.sh
+# Every target that needs the Docker daemon depends on this one: it fails fast
+# with the command to start Docker when the daemon does not answer. It never
+# starts Docker Desktop itself - that stays the user's decision.
+docker-ready:  ## Check that Docker is running; says how to start it if not
+	@scripts/check_docker.sh
 
 # `up -d` returns as soon as the container exists, not when the database accepts
 # connections. The loop polls Docker's health status (defined by the healthcheck
