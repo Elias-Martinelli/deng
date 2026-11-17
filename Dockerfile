@@ -29,7 +29,10 @@ WORKDIR /app
 # constraints.txt pins every dependency to the versions CI tested (`make lock`).
 COPY pyproject.toml README.md constraints.txt ./
 COPY src/ ./src/
-RUN pip install --no-cache-dir -c constraints.txt .
+# The cloud extra (google-cloud-storage) is part of the image: the same image
+# writes to the bucket when RAW_TARGETS=postgres,gcs, and never imports the
+# client otherwise (src/deng/raw_zone/gcs.py).
+RUN pip install --no-cache-dir -c constraints.txt ".[cloud]"
 
 COPY sql/ ./sql/
 # Reference data is part of the product (venue coordinates for the weather), unlike

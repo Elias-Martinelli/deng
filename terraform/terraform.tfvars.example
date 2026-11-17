@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars (git-ignored) and fill in. Only the first two have no
+# default; everything else is shown with its default value.
+
+project_id      = "your-gcp-project-id"
+raw_bucket_name = "your-gcp-project-id-deng-raw"
+
+# region              = "europe-west6"
+# bigquery_dataset_id = "cl_intelligence"
+# service_account_id  = "deng-pipeline"
+
+# Who may run the pipeline as its service account (no key files):
+# pipeline_operators = ["user:first.last@example.com"]
+
+# noncurrent_version_retention_days = 30
+
+# Remote state (see backend.tf.example):
+# create_state_bucket = true
+# state_bucket_name   = "your-gcp-project-id-deng-tfstate"
+
+# Only for a throwaway project: let destroy delete non-empty buckets/datasets.
+# force_destroy = true

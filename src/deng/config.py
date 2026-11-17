@@ -14,8 +14,11 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The raw zones a payload can be written to (src/deng/raw_zone/).
+RAW_TARGETS = ("postgres", "gcs")
 
 
 class Settings(BaseSettings):
@@ -115,6 +118,10 @@ class Settings(BaseSettings):
     gcp_region: str = "europe-west6"
     gcs_raw_bucket: str = ""
     bigquery_dataset: str = "cl_intelligence"
+    # Which raw zones the answers are written to, comma-separated:
+    # "postgres" (default) or "postgres,gcs". PostgreSQL is required in every
+    # combination for now - why: src/deng/raw_zone/writer.py.
+    raw_targets: str = "postgres"
 
     @field_validator("team_context_csv_path", mode="before")
     @classmethod
@@ -146,6 +153,37 @@ class Settings(BaseSettings):
         ):
             raise ValueError("FOOTBALL_DATA_SEASONS must contain years from 1850 to this year")
         return ",".join(seasons)
+
+    @field_validator("raw_targets")
+    @classmethod
+    def validate_raw_targets(cls, value: str) -> str:
+        """Accept known raw zones only, deduplicated, PostgreSQL always included."""
+        targets = list(dict.fromkeys(part.strip().lower() for part in value.split(",")))
+        targets = [target for target in targets if target]
+        unknown = [target for target in targets if target not in RAW_TARGETS]
+        if unknown:
+            raise ValueError(f"unknown RAW_TARGETS {unknown}; choose from {', '.join(RAW_TARGETS)}")
+        if "postgres" not in targets:
+            raise ValueError(
+                "RAW_TARGETS must include postgres: the later sources and the "
+                "transformation read the PostgreSQL raw zone (use postgres,gcs)"
+            )
+        return ",".join(targets)
+
+    @model_validator(mode="after")
+    def gcs_target_needs_a_bucket(self) -> Settings:
+        """Fail at start-up, not at the first write, when the bucket is missing."""
+        if "gcs" in self.raw_target_list and not self.gcs_raw_bucket:
+            raise ValueError(
+                "RAW_TARGETS includes gcs but GCS_RAW_BUCKET is empty; "
+                "`terraform output env_lines` prints both"
+            )
+        return self
+
+    @property
+    def raw_target_list(self) -> list[str]:
+        """The configured raw zones, PostgreSQL first."""
+        return self.raw_targets.split(",")
 
     @property
     def football_data_competition_list(self) -> list[str]:

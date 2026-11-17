@@ -36,6 +36,13 @@ dev = [
   "pytest>=8.3",
   "ruff>=0.6",
 ]
+# The cloud path: the GCS raw zone (RAW_TARGETS=postgres,gcs) and the BigQuery
+# warehouse (`bq-*` commands). Optional: a local run writes to PostgreSQL only
+# and never imports either client (src/deng/raw_zone/gcs.py, src/deng/warehouse/).
+cloud = [
+  "google-cloud-storage>=3.4,<4",
+  "google-cloud-bigquery>=3.30,<4",
+]
 # Consumers of the data product. Kept out of the core dependencies so the
 # pipeline image stays small and a reviewer who only runs the pipeline does not
 # install Streamlit and Jupyter.

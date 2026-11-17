@@ -37,11 +37,14 @@ from psycopg.types.json import Jsonb
 
 from deng.clock import pipeline_today
 from deng.database.raw_loader import hash_payload
+from deng.raw_zone import GcsRawZone
 from deng.sources import contracts
 from deng.sources.http import ApiError, RetryableApiError, retry_transient
 
 logger = logging.getLogger(__name__)
 
+# The value raw.open_meteo.source defaults to (sql/schema/007_weather.sql).
+SOURCE = "open-meteo.com"
 ENDPOINT = "v1/forecast"
 HORIZON_DAYS = 16  # today plus 15 days, as the API allows
 HOURLY_VARIABLES = (
@@ -177,8 +180,10 @@ def store(
     payload: dict[str, Any],
     ingestion_date: date,
     run_id: uuid.UUID,
+    mirror: GcsRawZone | None = None,
 ) -> None:
-    """Idempotent upsert: one row per venue per ingestion date."""
+    """Idempotent upsert: one row per venue per ingestion date (and object, with a mirror)."""
+    payload_hash = hash_payload(payload)
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -205,8 +210,21 @@ def store(
                 ingestion_date,
                 run_id,
                 Jsonb(payload),
-                hash_payload(payload),
+                payload_hash,
             ),
+        )
+    if mirror is not None:
+        # Same key as the row: one object per venue per day, overwritten by a rerun.
+        mirror.put(
+            source=SOURCE,
+            endpoint=ENDPOINT,
+            key={"venue_team_id": request.venue_team_id},
+            ingestion_date=ingestion_date,
+            run_id=run_id,
+            request_url=url,
+            payload=payload,
+            request_params=request.params(),
+            payload_hash=payload_hash,
         )
 
 
@@ -218,6 +236,7 @@ def ingest_weather(
     from_samples: bool = False,
     session: requests.Session | None = None,
     today: date | None = None,
+    mirror: GcsRawZone | None = None,
 ) -> WeatherResult:
     """Load the venues, then fetch and store today's forecasts.
 
@@ -229,6 +248,7 @@ def ingest_weather(
         from_samples: Replay committed samples instead of calling the API.
         session: HTTP session (tests pass a fake one).
         today: Override for "today" (tests).
+        mirror: The GCS raw zone to write every forecast to as well (RAW_TARGETS).
 
     Raises:
         ApiError: on a permanent error, including a ContractError for a forecast
@@ -263,7 +283,7 @@ def ingest_weather(
         contracts.check_open_meteo(
             payload, HOURLY_VARIABLES, f"{ENDPOINT} venue {request.venue_team_id}"
         )
-        store(connection, request, url, payload, logical_date, run_id)
+        store(connection, request, url, payload, logical_date, run_id, mirror)
         result.stored.append(request.venue_team_id)
     # All venues of the day in one commit, like the football payloads: a
     # failure on the fifth venue leaves no half-fetched day behind.

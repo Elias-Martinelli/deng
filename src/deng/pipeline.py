@@ -8,6 +8,9 @@
     python -m deng.pipeline run                       ingest + transform + dq in one go
     python -m deng.pipeline backfill --from 2026-09-01 --to 2026-09-10
     python -m deng.pipeline verify                    run the verification queries
+    python -m deng.pipeline bq-init                   BigQuery: external raw table + tables
+    python -m deng.pipeline bq-transform [--dry-run]  BigQuery: raw -> staging -> curated
+    python -m deng.pipeline bq-verify                 BigQuery: verification checks
 
 Three commands carry the pipeline, in this order: **ingest** asks every source
 and stores the answers unchanged; **transform** builds every table from those
@@ -29,7 +32,7 @@ from contextlib import AbstractContextManager, nullcontext
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from deng.clock import SAMPLES_DATE, pipeline_today, replaying
+from deng.clock import SAMPLES_DATE, pipeline_now, pipeline_today, replaying
 from deng.config import get_settings
 from deng.database import PipelineRun, apply_sql_files, connect
 from deng.ingestion import runner
@@ -92,6 +95,12 @@ def main(argv: list[str] | None = None) -> int:
         return command_export(args.output, args.labelled_only, not args.uncompressed)
     if args.command == "verify":
         return command_verify()
+    if args.command in BIGQUERY_STAGES:
+        logical_date = default_date(getattr(args, "date", None), args.from_samples)
+        with sample_clock(logical_date, args.from_samples):
+            return command_bigquery(
+                BIGQUERY_STAGES[args.command], logical_date, getattr(args, "dry_run", False)
+            )
     parser.print_help()
     return 2
 
@@ -164,7 +173,68 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--uncompressed", action="store_true", help="plain CSV instead of CSV.gz")
 
     sub.add_parser("verify", help="run the verification queries and print the results")
+
+    # The cloud warehouse (sql/bigquery/, needs the cloud extra and GCP settings).
+    for command, help_text in (
+        ("bq-init", "BigQuery: create the external raw table and the tables (idempotent)"),
+        ("bq-transform", "BigQuery: raw -> staging -> curated with MERGE (idempotent)"),
+        ("bq-verify", "BigQuery: run the verification checks; non-zero exit on a failure"),
+    ):
+        bq = sub.add_parser(command, help=help_text)
+        bq.add_argument(
+            "--from-samples",
+            action="store_true",
+            help="the replayed sample day on its own clock (see `ingest --from-samples`)",
+        )
+        if command != "bq-init":
+            bq.add_argument("--date", type=date.fromisoformat, help=SAMPLES_DATE_HELP)
+        if command != "bq-verify":
+            bq.add_argument(
+                "--dry-run",
+                action="store_true",
+                help="let BigQuery validate every statement and estimate its bytes, run nothing",
+            )
     return parser
+
+
+# CLI command -> folder under sql/bigquery/.
+BIGQUERY_STAGES = {"bq-init": "schema", "bq-transform": "transform", "bq-verify": "verify"}
+
+
+def command_bigquery(stage: str, logical_date: date, dry_run: bool = False) -> int:
+    """Run one stage of sql/bigquery/ against the configured dataset.
+
+    The same order as the local pipeline - schema, transform, verify - and the
+    same exit codes; see src/deng/warehouse/bigquery.py for how identifiers and
+    parameters reach the SQL.
+    """
+    from deng.warehouse import bigquery
+
+    settings = get_settings()
+    try:
+        names = bigquery.Names.from_settings(settings)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    client = bigquery.client_from_settings(settings)
+    target = f"{names.project}.{names.dataset}"
+    if stage == "verify":
+        checks = bigquery.verify(client, names, logical_date=logical_date, now=pipeline_now())
+        for check in checks:
+            print(f"  {'ok  ' if check.passed else 'FAIL'} {check.name:<40} {check.failures}")
+        failed = sum(not check.passed for check in checks)
+        print(f"bigquery verification on {target}: {len(checks) - failed}/{len(checks)} passed")
+        return 1 if failed or not checks else 0
+    results = bigquery.run_stage(
+        client, names, stage, logical_date=logical_date, now=pipeline_now(), dry_run=dry_run
+    )
+    for result in results:
+        scanned = "?" if result.bytes_processed is None else f"{result.bytes_processed:,} B"
+        rows = "" if result.rows_affected is None else f"  rows={result.rows_affected}"
+        print(f"  {result.name:<28} {scanned:>16}{rows}")
+    mode = " (dry run: nothing changed)" if dry_run else ""
+    print(f"bigquery {stage} on {target} for {logical_date}: {len(results)} statement(s){mode}")
+    return 0
 
 
 def command_init() -> int:

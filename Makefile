@@ -32,10 +32,16 @@ PYTHON ?= $(shell for c in python3.13 python3.12 python3.11 python3.10 python3; 
 	{ echo $$c; break; }; done)
 PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 
+# `make <docker target> GCP=1` adds docker-compose.gcp.yml, which mounts the
+# Google credentials for containers that write to GCS (RAW_TARGETS=postgres,gcs).
+# Without it the stack needs no gcloud at all.
+COMPOSE := docker compose$(if $(GCP), -f docker-compose.yml -f docker-compose.gcp.yml)
+
 .PHONY: help setup setup-app lock test test-integration lint format explore doctor clean \
         up down logs ps psql init ingest ingest-samples transform dq run run-samples odds \
         backfill verify docker-ingest docker-app reset app notebook \
-        setup-orchestrator orchestrator dagster-dev dagster-backfill venues docker-ready
+        setup-orchestrator orchestrator dagster-dev dagster-backfill venues docker-ready \
+        setup-cloud terraform-check bq-init bq-transform bq-verify
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-19s %s\n", $$1, $$2}'
@@ -112,7 +118,7 @@ docker-ready:  ## Check that Docker is running; says how to start it if not
 # connections. The loop polls Docker's health status (defined by the healthcheck
 # in docker-compose.yml) for up to 60 s, so the next command cannot race it.
 up: docker-ready  ## Start PostgreSQL and wait until it is healthy
-	docker compose up -d postgres
+	$(COMPOSE) up -d postgres
 	@echo "waiting for PostgreSQL to become healthy..."
 	@for i in $$(seq 1 30); do \
 		state=$$(docker inspect -f '{{.State.Health.Status}}' deng-postgres 2>/dev/null || echo starting); \
@@ -121,20 +127,20 @@ up: docker-ready  ## Start PostgreSQL and wait until it is healthy
 	done; echo "PostgreSQL did not become healthy - check: make logs"; exit 1
 
 down:  ## Stop the containers (keeps the data volume)
-	docker compose down
+	$(COMPOSE) down
 
 reset:  ## Stop the containers AND delete all data
-	docker compose down -v
+	$(COMPOSE) down -v
 
 logs: docker-ready  ## Follow the PostgreSQL logs
-	docker compose logs -f postgres
+	$(COMPOSE) logs -f postgres
 
 ps: docker-ready  ## Show container status
-	docker compose ps
+	$(COMPOSE) ps
 
 # $${VAR:-default}: the shell's "value or default" - works with or without .env.
 psql: docker-ready  ## Open a psql shell in the database container
-	docker compose exec postgres psql -U $${POSTGRES_USER:-deng} -d $${POSTGRES_DB:-cl_intelligence}
+	$(COMPOSE) exec postgres psql -U $${POSTGRES_USER:-deng} -d $${POSTGRES_DB:-cl_intelligence}
 
 # --- Pipeline ---------------------------------------------------------------
 
@@ -171,11 +177,11 @@ verify:  ## Run the verification queries; non-zero exit when a check fails
 	$(PY) -m deng.pipeline verify
 
 docker-ingest: docker-ready  ## Run init + ingestion inside the container image (proves the image works)
-	docker compose run --rm pipeline init
-	docker compose run --rm -e FOOTBALL_DATA_COMPETITIONS=CL pipeline ingest --from-samples
+	$(COMPOSE) run --rm pipeline init
+	$(COMPOSE) run --rm -e FOOTBALL_DATA_COMPETITIONS=CL pipeline ingest --from-samples
 
 docker-app: docker-ready  ## Start the Streamlit viewer in a container on http://localhost:8501
-	docker compose --profile app up -d --build app
+	$(COMPOSE) --profile app up -d --build app
 
 test-integration:  ## Run only the tests that need PostgreSQL
 	$(PY) -m pytest -v -m postgres
@@ -186,7 +192,7 @@ setup-orchestrator:  ## Install the Dagster extra into .venv (for dagster-dev an
 	$(VENV)/bin/pip install -c constraints.txt -e ".[dev,orchestrator]"
 
 orchestrator: docker-ready  ## Start PostgreSQL + Dagster (webserver, daemon); UI on http://localhost:3000
-	docker compose up -d --build postgres dagster-webserver dagster-daemon
+	$(COMPOSE) up -d --build postgres dagster-webserver dagster-daemon
 	@echo "Dagster UI: http://localhost:$${DAGSTER_PORT:-3000}"
 
 # DAGSTER_HOME=.dagster: without it `dagster dev` keeps its run history in a
@@ -195,8 +201,32 @@ dagster-dev:  ## Run Dagster locally without Docker (needs setup-orchestrator an
 	mkdir -p .dagster && DAGSTER_HOME=$(CURDIR)/.dagster $(VENV)/bin/dagster dev -m deng.orchestration.definitions
 
 dagster-backfill: docker-ready  ## Backfill through Dagster: make dagster-backfill FROM=2026-09-15 TO=2026-09-17
-	docker compose exec dagster-webserver dagster job backfill -j daily_pipeline \
+	$(COMPOSE) exec dagster-webserver dagster job backfill -j daily_pipeline \
 		--from $(FROM) --to $(TO) -w /opt/dagster/dagster_home/workspace.yaml --noprompt
+
+# --- Cloud (final milestone: terraform/, src/deng/raw_zone/) -------------------
+
+setup-cloud:  ## Install the GCS client into .venv (needed for RAW_TARGETS=postgres,gcs)
+	$(VENV)/bin/pip install -c constraints.txt -e ".[dev,cloud]"
+
+# Offline: `init -backend=false` downloads the provider but reads no state and
+# needs no GCP credentials, so this runs on any machine and in CI.
+terraform-check:  ## Check the Terraform code offline: fmt, init without backend, validate
+	terraform -chdir=terraform fmt -check -recursive
+	terraform -chdir=terraform init -backend=false -input=false
+	terraform -chdir=terraform validate
+
+# The BigQuery warehouse (sql/bigquery/): needs `make setup-cloud`, the GCP
+# settings in .env and credentials. DRY_RUN=1 lets BigQuery validate every
+# statement and estimate its bytes without running anything.
+bq-init:  ## BigQuery: create the external raw table and the tables (DRY_RUN=1 validates only)
+	$(PY) -m deng.pipeline bq-init $(if $(DRY_RUN),--dry-run)
+
+bq-transform:  ## BigQuery: raw -> staging -> curated with MERGE (DATE=..., DRY_RUN=1)
+	$(PY) -m deng.pipeline bq-transform $(if $(DATE),--date $(DATE)) $(if $(DRY_RUN),--dry-run)
+
+bq-verify:  ## BigQuery: verification checks; non-zero exit when one fails (DATE=...)
+	$(PY) -m deng.pipeline bq-verify $(if $(DATE),--date $(DATE))
 
 # --- Consumers of the data product -------------------------------------------
 

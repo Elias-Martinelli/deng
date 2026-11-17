@@ -40,11 +40,12 @@ import psycopg
 import requests
 from psycopg.types.json import Jsonb
 
-from deng.clock import PIPELINE_TZ
+from deng.clock import PIPELINE_TZ, pipeline_day
 from deng.config import Settings
 from deng.database.raw_loader import hash_payload
 from deng.files import project_file
 from deng.ingestion import raw_reads
+from deng.raw_zone import GcsRawZone
 from deng.sources.http import ApiError, RetryableApiError
 
 logger = logging.getLogger(__name__)
@@ -335,6 +336,7 @@ def store(
     fetched_at: datetime,
     quota: Quota | None = None,
     source: str = SOURCE,
+    mirror: GcsRawZone | None = None,
 ) -> bool:
     """Append one fetch to the raw zone. Returns True when the row was new.
 
@@ -343,6 +345,7 @@ def store(
     its own row - reruns of `--from-samples` cannot inflate the table.
     """
     quota = quota or Quota()
+    payload_hash = hash_payload({"events": payload})
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -367,7 +370,7 @@ def store(
                 fetched_at,
                 run_id,
                 Jsonb(payload),
-                hash_payload({"events": payload}),
+                payload_hash,
                 len(payload),
                 quota.remaining,
                 quota.used,
@@ -375,6 +378,25 @@ def store(
             ),
         )
         row = cursor.fetchone()
+    if mirror is not None:
+        # The key includes the fetch time, as the row's does: every real fetch
+        # is a new object, a replayed sample overwrites its own.
+        mirror.put(
+            source=source,
+            endpoint=request.endpoint,
+            key={"request_params": request.params(), "fetched_at": fetched_at.isoformat()},
+            ingestion_date=pipeline_day(fetched_at),
+            run_id=run_id,
+            request_url=url,
+            payload=payload,
+            request_params=request.params(),
+            payload_hash=payload_hash,
+            attributes={
+                "requests_remaining": quota.remaining,
+                "requests_used": quota.used,
+                "requests_last": quota.last,
+            },
+        )
     return bool(row and row[0])
 
 
@@ -386,6 +408,7 @@ def ingest_odds(
     force: bool = False,
     session: requests.Session | None = None,
     now: datetime | None = None,
+    mirror: GcsRawZone | None = None,
 ) -> OddsResult:
     """Fetch configured sports within their cadence and the shared account budget.
 
@@ -397,6 +420,7 @@ def ingest_odds(
         force: Ignore window and interval (CLI `--force`).
         session: HTTP session (tests pass a fake one).
         now: Override for the current time (tests).
+        mirror: The GCS raw zone to write every fetch to as well (RAW_TARGETS).
     """
     if len(settings.odds_api_sport_list) > 1:
         combined = OddsResult(plan=FetchPlan(False, "all sports skipped"))
@@ -409,6 +433,7 @@ def ingest_odds(
                 force=force,
                 session=session,
                 now=now,
+                mirror=mirror,
             )
             combined.sport_summaries.append(f"{sport}: {child.summary}")
             combined.event_count += child.event_count
@@ -433,7 +458,14 @@ def ingest_odds(
         result.plan = FetchPlan(bool(samples), f"{len(samples)} sample fetch(es)")
         for url, payload, fetched_at in samples:
             inserted = store(
-                connection, request, url, payload, run_id, fetched_at, source=SAMPLE_SOURCE
+                connection,
+                request,
+                url,
+                payload,
+                run_id,
+                fetched_at,
+                source=SAMPLE_SOURCE,
+                mirror=mirror,
             )
             result.inserted = result.inserted or inserted
             result.event_count = len(payload)
@@ -471,7 +503,7 @@ def ingest_odds(
     result.fetched_at = now
     result.quota = quota
     result.event_count = len(payload)
-    result.inserted = store(connection, request, url, payload, run_id, now, quota)
+    result.inserted = store(connection, request, url, payload, run_id, now, quota, mirror=mirror)
     connection.commit()
     if quota.remaining is not None and quota.remaining <= settings.odds_quota_reserve:
         logger.warning(

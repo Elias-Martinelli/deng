@@ -109,13 +109,13 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 7.2 | Plausibility: goals in range (temperature with the weather work) | SHOULD | MIDTERM | [x] `goals_are_plausible`, `weather_values_plausible` |
 | 7.3 | Results persisted in `meta.dq_results`; critical failures fail the run | MUST | MIDTERM | [x] persisted per run, CRITICAL exits non-zero |
 | 7.4 | Schema-drift handling: required-field validation with clear error, optional fields tolerant | MUST | MIDTERM | [x] the contracts of 2.8: a missing required field fails with its path (`matches[7] (id 575330).score.fullTime.home missing`), new or missing optional fields pass; The Odds API and OpenStreetMap only type-checked (limitation in `docs/failure-behaviour.md`) |
-| 7.5 | Same checks against BigQuery | MUST | FINAL | [ ] |
+| 7.5 | Same checks against BigQuery | MUST | FINAL | [~] `sql/bigquery/verify/010_football.sql`, `make bq-verify` (non-zero exit on a failure): the football and fact checks; weather, odds and training checks follow with their tables. Not yet run against BigQuery |
 
 ## EPIC 8 – Testing
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 252 tests in total, CI |
+| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 305 tests in total, CI |
 | 8.1b | Contract tests against the real samples (schema, keys, referential integrity) | SHOULD | M1 | [x] 13 tests in `tests/test_sample_payloads.py` |
 | 8.2 | Tests for parsing and transformations against Postgres, also in CI | MUST | MIDTERM | [x] 18 transformation tests; CI has a Postgres service |
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
@@ -128,26 +128,26 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 9.1 | Raw writer abstraction: Postgres JSONB locally, GCS object in cloud, same interface | MUST | FINAL | [ ] |
-| 9.2 | Object layout `raw/source=/endpoint=/ingestion_date=/run_id.json`; deterministic names for safe reruns | MUST | FINAL | [ ] |
-| 9.3 | Production path source → GCS without local intermediate file | MUST | FINAL | [ ] |
+| 9.1 | Raw writer abstraction: Postgres JSONB locally, GCS object in cloud, same interface | MUST | FINAL | [x] `src/deng/raw_zone/`: one `load(...)` for the football answers, `mirror.put(...)` next to the weather, odds and stadium SQL, each with its own table's key; `RAW_TARGETS=postgres,gcs`; `tests/test_raw_zone.py` (25 tests). Not mirrored on purpose: crest images (dashboard only), world ranking and team-context CSV (optional training extras, licensed data) |
+| 9.2 | Object layout `raw/source=/endpoint=/ingestion_date=/<key hash>.json`; deterministic names for safe reruns | MUST | FINAL | [x] the name is a function of the business key, so a rerun overwrites its own object; `<run_id>.json` would duplicate on every rerun (ADR-003 amendment); tested in `tests/test_raw_zone.py` |
+| 9.3 | Production path source → GCS without local intermediate file | MUST | FINAL | [~] one `upload_from_string` per answer, from memory; a test fails on any temporary file. Scheduled: the daily Dagster job mirrors with `RAW_TARGETS=postgres,gcs` and its `bigquery/warehouse` asset builds BigQuery (issue #83); credentials for the containers via `GCP=1`. Checked against the real client library with a local stand-in for the GCS API; the first write to a real bucket waits for 11.1 |
 
 ## EPIC 10 – BigQuery
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 10.1 | Load/external staging tables from GCS | MUST | FINAL | [ ] |
-| 10.2 | Curated tables via `MERGE`; grain documented | MUST | FINAL | [ ] |
-| 10.3 | Partitioning (match_date / snapshot_date) and clustering (team ids, match_id) with justification | MUST | FINAL | [ ] |
-| 10.4 | Verification queries | MUST | FINAL | [ ] |
+| 10.1 | Load/external staging tables from GCS | MUST | FINAL | [~] `sql/bigquery/schema/010_raw_answers.sql`: one external table over the bucket, hive-partitioned by source, endpoint, day, with an explicit schema and a required partition filter; staging from it by `MERGE` (`make bq-init`, `make bq-transform`). Not yet run against BigQuery |
+| 10.2 | Curated tables via `MERGE`; grain documented | MUST | FINAL | [~] `sql/bigquery/transform/`: staging_matches, staging_teams, dim_team, fact_match, every file a `MERGE` (a test enforces it), grain in each table's description. Weather, odds and training tables open |
+| 10.3 | Partitioning (match_date / snapshot_date) and clustering (team ids, match_id) with justification | MUST | FINAL | [~] `fact_match`: `PARTITION BY DATE_TRUNC(match_date, MONTH)`, `CLUSTER BY home_team_id, away_team_id, match_id`; staging and dim_team clustered only - reasons in each file and the README. `fact_match_snapshot` (snapshot_date) open with 6.5 |
+| 10.4 | Verification queries | MUST | FINAL | [~] `sql/bigquery/verify/`, `make bq-verify`; see 7.5 |
 
 ## EPIC 11 – Terraform
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 11.1 | Bucket, dataset, service account, IAM bindings; variables, outputs | MUST | FINAL | [ ] |
-| 11.2 | Documented init/validate/plan/apply/destroy and required permissions | MUST | FINAL | [ ] |
-| 11.3 | Remote state in GCS bucket | COULD | FINAL | [ ] |
+| 11.1 | Bucket, dataset, service account, IAM bindings; variables, outputs | MUST | FINAL | [~] `terraform/`: versioned private bucket, dataset in europe-west6, service account without a key, least-privilege bindings; `validate` in CI, offline `plan` lists 12 resources. Open: `apply` to the team's project |
+| 11.2 | Documented init/validate/plan/apply/destroy and required permissions | MUST | FINAL | [x] `terraform/README.md` |
+| 11.3 | Remote state in GCS bucket | COULD | FINAL | [~] optional state bucket (`create_state_bucket`) and `backend.tf.example` with the two-step bootstrap; not migrated yet |
 
 ## EPIC 12 – Analytics / ML
 

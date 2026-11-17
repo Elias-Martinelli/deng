@@ -291,7 +291,7 @@ cd deng
 
 ./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 252 tests (237 without the orchestrator and ml extras); DB tests skip without PostgreSQL
+make test                  # 305 tests (286 without the orchestrator, ml and cloud extras); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, offline, no API key needed
@@ -527,6 +527,11 @@ the database's *health check*, not merely for the container to exist, so a cold
 start cannot fail with "connection refused". The app is a second build stage,
 which keeps the pipeline image free of a web framework.
 
+**Writing to GCS from the containers** needs one addition: `GCP=1` (e.g.
+`make orchestrator GCP=1`) layers `docker-compose.gcp.yml` on top, which mounts
+the Google credentials read-only. Without it the stack needs no gcloud at all.
+Details are in [`terraform/README.md`](terraform/README.md#in-docker-and-dagster).
+
 > **Docker not running?** Every Docker target first runs
 > `scripts/check_docker.sh`, which stops at once and prints how to start Docker
 > on your platform: Docker Desktop on Windows/WSL and macOS, `sudo systemctl
@@ -558,6 +563,9 @@ transform — SQL only                                        data quality
   raw/*  ──► staging/{matches, teams, standings, venues, weather_forecast, bookmaker_odds}
          ──► curated/{dim_team, dim_venue, fact_match, fact_team_match_form,
                       fact_match_prediction, fact_match_weather, fact_bookmaker_odds}  ──► meta/dq_results
+
+cloud — only with RAW_TARGETS=postgres,gcs, a no-op otherwise
+  raw/{football_data, osm_venues, open_meteo} ──► bigquery/warehouse   (bq-init → bq-transform → bq-verify)
 ```
 
 ```bash
@@ -567,6 +575,11 @@ make dagster-backfill FROM=2026-09-15 TO=2026-09-17   # one run per day, one at 
 
 * **Schedule:** `daily_pipeline_schedule`, 06:00 Europe/Zurich, active as soon
   as the daemon runs. The 06:00 run ingests under *today's* date.
+* **Cloud path in the same job:** with `RAW_TARGETS=postgres,gcs` the raw
+  assets also write the bucket, and `bigquery/warehouse` builds the partition's
+  day in BigQuery with the `bq-*` commands. A failed BigQuery check fails the
+  run. Without the gcs target the asset returns at once, so the local stack
+  needs no GCP at all (`make orchestrator GCP=1` mounts the credentials).
 * **Second job:** `odds_refresh`, unpartitioned, every `ODDS_REFRESH_MINUTES`
   (default 15). Most ticks decide *not* to fetch: the asset applies the budget
   rules (daily baseline, watch window before kick-off, quota reserve) and
@@ -780,7 +793,7 @@ Treated as a feature in its own right:
   install with `-c constraints.txt`, so a clone next month gets the versions
   tested today. After changing `pyproject.toml`, `make lock` re-resolves it
   (needs [uv](https://docs.astral.sh/uv/), installing does not).
-* CI runs lint, 252 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 305 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -794,7 +807,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 252 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `252 passed` with PostgreSQL up, `make setup-orchestrator` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `235 passed, 2 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each); without a database `155 passed, 82 skipped` |
+| `make test` | 305 tests: config, API client, source schemas, payload contracts, loader, the GCS raw zone, the BigQuery SQL and runner, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `305 passed` with PostgreSQL up, `make setup-orchestrator`, `make setup-cloud` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `280 passed, 6 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each, four BigQuery runner tests without the cloud extra); without a database `195 passed, 91 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast, the training dataset | `4/4 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | After `make run-samples` always `29/31`: the two open WARNINGs are the form window and the crests (a sample run downloads none). With an API key the form window passes once past seasons are ingested - early in a season most clubs have fewer than three matches - and the crests once `fetch_crests` has run. Exit 0 in every case |
@@ -893,14 +906,79 @@ shared with every visitor.
 
 ## Google Cloud Architecture
 
-*Planned for the final submission* - the right-hand path in
-[`docs/architecture-target.svg`](docs/architecture-target.svg). Ingestion writes
-raw JSON straight to a GCS bucket (`raw/source=…/endpoint=…/ingestion_date=…/run_id.json`); BigQuery loads
-staging from GCS and builds curated tables with `MERGE`, partitioned by
-`match_date` / `snapshot_date` and clustered by team and match ids. Terraform
-provisions the bucket, the dataset, a service account and IAM bindings. The
-production path must not depend on local storage — the raw writer is already an
-abstraction for exactly that swap.
+*In progress for the final submission.* This is the right-hand path in
+[`docs/architecture-target.svg`](docs/architecture-target.svg).
+
+**Infrastructure.** [`terraform/`](terraform/README.md) creates the raw-zone
+bucket, the BigQuery dataset, the pipeline's service account and the narrowest
+IAM bindings it needs. It creates no key file: operators impersonate the
+account. The README there covers `init`, `validate`, `plan`, `apply` and
+`destroy`, the permissions of whoever runs them, and the optional remote state
+in GCS. The code passes `terraform validate` in CI, but it has not been applied
+to a real project yet.
+
+**Raw zone in GCS.** One interface covers both raw zones
+([`src/deng/raw_zone/`](src/deng/raw_zone/writer.py)), and configuration picks
+which ones an answer lands in:
+
+| `RAW_TARGETS` | Answers go to |
+|---|---|
+| `postgres` (default) | the raw tables (`raw.football_data`, `raw.open_meteo`, `raw.odds_api`, `raw.osm_venues`, ...) |
+| `postgres,gcs` | the same rows, plus one object per row in `GCS_RAW_BUCKET` for football, weather, odds and stadiums |
+
+Each answer is uploaded straight from memory, with no local file on the way,
+to a name that depends only on the business key of its table: one object per
+football question per day, per venue forecast per day, per odds fetch, and per
+stadium lookup per day.
+
+```text
+raw/source=football-data.org/endpoint=competitions.CL.matches/ingestion_date=2026-11-17/<hash of source, endpoint, params>.json
+```
+
+A rerun of the same day therefore overwrites its own object, the way the
+Postgres unique key makes it update its own row. The run id is stored inside
+the object and in its metadata, not in its name: a name with the run id would
+let every rerun add a duplicate (the amendment in
+[ADR-003](docs/adr/ADR-003-raw-data-storage.md)). The decisions of the whole cloud
+path, with the alternatives, are in [ADR-007](docs/adr/ADR-007-cloud-raw-zone-and-warehouse.md). The body is one line of
+JSON with the envelope of a raw row, which is newline-delimited JSON that
+BigQuery loads with hive partitioning on the three directory levels.
+
+PostgreSQL stays in every combination for now. The later sources plan their
+work from the Postgres raw zone, and the transformation reads it, so a GCS-only
+run would find no matches to ask the weather about. Three sources are not
+mirrored: the crest images, which only the dashboard shows; the world ranking,
+an optional training extra; and the team-context CSV, which holds licensed data
+that is not ours to upload.
+
+**Warehouse in BigQuery.** [`sql/bigquery/`](sql/bigquery/) builds the football
+chain, raw → staging → curated, in the dataset Terraform created. It runs in
+the same order as the local pipeline, one statement per file:
+
+| Command | Folder | What it does |
+|---|---|---|
+| `make bq-init` | `schema/` | `raw_answers`, an **external table over the bucket** with the three path levels as hive partition columns; then `staging_matches`, `staging_teams`, `dim_team`, `fact_match` |
+| `make bq-transform` | `transform/` | the four tables with **`MERGE`**, ported from `sql/transform/110`–`220` with the same rules (newest answer wins, a rerun of an older day cannot overwrite a newer state) |
+| `make bq-verify` | `verify/` | the guarantees PostgreSQL enforces with constraints and BigQuery does not: unique keys, home ≠ away, a finished match has a score, every club in `dim_team`, nothing lost between staging and fact |
+
+Why the tables are laid out as they are (the reasons are in each file too):
+
+* **`raw_answers` is external, not loaded.** The bucket stays the only raw
+  zone, a new endpoint needs no DDL, and `require_hive_partition_filter`
+  makes a query that forgets the day fail instead of scanning all history.
+* **`fact_match` is partitioned by month of `match_date`.** Queries ask for date
+  ranges such as a matchday, a season, or "before the snapshot". Daily
+  partitions would hold three to ten matches each. Monthly ones hold one or two
+  matchdays and still prune.
+* **`fact_match` is clustered by `home_team_id, away_team_id, match_id`.** The
+  form features and the app ask per club, and the `MERGE` asks per match.
+* **Staging and `dim_team` are clustered but not partitioned.** A few thousand
+  rows sit far below the size where partitions pay off.
+
+`DRY_RUN=1` lets BigQuery validate every statement and estimate its bytes
+without running it. That is the first thing to run against a fresh dataset:
+the SQL parses as BigQuery SQL (checked offline), but it has not run against
+BigQuery yet. The weather, odds and training tables follow the same pattern.
 
 ## Known Limitations
 
@@ -956,7 +1034,7 @@ Documented honestly, because hidden failures cost more than known ones:
 |---|---|---|
 | Milestone 1 — initial pitch | week 3 | **complete** — use case, verified sources, Architecture v0.1, ADRs, backlog |
 | Midterm — local pipeline | 22 Oct 2026, 15:30 | **complete** — ingestion with payload contracts, raw zone, transformations, curated model, data quality, Dagster orchestration, Docker Compose, Streamlit, notebook, Architecture v0.2, failure matrix, clean-environment test (18 Oct, [evidence](docs/evidence/clean-environment-test.md)). Open: the second run on the other student's machine, tag `midterm` |
-| Final — cloud pipeline | 10 Dec 2026, 20:00 | not started |
+| Final — cloud pipeline | 10 Dec 2026, 20:00 | **in progress**. Done: Terraform for the bucket, dataset, service account and IAM (validated, not yet applied), and the raw writer with a GCS target for football, weather, odds and stadium answers. Open: BigQuery staging and curated, quality checks against BigQuery |
 
 Rubric coverage: [`docs/rubric-checklist.md`](docs/rubric-checklist.md) ·
 Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
@@ -969,9 +1047,11 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── setup.sh                  # one-command setup (no pyenv/direnv/conda needed)
 ├── Makefile                  # setup · test · up · run · verify · app · notebook
 ├── docker-compose.yml        # postgres + Dagster + pipeline + app on one network
+├── docker-compose.gcp.yml    # opt-in overlay: Google credentials for GCS writes (GCP=1)
 ├── Dockerfile                # three stages: pipeline, app, orchestrator
 ├── orchestrator/             # Dagster instance + workspace config (DAGSTER_HOME)
-├── pyproject.toml            # dependencies and extras (dev / app / orchestrator / notebook)
+├── pyproject.toml            # dependencies and extras (dev / app / orchestrator / notebook / ml / cloud)
+├── terraform/                # GCS bucket, BigQuery dataset, service account, IAM (README inside)
 ├── constraints.txt           # every dependency pinned (`make lock` regenerates it)
 ├── .env.example              # configuration template — copy to .env
 │
@@ -986,6 +1066,8 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │   ├── ingestion/            # runner.py: THE ingestion — the five sources, in order
 │   │                         #   raw_reads.py: the few questions it may ask the raw zone
 │   ├── database/             # connections, idempotent raw loader, run log
+│   ├── raw_zone/             # one writer interface: PostgreSQL, plus GCS with RAW_TARGETS
+│   ├── warehouse/            # runs sql/bigquery/ against the dataset (identifiers checked, values bound)
 │   ├── transformation/       # ordered SQL execution + odds_matching.py (event → fixture)
 │   ├── orchestration/        # Dagster assets, schedule, retry policy
 │   └── quality/              # the twenty-four data-quality checks
@@ -993,13 +1075,14 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── sql/
 │   ├── schema/               # 12 DDL files (applied by `make init`)
 │   ├── transform/            # 16 files: raw → staging → curated
-│   └── verify/               # verification queries
+│   ├── verify/               # verification queries
+│   └── bigquery/             # the cloud warehouse: schema · transform · verify (`make bq-*`)
 │
 ├── app/                      # the dashboard: dataset panels, odds section, HTML components
 ├── notebooks/                # exploration
 ├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
 ├── .github/workflows/        # CI: lint, tests, idempotency smoke test
-├── tests/                    # 252 tests: unit, contract, integration, layering rule
+├── tests/                    # 305 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/
