@@ -37,6 +37,7 @@ from deng.clock import pipeline_today
 from deng.config import get_settings
 from deng.database import PipelineRun, connect
 from deng.quality import run_checks
+from deng.raw_zone import open_mirror
 from deng.sources import openstreetmap
 from deng.sources.club_crests import fetch_crests
 from deng.sources.http import ApiError, RetryableApiError
@@ -322,6 +323,7 @@ def raw_osm_venues(context: AssetExecutionContext) -> dg.MaterializeResult:
                     logical_date,
                     run.run_id,
                     from_samples=settings.ingest_source == "samples",
+                    mirror=open_mirror(settings),
                 )
             except TRANSIENT_ERRORS:
                 raise
@@ -356,6 +358,7 @@ def raw_open_meteo(context: AssetExecutionContext) -> dg.MaterializeResult:
                     run.run_id,
                     settings.open_meteo_forecast_url,
                     from_samples=settings.ingest_source == "samples",
+                    mirror=open_mirror(settings),
                 )
             except TRANSIENT_ERRORS:
                 raise
@@ -420,6 +423,7 @@ def raw_odds_api(context: AssetExecutionContext) -> dg.MaterializeResult:
                     run.run_id,
                     settings,
                     from_samples=settings.ingest_source == "samples",
+                    mirror=open_mirror(settings),
                 )
             except TRANSIENT_ERRORS:
                 raise

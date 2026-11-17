@@ -29,6 +29,7 @@ import psycopg
 
 from deng.config import Settings
 from deng.database import PipelineRun
+from deng.raw_zone import GcsRawZone, open_mirror
 from deng.sources import (
     club_crests,
     football_data,
@@ -51,6 +52,9 @@ class Context:
     logical_date: date
     settings: Settings
     from_samples: bool = False
+    # The GCS raw zone the sources also write to, opened once by ingest_all
+    # from RAW_TARGETS; None means PostgreSQL only.
+    mirror: GcsRawZone | None = None
 
 
 @dataclass
@@ -102,6 +106,7 @@ def _openstreetmap(context: Context, run_id) -> StepResult:
         context.logical_date,
         run_id,
         from_samples=context.from_samples,
+        mirror=context.mirror,
     )
     return StepResult("openstreetmap.org", f"{stored} stadium(s) looked up")
 
@@ -122,6 +127,7 @@ def _weather(context: Context, run_id) -> StepResult:
         run_id,
         context.settings.open_meteo_forecast_url,
         from_samples=context.from_samples,
+        mirror=context.mirror,
     )
     return StepResult("open-meteo.com", result.summary)
 
@@ -132,6 +138,7 @@ def _odds(context: Context, run_id) -> StepResult:
         run_id,
         context.settings,
         from_samples=context.from_samples,
+        mirror=context.mirror,
     )
     return StepResult("the-odds-api.com", result.summary)
 
@@ -174,6 +181,8 @@ def ingest_all(context: Context, only: str | None = None) -> list[StepResult]:
             been recorded as FAILED.
     """
     results: list[StepResult] = []
+    if context.mirror is None:
+        context.mirror = open_mirror(context.settings)
     for step in STEPS:
         if only and step.name != only:
             continue

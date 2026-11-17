@@ -36,6 +36,7 @@ from psycopg.types.json import Jsonb
 from deng.database.raw_loader import hash_payload
 from deng.files import project_file
 from deng.ingestion import raw_reads
+from deng.raw_zone import GcsRawZone
 from deng.sources.http import ApiError, RetryableApiError, retry_transient
 
 logger = logging.getLogger(__name__)
@@ -194,8 +195,10 @@ def store(
     run_id,
     review_status: str,
     review_note: str,
+    mirror: GcsRawZone | None = None,
 ) -> None:
     """Write one answer into the raw zone; a rerun on the same day overwrites it."""
+    payload_hash = hash_payload(payload or {})
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -222,11 +225,30 @@ def store(
                 ingestion_date,
                 run_id,
                 Jsonb(payload or {}),
-                hash_payload(payload or {}),
+                payload_hash,
                 review_status,
                 review_note,
                 request.timezone or None,
             ),
+        )
+    if mirror is not None:
+        # One object per club per day, like the row; the review verdict goes
+        # with it, because the venue staging keeps only reviewed answers.
+        mirror.put(
+            source=SOURCE,
+            endpoint=ENDPOINT,
+            key={"team_id": request.team_id},
+            ingestion_date=ingestion_date,
+            run_id=run_id,
+            request_url=url,
+            payload=payload or {},
+            request_params=request.params(),
+            payload_hash=payload_hash,
+            attributes={
+                "review_status": review_status,
+                "review_note": review_note,
+                "timezone": request.timezone or None,
+            },
         )
 
 
@@ -237,13 +259,17 @@ def ingest(
     from_samples: bool = False,
     session: requests.Session | None = None,
     pause_seconds: float = PAUSE_SECONDS,
+    mirror: GcsRawZone | None = None,
 ) -> int:
-    """Fetch and store every stadium that is missing. Returns how many were stored."""
+    """Fetch and store every stadium that is missing. Returns how many were stored.
+
+    With a `mirror` (RAW_TARGETS=postgres,gcs) every answer is also written to GCS.
+    """
     session = session or requests.Session()
     stored = 0
     for index, request in enumerate(plan(connection)):
         status, note, payload, url = _resolve(request, session, from_samples, index, pause_seconds)
-        store(connection, request, url, payload, ingestion_date, run_id, status, note)
+        store(connection, request, url, payload, ingestion_date, run_id, status, note, mirror)
         # Each stadium is independent and fetched once. Keep successful answers
         # if a later request fails, so the next run resumes at missing clubs.
         connection.commit()

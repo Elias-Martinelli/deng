@@ -118,7 +118,7 @@ class Settings(BaseSettings):
     gcp_region: str = "europe-west6"
     gcs_raw_bucket: str = ""
     bigquery_dataset: str = "cl_intelligence"
-    # Which raw zones every football answer is written to, comma-separated:
+    # Which raw zones the answers are written to, comma-separated:
     # "postgres" (default) or "postgres,gcs". PostgreSQL is required in every
     # combination for now - why: src/deng/raw_zone/writer.py.
     raw_targets: str = "postgres"

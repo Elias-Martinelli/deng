@@ -84,16 +84,16 @@ def partition_value(value: str) -> str:
     return safe
 
 
-def key_hash(source: str, endpoint: str, request_params: dict[str, Any]) -> str:
+def key_hash(source: str, endpoint: str, key: dict[str, Any]) -> str:
     """The object's file name: a hash of the business key without the date.
 
     Over the exact values, not the path-safe ones, so two keys that happen to
     share a partition value (`a/b` and `a.b`) still get two objects. Keys of
-    `request_params` are sorted: `{"a": 1, "b": 2}` and `{"b": 2, "a": 1}` are
-    the same question, as they are in the JSONB unique key.
+    `key` are sorted: `{"a": 1, "b": 2}` and `{"b": 2, "a": 1}` are the same
+    question, as they are in the JSONB unique key.
     """
     canonical = json.dumps(
-        {"source": source, "endpoint": endpoint, "request_params": request_params},
+        {"source": source, "endpoint": endpoint, "key": key},
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
@@ -101,16 +101,14 @@ def key_hash(source: str, endpoint: str, request_params: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:20]
 
 
-def object_name(
-    source: str, endpoint: str, request_params: dict[str, Any], ingestion_date: date
-) -> str:
+def object_name(source: str, endpoint: str, key: dict[str, Any], ingestion_date: date) -> str:
     """Where one answer of one day lives in the bucket."""
     return (
         f"{OBJECT_PREFIX}"
         f"/source={partition_value(source)}"
         f"/endpoint={partition_value(endpoint)}"
         f"/ingestion_date={ingestion_date.isoformat()}"
-        f"/{key_hash(source, endpoint, request_params)}.json"
+        f"/{key_hash(source, endpoint, key)}.json"
     )
 
 
@@ -118,35 +116,50 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class GcsRawWriter:
-    """Writes API payloads as objects into the raw-zone bucket.
+class GcsRawZone:
+    """The raw-zone bucket: writes any source's answers as objects.
 
-    Same call and same result as `RawLoader.load`, so the ingestion does not
-    know which raw zone it writes to (src/deng/raw_zone/writer.py).
+    Every source has its own business key in PostgreSQL (football: endpoint and
+    request parameters per day; weather: the venue per day; odds: request and
+    fetch time). `key` is that key without source, endpoint and date, so the
+    object name follows the same rule as the row it mirrors: what overwrites a
+    row in PostgreSQL overwrites the object, what adds a row adds an object.
     """
 
-    def __init__(
-        self,
-        bucket: Bucket,
-        source: str = "football-data.org",
-        now: Callable[[], datetime] = _utc_now,
-    ) -> None:
-        """Create a writer for one bucket and one source."""
+    def __init__(self, bucket: Bucket, now: Callable[[], datetime] = _utc_now) -> None:
+        """Create a raw zone over one bucket."""
         self.bucket = bucket
-        self.source = source
         self._now = now
 
-    def load(
+    def put(
         self,
         *,
-        run_id: uuid.UUID,
+        source: str,
         endpoint: str,
-        request_params: dict[str, Any],
-        request_url: str,
-        payload: dict[str, Any],
+        key: dict[str, Any],
         ingestion_date: date,
+        run_id: uuid.UUID | str,
+        request_url: str,
+        payload: Any,
+        request_params: dict[str, Any] | None = None,
+        payload_hash: str | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> LoadResult:
-        """Write one payload for one ingestion date; overwrite that day's object.
+        """Write one answer; overwrite the object of the same key and day.
+
+        Args:
+            source: Provenance, as in the PostgreSQL row (sample sources included).
+            endpoint: The endpoint the answer came from.
+            key: The rest of the business key; decides the object name.
+            ingestion_date: The day partition.
+            run_id: The run that wrote it.
+            request_url: Full URL, for traceability.
+            payload: The parsed answer, stored unchanged (an object or a list).
+            request_params: Query parameters, if they are not the key itself.
+            payload_hash: The hash the PostgreSQL row carries, so both raw zones
+                can be compared; computed over the payload when not given.
+            attributes: Columns the PostgreSQL row keeps next to the payload
+                (a review verdict, a quota reading), stored in the envelope.
 
         Returns:
             INSERTED for a new object, UPDATED when the stored answer differed,
@@ -158,38 +171,34 @@ class GcsRawWriter:
                 (missing bucket, missing permission) or keeps failing after the
                 library's retries. The run fails; nothing is swallowed.
         """
-        name = object_name(self.source, endpoint, request_params, ingestion_date)
-        payload_hash = hash_payload(payload)
-        record_count = count_records(payload)
+        name = object_name(source, endpoint, key, ingestion_date)
+        payload_hash = payload_hash or hash_payload(payload)
+        record_count = len(payload) if isinstance(payload, list) else count_records(payload)
 
         existing = self.bucket.get_blob(name)
         previous_hash = (existing.metadata or {}).get("payload_hash") if existing else None
 
-        body = (
-            json.dumps(
-                {
-                    "source": self.source,
-                    "endpoint": endpoint,
-                    "request_params": request_params,
-                    "request_url": request_url,
-                    "ingestion_date": ingestion_date.isoformat(),
-                    "ingested_at": self._now().isoformat(),
-                    "run_id": str(run_id),
-                    "payload_hash": payload_hash,
-                    "record_count": record_count,
-                    "payload": payload,
-                },
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-            + "\n"
-        )
+        envelope = {
+            "source": source,
+            "endpoint": endpoint,
+            "key": key,
+            "request_params": key if request_params is None else request_params,
+            "request_url": request_url,
+            "ingestion_date": ingestion_date.isoformat(),
+            "ingested_at": self._now().isoformat(),
+            "run_id": str(run_id),
+            "payload_hash": payload_hash,
+            "record_count": record_count,
+            "attributes": attributes or {},
+            "payload": payload,
+        }
+        body = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"), default=str)
 
         blob = self.bucket.blob(name)
         # Object metadata: what the next run compares against (and what
         # `gcloud storage objects describe` shows) without downloading the body.
         blob.metadata = {
-            "source": self.source,
+            "source": source,
             "endpoint": endpoint,
             "ingestion_date": ingestion_date.isoformat(),
             "run_id": str(run_id),
@@ -202,7 +211,7 @@ class GcsRawWriter:
         # concurrent write only replaces the object with an equally valid one -
         # while a precondition would turn the retry of an upload whose first
         # attempt did succeed into a false "412 Precondition Failed".
-        blob.upload_from_string(body.encode("utf-8"), content_type=CONTENT_TYPE)
+        blob.upload_from_string((body + "\n").encode("utf-8"), content_type=CONTENT_TYPE)
 
         inserted = existing is None
         unchanged = not inserted and previous_hash == payload_hash
@@ -225,13 +234,57 @@ class GcsRawWriter:
         return result
 
     def existing_hash(
+        self, source: str, endpoint: str, key: dict[str, Any], ingestion_date: date
+    ) -> str | None:
+        """The stored payload hash for that business key, if any (metadata only)."""
+        blob = self.bucket.get_blob(object_name(source, endpoint, key, ingestion_date))
+        return (blob.metadata or {}).get("payload_hash") if blob else None
+
+
+class GcsRawWriter:
+    """The football answers' writer: `RawLoader.load`, but into the bucket.
+
+    Same call and same result as the PostgreSQL loader, so the ingestion does
+    not know which raw zone it writes to (src/deng/raw_zone/writer.py). The
+    request parameters are the key, as in the unique key of raw.football_data.
+    """
+
+    def __init__(
+        self,
+        bucket: Bucket,
+        source: str = "football-data.org",
+        now: Callable[[], datetime] = _utc_now,
+    ) -> None:
+        """Create a writer for one bucket and one source."""
+        self.zone = GcsRawZone(bucket, now=now)
+        self.source = source
+
+    def load(
+        self,
+        *,
+        run_id: uuid.UUID,
+        endpoint: str,
+        request_params: dict[str, Any],
+        request_url: str,
+        payload: dict[str, Any],
+        ingestion_date: date,
+    ) -> LoadResult:
+        """Write one payload for one ingestion date; overwrite that day's object."""
+        return self.zone.put(
+            source=self.source,
+            endpoint=endpoint,
+            key=request_params,
+            ingestion_date=ingestion_date,
+            run_id=run_id,
+            request_url=request_url,
+            payload=payload,
+        )
+
+    def existing_hash(
         self, endpoint: str, request_params: dict[str, Any], ingestion_date: date
     ) -> str | None:
         """The stored payload hash for that business key, if any (metadata only)."""
-        blob = self.bucket.get_blob(
-            object_name(self.source, endpoint, request_params, ingestion_date)
-        )
-        return (blob.metadata or {}).get("payload_hash") if blob else None
+        return self.zone.existing_hash(self.source, endpoint, request_params, ingestion_date)
 
 
 def bucket_from_settings(project_id: str, bucket_name: str) -> Bucket:

@@ -291,7 +291,7 @@ cd deng
 
 ./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 273 tests (258 without the orchestrator and ml extras); DB tests skip without PostgreSQL
+make test                  # 276 tests (261 without the orchestrator and ml extras); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, offline, no API key needed
@@ -780,7 +780,7 @@ Treated as a feature in its own right:
   install with `-c constraints.txt`, so a clone next month gets the versions
   tested today. After changing `pyproject.toml`, `make lock` re-resolves it
   (needs [uv](https://docs.astral.sh/uv/), installing does not).
-* CI runs lint, 273 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 276 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -794,7 +794,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 273 tests: config, API client, source schemas, payload contracts, loader, the GCS raw zone, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `273 passed` with PostgreSQL up, `make setup-orchestrator` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `256 passed, 2 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each); without a database `174 passed, 84 skipped` |
+| `make test` | 276 tests: config, API client, source schemas, payload contracts, loader, the GCS raw zone, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `276 passed` with PostgreSQL up, `make setup-orchestrator` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `259 passed, 2 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each); without a database `174 passed, 87 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast, the training dataset | `4/4 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | After `make run-samples` always `29/31`: the two open WARNINGs are the form window and the crests (a sample run downloads none). With an API key the form window passes once past seasons are ingested - early in a season most clubs have fewer than three matches - and the crests once `fetch_crests` has run. Exit 0 in every case |
@@ -908,13 +908,15 @@ to a real project yet.
 ([`src/deng/raw_zone/`](src/deng/raw_zone/writer.py)), and configuration picks
 which ones an answer lands in:
 
-| `RAW_TARGETS` | Football answers go to |
+| `RAW_TARGETS` | Answers go to |
 |---|---|
-| `postgres` (default) | `raw.football_data` |
-| `postgres,gcs` | the same rows, plus one object per answer in `GCS_RAW_BUCKET` |
+| `postgres` (default) | the raw tables (`raw.football_data`, `raw.open_meteo`, `raw.odds_api`, `raw.osm_venues`, ...) |
+| `postgres,gcs` | the same rows, plus one object per row in `GCS_RAW_BUCKET` for football, weather, odds and stadiums |
 
 Each answer is uploaded straight from memory, with no local file on the way,
-to a name that depends only on the business key:
+to a name that depends only on the business key of its table: one object per
+football question per day, per venue forecast per day, per odds fetch, and per
+stadium lookup per day.
 
 ```text
 raw/source=football-data.org/endpoint=competitions.CL.matches/ingestion_date=2026-11-17/<hash of source, endpoint, params>.json
@@ -930,9 +932,10 @@ BigQuery loads with hive partitioning on the three directory levels.
 
 PostgreSQL stays in every combination for now. The later sources plan their
 work from the Postgres raw zone, and the transformation reads it, so a GCS-only
-run would find no matches to ask the weather about. Only football-data.org,
-the source every table rests on, is mirrored so far. Weather, odds and the
-other sources follow, and so does BigQuery: staging loaded from the bucket,
+run would find no matches to ask the weather about. Three sources are not
+mirrored: the crest images, which only the dashboard shows; the world ranking,
+an optional training extra; and the team-context CSV, which holds licensed data
+that is not ours to upload. Next comes BigQuery: staging loaded from the bucket,
 curated tables built with `MERGE`, partitioned by `match_date` /
 `snapshot_date` and clustered by team and match ids.
 
@@ -990,7 +993,7 @@ Documented honestly, because hidden failures cost more than known ones:
 |---|---|---|
 | Milestone 1 — initial pitch | week 3 | **complete** — use case, verified sources, Architecture v0.1, ADRs, backlog |
 | Midterm — local pipeline | 22 Oct 2026, 15:30 | **complete** — ingestion with payload contracts, raw zone, transformations, curated model, data quality, Dagster orchestration, Docker Compose, Streamlit, notebook, Architecture v0.2, failure matrix, clean-environment test (18 Oct, [evidence](docs/evidence/clean-environment-test.md)). Open: the second run on the other student's machine, tag `midterm` |
-| Final — cloud pipeline | 10 Dec 2026, 20:00 | **in progress**. Done: Terraform for the bucket, dataset, service account and IAM (validated, not yet applied), and the raw writer with a GCS target for the football answers. Open: the other sources to GCS, BigQuery staging and curated, quality checks against BigQuery |
+| Final — cloud pipeline | 10 Dec 2026, 20:00 | **in progress**. Done: Terraform for the bucket, dataset, service account and IAM (validated, not yet applied), and the raw writer with a GCS target for football, weather, odds and stadium answers. Open: BigQuery staging and curated, quality checks against BigQuery |
 
 Rubric coverage: [`docs/rubric-checklist.md`](docs/rubric-checklist.md) ·
 Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
@@ -1035,7 +1038,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── notebooks/                # exploration
 ├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
 ├── .github/workflows/        # CI: lint, tests, idempotency smoke test
-├── tests/                    # 273 tests: unit, contract, integration, layering rule
+├── tests/                    # 276 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/

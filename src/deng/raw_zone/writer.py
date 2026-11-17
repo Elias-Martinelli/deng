@@ -91,3 +91,18 @@ def open_raw_writer(
     if bucket is None:
         bucket = gcs.bucket_from_settings(settings.gcp_project_id, settings.gcs_raw_bucket)
     return FanOutWriter(postgres, gcs.GcsRawWriter(bucket, source=source))
+
+
+def open_mirror(settings: Settings, *, bucket: gcs.Bucket | None = None) -> gcs.GcsRawZone | None:
+    """The GCS raw zone the other sources mirror their rows into, or None.
+
+    Weather, odds and stadium answers have their own tables and business keys,
+    so they keep their own SQL and call `mirror.put(...)` next to it, with the
+    same key. The caller opens the mirror once per run and passes it on; None
+    (RAW_TARGETS=postgres) means "PostgreSQL only", which is every source's default.
+    """
+    if "gcs" not in settings.raw_target_list:
+        return None
+    if bucket is None:
+        bucket = gcs.bucket_from_settings(settings.gcp_project_id, settings.gcs_raw_bucket)
+    return gcs.GcsRawZone(bucket)

@@ -10,7 +10,9 @@ Claims defended:
 * RAW_TARGETS picks the raw zones; GCS without a bucket, or without
   PostgreSQL, fails at start-up instead of at the first write (9.1);
 * with both targets, a sample run lands the same answers in both, a rerun adds
-  nothing, and a GCS failure rolls the PostgreSQL writes back.
+  nothing, and a GCS failure rolls the PostgreSQL writes back;
+* weather, odds and stadium answers are mirrored with their own table's key:
+  one object per venue per day, per odds fetch, per club per day.
 
 GCS is an in-memory bucket with the three calls the writer makes, so nothing
 here needs a network or credentials.
@@ -321,3 +323,90 @@ def test_a_gcs_failure_rolls_back_the_postgres_writes_of_the_run(connection, run
         football_data.ingest(connection, date(2026, 9, 20), run_id, settings, from_samples=True)
 
     assert football_rows(connection) == []
+
+
+# --- the other sources: weather, odds, stadiums --------------------------------
+
+
+def objects_of(bucket, source):
+    prefix = f"raw/source={partition_value(source)}/"
+    return [name for name in bucket.objects if name.startswith(prefix)]
+
+
+@pytest.mark.postgres
+def test_a_mirrored_sample_run_writes_every_raw_row_of_every_source_to_gcs(connection, mirrored):
+    from deng import clock, pipeline
+
+    bucket, _ = mirrored
+    tables = {
+        "football-data.org (sample)": "raw.football_data",
+        "openstreetmap.org": "raw.osm_venues",
+        "open-meteo.com": "raw.open_meteo",
+        "the-odds-api.com (sample)": "raw.odds_api",
+    }
+
+    assert pipeline.command_ingest(clock.SAMPLES_DATE, from_samples=True) == 0
+    counts = {
+        source: connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        for source, table in tables.items()
+    }
+
+    # The replay plans no forecast (no sample venue hosts a match in its
+    # horizon), so weather is 0 = 0 here and has a test of its own below.
+    assert counts["football-data.org (sample)"] and counts["openstreetmap.org"]
+    assert counts["the-odds-api.com (sample)"]
+    assert {source: len(objects_of(bucket, source)) for source in tables} == counts
+    # The rerun replays the same answers: same rows, same objects, nothing added.
+    assert pipeline.command_ingest(clock.SAMPLES_DATE, from_samples=True) == 0
+    assert {source: len(objects_of(bucket, source)) for source in tables} == counts
+    assert len(bucket.objects) == sum(counts.values())
+
+
+@pytest.mark.postgres
+def test_a_weather_object_has_the_rows_key_hash_and_parameters_and_a_rerun_overwrites_it(
+    connection, run_id
+):
+    from deng.sources import open_meteo
+
+    zone = gcs_module.GcsRawZone(FakeBucket())
+    request = open_meteo.ForecastRequest(546, 39.94, -0.10, date(2026, 9, 23), date(2026, 9, 24))
+    payload = {"hourly": {"time": [], "temperature_2m": []}}
+    for day in (date(2026, 9, 21), date(2026, 9, 21), date(2026, 9, 22)):
+        open_meteo.store(
+            connection, request, "https://example.test/forecast", payload, day, run_id, zone
+        )
+
+    rows = connection.execute(
+        "SELECT venue_team_id, ingestion_date, payload_hash, request_params FROM raw.open_meteo"
+    ).fetchall()
+    assert len(rows) == len(zone.bucket.objects) == 2  # the rerun of the 21st overwrote
+    venue, day, payload_hash, params = rows[0]
+    body = zone.bucket.body(
+        object_name(open_meteo.SOURCE, open_meteo.ENDPOINT, {"venue_team_id": venue}, day)
+    )
+    assert body["payload_hash"] == payload_hash
+    assert body["key"] == {"venue_team_id": venue}
+    assert body["request_params"] == params
+
+
+@pytest.mark.postgres
+def test_every_odds_fetch_is_its_own_object_and_a_replayed_one_overwrites_itself(
+    connection, run_id
+):
+    from deng.sources import the_odds_api
+
+    zone = gcs_module.GcsRawZone(FakeBucket())
+    request = the_odds_api.OddsRequest(sport="soccer_uefa_champs_league", regions="eu")
+    morning = datetime(2026, 11, 17, 7, 0, tzinfo=timezone.utc)
+    noon = datetime(2026, 11, 17, 12, 0, tzinfo=timezone.utc)
+
+    for fetched_at in (morning, noon, noon):
+        the_odds_api.store(
+            connection, request, "https://example.test/odds", [], run_id, fetched_at, mirror=zone
+        )
+
+    rows = connection.execute("SELECT count(*) FROM raw.odds_api").fetchone()[0]
+    assert rows == len(zone.bucket.objects) == 2
+    body = zone.bucket.body(next(iter(zone.bucket.objects)))
+    assert set(body["attributes"]) == {"requests_remaining", "requests_used", "requests_last"}
+    assert body["payload"] == [] and body["record_count"] == 0
