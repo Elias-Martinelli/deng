@@ -60,6 +60,13 @@ x-orchestrator: &orchestrator
     ODDS_WATCH_HOURS_BEFORE_KICKOFF: ${ODDS_WATCH_HOURS_BEFORE_KICKOFF:-48}
     ODDS_WATCH_MATCH_IDS: ${ODDS_WATCH_MATCH_IDS:-}
     ODDS_QUOTA_RESERVE: ${ODDS_QUOTA_RESERVE:-50}
+    # Cloud raw zone: the scheduled runs mirror to GCS with RAW_TARGETS=postgres,gcs
+    # (credentials: docker-compose.gcp.yml).
+    RAW_TARGETS: ${RAW_TARGETS:-postgres}
+    GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+    GCP_REGION: ${GCP_REGION:-europe-west6}
+    GCS_RAW_BUCKET: ${GCS_RAW_BUCKET:-}
+    BIGQUERY_DATASET: ${BIGQUERY_DATASET:-cl_intelligence}
   volumes:
     - ./sql:/app/sql:ro
     - ./data/sample:/app/data/sample:ro
@@ -134,6 +141,13 @@ services:
       ODDS_WATCH_HOURS_BEFORE_KICKOFF: ${ODDS_WATCH_HOURS_BEFORE_KICKOFF:-48}
       ODDS_WATCH_MATCH_IDS: ${ODDS_WATCH_MATCH_IDS:-}
       ODDS_QUOTA_RESERVE: ${ODDS_QUOTA_RESERVE:-50}
+      # Cloud raw zone (terraform/README.md). The credentials come from the
+      # opt-in docker-compose.gcp.yml, so a plain `make up` needs no gcloud.
+      RAW_TARGETS: ${RAW_TARGETS:-postgres}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCP_REGION: ${GCP_REGION:-europe-west6}
+      GCS_RAW_BUCKET: ${GCS_RAW_BUCKET:-}
+      BIGQUERY_DATASET: ${BIGQUERY_DATASET:-cl_intelligence}
     volumes:
       # Read-only mount of the SQL files (schema, transform, verify) so a query
       # change takes effect without rebuilding the image. Application code stays

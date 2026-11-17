@@ -527,6 +527,11 @@ the database's *health check*, not merely for the container to exist, so a cold
 start cannot fail with "connection refused". The app is a second build stage,
 which keeps the pipeline image free of a web framework.
 
+**Writing to GCS from the containers** needs one addition: `GCP=1` (e.g.
+`make orchestrator GCP=1`) layers `docker-compose.gcp.yml` on top, which mounts
+the Google credentials read-only. Without it the stack needs no gcloud at all.
+Details are in [`terraform/README.md`](terraform/README.md#in-docker-and-dagster).
+
 > **Docker not running?** Every Docker target first runs
 > `scripts/check_docker.sh`, which stops at once and prints how to start Docker
 > on your platform: Docker Desktop on Windows/WSL and macOS, `sudo systemctl
@@ -1006,6 +1011,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── setup.sh                  # one-command setup (no pyenv/direnv/conda needed)
 ├── Makefile                  # setup · test · up · run · verify · app · notebook
 ├── docker-compose.yml        # postgres + Dagster + pipeline + app on one network
+├── docker-compose.gcp.yml    # opt-in overlay: Google credentials for GCS writes (GCP=1)
 ├── Dockerfile                # three stages: pipeline, app, orchestrator
 ├── orchestrator/             # Dagster instance + workspace config (DAGSTER_HOME)
 ├── pyproject.toml            # dependencies and extras (dev / app / orchestrator / notebook / ml / cloud)

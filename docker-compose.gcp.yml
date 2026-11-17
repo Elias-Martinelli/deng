@@ -1,0 +1,43 @@
+# Opt-in overlay: Google credentials for the containers that write to GCS.
+#
+#   make orchestrator GCP=1            (or any Docker target with GCP=1)
+#   docker compose -f docker-compose.yml -f docker-compose.gcp.yml up -d ...
+#
+# Separate from docker-compose.yml on purpose: the plain stack must start on a
+# machine without gcloud, and a bind mount of a missing file would fail there
+# (or, with the short syntax, silently create an empty directory instead).
+#
+# What is mounted is the Application Default Credentials file, ideally from an
+# impersonating login, so the containers act as the pipeline's service account
+# and no key file exists anywhere (terraform/README.md):
+#
+#   gcloud auth application-default login \
+#     --impersonate-service-account="$(terraform -chdir=terraform output -raw service_account_email)"
+#
+# The file is mounted read-only under /run/gcp and named explicitly, instead of
+# relying on the default lookup under the container user's home directory.
+#
+# Linux hosts: the container runs as uid 1000 and the file is mode 600, so it is
+# readable only if your host user is uid 1000 too (`id -u`). Docker Desktop on
+# macOS and Windows maps the permissions for you.
+
+x-gcp-credentials: &gcp-credentials
+  environment:
+    GOOGLE_APPLICATION_CREDENTIALS: /run/gcp/application_default_credentials.json
+  volumes:
+    - type: bind
+      source: ${GCP_ADC_FILE:-${HOME}/.config/gcloud/application_default_credentials.json}
+      target: /run/gcp/application_default_credentials.json
+      read_only: true
+      bind:
+        # Fail with "bind source path does not exist" instead of creating a
+        # directory where the credentials file was expected.
+        create_host_path: false
+
+services:
+  pipeline:
+    <<: *gcp-credentials
+  dagster-webserver:
+    <<: *gcp-credentials
+  dagster-daemon:
+    <<: *gcp-credentials

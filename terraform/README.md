@@ -131,6 +131,25 @@ The impersonating login only works for principals listed in
 account's permissions, not with yours, so a missing permission shows up on
 your machine first.
 
+### In Docker and Dagster
+
+The images already contain the GCS client. Compose passes `RAW_TARGETS`,
+`GCP_PROJECT_ID`, `GCS_RAW_BUCKET` and `BIGQUERY_DATASET` from `.env` to the
+pipeline and both Dagster containers. Only the credentials are opt-in:
+`GCP=1` adds `docker-compose.gcp.yml`, which mounts the file the impersonating
+login above wrote, read-only.
+
+```bash
+make orchestrator GCP=1   # scheduled runs mirror to the bucket
+make docker-ingest GCP=1  # one sample run in the pipeline container
+```
+
+`GCP_ADC_FILE` points somewhere else if the file is not at gcloud's default
+path (`~/.config/gcloud/application_default_credentials.json`). A missing file
+fails at start with "bind source path does not exist", rather than with a GCS
+permission error later. On Linux the container user is uid 1000, so the file
+(mode 600) is readable only if your host user is uid 1000 too.
+
 ## Remote state
 
 By default the state is local: `terraform.tfstate`, git-ignored. That is enough
