@@ -939,7 +939,8 @@ A rerun of the same day therefore overwrites its own object, the way the
 Postgres unique key makes it update its own row. The run id is stored inside
 the object and in its metadata, not in its name: a name with the run id would
 let every rerun add a duplicate (the amendment in
-[ADR-003](docs/adr/ADR-003-raw-data-storage.md)). The body is one line of
+[ADR-003](docs/adr/ADR-003-raw-data-storage.md)). The decisions of the whole cloud
+path, with the alternatives, are in [ADR-007](docs/adr/ADR-007-cloud-raw-zone-and-warehouse.md). The body is one line of
 JSON with the envelope of a raw row, which is newline-delimited JSON that
 BigQuery loads with hive partitioning on the three directory levels.
 
