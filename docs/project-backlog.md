@@ -115,7 +115,7 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 252 tests in total, CI |
+| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 273 tests in total, CI |
 | 8.1b | Contract tests against the real samples (schema, keys, referential integrity) | SHOULD | M1 | [x] 13 tests in `tests/test_sample_payloads.py` |
 | 8.2 | Tests for parsing and transformations against Postgres, also in CI | MUST | MIDTERM | [x] 18 transformation tests; CI has a Postgres service |
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
@@ -128,9 +128,9 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 9.1 | Raw writer abstraction: Postgres JSONB locally, GCS object in cloud, same interface | MUST | FINAL | [ ] |
-| 9.2 | Object layout `raw/source=/endpoint=/ingestion_date=/run_id.json`; deterministic names for safe reruns | MUST | FINAL | [ ] |
-| 9.3 | Production path source → GCS without local intermediate file | MUST | FINAL | [ ] |
+| 9.1 | Raw writer abstraction: Postgres JSONB locally, GCS object in cloud, same interface | MUST | FINAL | [~] `src/deng/raw_zone/`: one `load(...)` for both, `RAW_TARGETS=postgres,gcs` mirrors every football-data.org answer; `tests/test_raw_zone.py` (21 tests, two against PostgreSQL). Open: weather, odds, crests, OSM, ranking and team context still write to PostgreSQL only |
+| 9.2 | Object layout `raw/source=/endpoint=/ingestion_date=/<key hash>.json`; deterministic names for safe reruns | MUST | FINAL | [x] the name is a function of the business key, so a rerun overwrites its own object; `<run_id>.json` would duplicate on every rerun (ADR-003 amendment); tested in `tests/test_raw_zone.py` |
+| 9.3 | Production path source → GCS without local intermediate file | MUST | FINAL | [~] one `upload_from_string` per answer, from memory; a test fails on any temporary file. Checked against the real client library with a local stand-in for the GCS API; the first write to a real bucket waits for 11.1 |
 
 ## EPIC 10 – BigQuery
 
@@ -145,9 +145,9 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 11.1 | Bucket, dataset, service account, IAM bindings; variables, outputs | MUST | FINAL | [ ] |
-| 11.2 | Documented init/validate/plan/apply/destroy and required permissions | MUST | FINAL | [ ] |
-| 11.3 | Remote state in GCS bucket | COULD | FINAL | [ ] |
+| 11.1 | Bucket, dataset, service account, IAM bindings; variables, outputs | MUST | FINAL | [~] `terraform/`: versioned private bucket, dataset in europe-west6, service account without a key, least-privilege bindings; `validate` in CI, offline `plan` lists 12 resources. Open: `apply` to the team's project |
+| 11.2 | Documented init/validate/plan/apply/destroy and required permissions | MUST | FINAL | [x] `terraform/README.md` |
+| 11.3 | Remote state in GCS bucket | COULD | FINAL | [~] optional state bucket (`create_state_bucket`) and `backend.tf.example` with the two-step bootstrap; not migrated yet |
 
 ## EPIC 12 – Analytics / ML
 

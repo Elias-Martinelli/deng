@@ -291,7 +291,7 @@ cd deng
 
 ./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 252 tests (237 without the orchestrator and ml extras); DB tests skip without PostgreSQL
+make test                  # 273 tests (258 without the orchestrator and ml extras); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, offline, no API key needed
@@ -780,7 +780,7 @@ Treated as a feature in its own right:
   install with `-c constraints.txt`, so a clone next month gets the versions
   tested today. After changing `pyproject.toml`, `make lock` re-resolves it
   (needs [uv](https://docs.astral.sh/uv/), installing does not).
-* CI runs lint, 252 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 273 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -794,7 +794,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 252 tests: config, API client, source schemas, payload contracts, loader, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `252 passed` with PostgreSQL up, `make setup-orchestrator` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `235 passed, 2 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each); without a database `155 passed, 82 skipped` |
+| `make test` | 273 tests: config, API client, source schemas, payload contracts, loader, the GCS raw zone, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `273 passed` with PostgreSQL up, `make setup-orchestrator` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `256 passed, 2 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each); without a database `174 passed, 84 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast, the training dataset | `4/4 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | After `make run-samples` always `29/31`: the two open WARNINGs are the form window and the crests (a sample run downloads none). With an API key the form window passes once past seasons are ingested - early in a season most clubs have fewer than three matches - and the crests once `fetch_crests` has run. Exit 0 in every case |
@@ -893,14 +893,48 @@ shared with every visitor.
 
 ## Google Cloud Architecture
 
-*Planned for the final submission* - the right-hand path in
-[`docs/architecture-target.svg`](docs/architecture-target.svg). Ingestion writes
-raw JSON straight to a GCS bucket (`raw/source=…/endpoint=…/ingestion_date=…/run_id.json`); BigQuery loads
-staging from GCS and builds curated tables with `MERGE`, partitioned by
-`match_date` / `snapshot_date` and clustered by team and match ids. Terraform
-provisions the bucket, the dataset, a service account and IAM bindings. The
-production path must not depend on local storage — the raw writer is already an
-abstraction for exactly that swap.
+*In progress for the final submission.* This is the right-hand path in
+[`docs/architecture-target.svg`](docs/architecture-target.svg).
+
+**Infrastructure.** [`terraform/`](terraform/README.md) creates the raw-zone
+bucket, the BigQuery dataset, the pipeline's service account and the narrowest
+IAM bindings it needs. It creates no key file: operators impersonate the
+account. The README there covers `init`, `validate`, `plan`, `apply` and
+`destroy`, the permissions of whoever runs them, and the optional remote state
+in GCS. The code passes `terraform validate` in CI, but it has not been applied
+to a real project yet.
+
+**Raw zone in GCS.** One interface covers both raw zones
+([`src/deng/raw_zone/`](src/deng/raw_zone/writer.py)), and configuration picks
+which ones an answer lands in:
+
+| `RAW_TARGETS` | Football answers go to |
+|---|---|
+| `postgres` (default) | `raw.football_data` |
+| `postgres,gcs` | the same rows, plus one object per answer in `GCS_RAW_BUCKET` |
+
+Each answer is uploaded straight from memory, with no local file on the way,
+to a name that depends only on the business key:
+
+```text
+raw/source=football-data.org/endpoint=competitions.CL.matches/ingestion_date=2026-11-17/<hash of source, endpoint, params>.json
+```
+
+A rerun of the same day therefore overwrites its own object, the way the
+Postgres unique key makes it update its own row. The run id is stored inside
+the object and in its metadata, not in its name: a name with the run id would
+let every rerun add a duplicate (the amendment in
+[ADR-003](docs/adr/ADR-003-raw-data-storage.md)). The body is one line of
+JSON with the envelope of a raw row, which is newline-delimited JSON that
+BigQuery loads with hive partitioning on the three directory levels.
+
+PostgreSQL stays in every combination for now. The later sources plan their
+work from the Postgres raw zone, and the transformation reads it, so a GCS-only
+run would find no matches to ask the weather about. Only football-data.org,
+the source every table rests on, is mirrored so far. Weather, odds and the
+other sources follow, and so does BigQuery: staging loaded from the bucket,
+curated tables built with `MERGE`, partitioned by `match_date` /
+`snapshot_date` and clustered by team and match ids.
 
 ## Known Limitations
 
@@ -956,7 +990,7 @@ Documented honestly, because hidden failures cost more than known ones:
 |---|---|---|
 | Milestone 1 — initial pitch | week 3 | **complete** — use case, verified sources, Architecture v0.1, ADRs, backlog |
 | Midterm — local pipeline | 22 Oct 2026, 15:30 | **complete** — ingestion with payload contracts, raw zone, transformations, curated model, data quality, Dagster orchestration, Docker Compose, Streamlit, notebook, Architecture v0.2, failure matrix, clean-environment test (18 Oct, [evidence](docs/evidence/clean-environment-test.md)). Open: the second run on the other student's machine, tag `midterm` |
-| Final — cloud pipeline | 10 Dec 2026, 20:00 | not started |
+| Final — cloud pipeline | 10 Dec 2026, 20:00 | **in progress**. Done: Terraform for the bucket, dataset, service account and IAM (validated, not yet applied), and the raw writer with a GCS target for the football answers. Open: the other sources to GCS, BigQuery staging and curated, quality checks against BigQuery |
 
 Rubric coverage: [`docs/rubric-checklist.md`](docs/rubric-checklist.md) ·
 Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
@@ -971,7 +1005,8 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── docker-compose.yml        # postgres + Dagster + pipeline + app on one network
 ├── Dockerfile                # three stages: pipeline, app, orchestrator
 ├── orchestrator/             # Dagster instance + workspace config (DAGSTER_HOME)
-├── pyproject.toml            # dependencies and extras (dev / app / orchestrator / notebook)
+├── pyproject.toml            # dependencies and extras (dev / app / orchestrator / notebook / ml / cloud)
+├── terraform/                # GCS bucket, BigQuery dataset, service account, IAM (README inside)
 ├── constraints.txt           # every dependency pinned (`make lock` regenerates it)
 ├── .env.example              # configuration template — copy to .env
 │
@@ -986,6 +1021,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │   ├── ingestion/            # runner.py: THE ingestion — the five sources, in order
 │   │                         #   raw_reads.py: the few questions it may ask the raw zone
 │   ├── database/             # connections, idempotent raw loader, run log
+│   ├── raw_zone/             # one writer interface: PostgreSQL, plus GCS with RAW_TARGETS
 │   ├── transformation/       # ordered SQL execution + odds_matching.py (event → fixture)
 │   ├── orchestration/        # Dagster assets, schedule, retry policy
 │   └── quality/              # the twenty-four data-quality checks
@@ -999,7 +1035,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── notebooks/                # exploration
 ├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
 ├── .github/workflows/        # CI: lint, tests, idempotency smoke test
-├── tests/                    # 252 tests: unit, contract, integration, layering rule
+├── tests/                    # 273 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/

@@ -10,6 +10,19 @@ table per *source* (`raw.football_data`, `raw.open_meteo`, `raw.odds_api`,
 because the intraday history is the point of that source
 ([ADR-005](ADR-005-bookmaker-odds-source.md)).
 
+**Amendment (2026-11-17, GCS layout).** The object name below ends in
+`<run_id>.json`, which contradicts the deduplication rule under it. The run id
+is new on every run, so a rerun of the same day would add a second object
+instead of overwriting the first. As implemented
+(`src/deng/raw_zone/gcs.py`), the last path segment is a hash of the business
+key without the date, i.e. source, endpoint and request parameters:
+`raw/source=<src>/endpoint=<ep>/ingestion_date=YYYY-MM-DD/<key hash>.json`. The
+run id moves into the object body and its metadata. The partition values are
+made path-safe (`competitions/CL/matches` → `competitions.CL.matches`). The
+exact values stay in the object, and the hash is taken over them, so two keys
+never share an object. The bucket is versioned (Terraform), so an overwritten
+answer survives for 30 days as a noncurrent version.
+
 ## Context
 
 The football API's free tier serves the current season only and overwrites
