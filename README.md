@@ -291,7 +291,7 @@ cd deng
 
 ./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 277 tests (262 without the orchestrator and ml extras); DB tests skip without PostgreSQL
+make test                  # 301 tests (286 without the orchestrator, ml and cloud extras); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, offline, no API key needed
@@ -785,7 +785,7 @@ Treated as a feature in its own right:
   install with `-c constraints.txt`, so a clone next month gets the versions
   tested today. After changing `pyproject.toml`, `make lock` re-resolves it
   (needs [uv](https://docs.astral.sh/uv/), installing does not).
-* CI runs lint, 277 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 301 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -799,7 +799,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 277 tests: config, API client, source schemas, payload contracts, loader, the GCS raw zone, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `277 passed` with PostgreSQL up, `make setup-orchestrator` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `260 passed, 2 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each); without a database `175 passed, 87 skipped` |
+| `make test` | 301 tests: config, API client, source schemas, payload contracts, loader, the GCS raw zone, the BigQuery SQL and runner, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `301 passed` with PostgreSQL up, `make setup-orchestrator`, `make setup-cloud` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `280 passed, 6 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each, four BigQuery runner tests without the cloud extra); without a database `195 passed, 91 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast, the training dataset | `4/4 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | After `make run-samples` always `29/31`: the two open WARNINGs are the form window and the crests (a sample run downloads none). With an API key the form window passes once past seasons are ingested - early in a season most clubs have fewer than three matches - and the crests once `fetch_crests` has run. Exit 0 in every case |
@@ -940,9 +940,36 @@ work from the Postgres raw zone, and the transformation reads it, so a GCS-only
 run would find no matches to ask the weather about. Three sources are not
 mirrored: the crest images, which only the dashboard shows; the world ranking,
 an optional training extra; and the team-context CSV, which holds licensed data
-that is not ours to upload. Next comes BigQuery: staging loaded from the bucket,
-curated tables built with `MERGE`, partitioned by `match_date` /
-`snapshot_date` and clustered by team and match ids.
+that is not ours to upload.
+
+**Warehouse in BigQuery.** [`sql/bigquery/`](sql/bigquery/) builds the football
+chain, raw → staging → curated, in the dataset Terraform created. It runs in
+the same order as the local pipeline, one statement per file:
+
+| Command | Folder | What it does |
+|---|---|---|
+| `make bq-init` | `schema/` | `raw_answers`, an **external table over the bucket** with the three path levels as hive partition columns; then `staging_matches`, `staging_teams`, `dim_team`, `fact_match` |
+| `make bq-transform` | `transform/` | the four tables with **`MERGE`**, ported from `sql/transform/110`–`220` with the same rules (newest answer wins, a rerun of an older day cannot overwrite a newer state) |
+| `make bq-verify` | `verify/` | the guarantees PostgreSQL enforces with constraints and BigQuery does not: unique keys, home ≠ away, a finished match has a score, every club in `dim_team`, nothing lost between staging and fact |
+
+Why the tables are laid out as they are (the reasons are in each file too):
+
+* **`raw_answers` is external, not loaded.** The bucket stays the only raw
+  zone, a new endpoint needs no DDL, and `require_hive_partition_filter`
+  makes a query that forgets the day fail instead of scanning all history.
+* **`fact_match` is partitioned by month of `match_date`.** Queries ask for date
+  ranges such as a matchday, a season, or "before the snapshot". Daily
+  partitions would hold three to ten matches each. Monthly ones hold one or two
+  matchdays and still prune.
+* **`fact_match` is clustered by `home_team_id, away_team_id, match_id`.** The
+  form features and the app ask per club, and the `MERGE` asks per match.
+* **Staging and `dim_team` are clustered but not partitioned.** A few thousand
+  rows sit far below the size where partitions pay off.
+
+`DRY_RUN=1` lets BigQuery validate every statement and estimate its bytes
+without running it. That is the first thing to run against a fresh dataset:
+the SQL parses as BigQuery SQL (checked offline), but it has not run against
+BigQuery yet. The weather, odds and training tables follow the same pattern.
 
 ## Known Limitations
 
@@ -1031,6 +1058,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 │   │                         #   raw_reads.py: the few questions it may ask the raw zone
 │   ├── database/             # connections, idempotent raw loader, run log
 │   ├── raw_zone/             # one writer interface: PostgreSQL, plus GCS with RAW_TARGETS
+│   ├── warehouse/            # runs sql/bigquery/ against the dataset (identifiers checked, values bound)
 │   ├── transformation/       # ordered SQL execution + odds_matching.py (event → fixture)
 │   ├── orchestration/        # Dagster assets, schedule, retry policy
 │   └── quality/              # the twenty-four data-quality checks
@@ -1038,13 +1066,14 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── sql/
 │   ├── schema/               # 12 DDL files (applied by `make init`)
 │   ├── transform/            # 16 files: raw → staging → curated
-│   └── verify/               # verification queries
+│   ├── verify/               # verification queries
+│   └── bigquery/             # the cloud warehouse: schema · transform · verify (`make bq-*`)
 │
 ├── app/                      # the dashboard: dataset panels, odds section, HTML components
 ├── notebooks/                # exploration
 ├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
 ├── .github/workflows/        # CI: lint, tests, idempotency smoke test
-├── tests/                    # 277 tests: unit, contract, integration, layering rule
+├── tests/                    # 301 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/

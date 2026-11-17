@@ -119,12 +119,23 @@ run `apply`, then `destroy`.
 ## Running the pipeline against the bucket
 
 ```bash
-make setup-cloud                      # installs google-cloud-storage (the `cloud` extra)
+make setup-cloud                      # installs the GCS and BigQuery clients (the `cloud` extra)
 gcloud auth application-default login \
   --impersonate-service-account="$(terraform -chdir=terraform output -raw service_account_email)"
 make ingest-samples                   # or `make ingest` with an API key
 gcloud storage ls -r "gs://$(terraform -chdir=terraform output -raw raw_bucket_name)/raw/"
 ```
+
+Then build the warehouse from the bucket. Dry-run first: BigQuery checks
+every statement and estimates its bytes, and nothing changes.
+
+```bash
+make bq-init DRY_RUN=1 && make bq-init
+make bq-transform DATE=2026-09-23 DRY_RUN=1 && make bq-transform DATE=2026-09-23
+make bq-verify DATE=2026-09-23
+```
+
+The `DATE` above is the sample replay's day. Use the day of your ingest.
 
 The impersonating login only works for principals listed in
 `pipeline_operators`. The pipeline then writes with exactly the service

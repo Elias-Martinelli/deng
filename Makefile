@@ -41,7 +41,7 @@ COMPOSE := docker compose$(if $(GCP), -f docker-compose.yml -f docker-compose.gc
         up down logs ps psql init ingest ingest-samples transform dq run run-samples odds \
         backfill verify docker-ingest docker-app reset app notebook \
         setup-orchestrator orchestrator dagster-dev dagster-backfill venues docker-ready \
-        setup-cloud terraform-check
+        setup-cloud terraform-check bq-init bq-transform bq-verify
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-19s %s\n", $$1, $$2}'
@@ -215,6 +215,18 @@ terraform-check:  ## Check the Terraform code offline: fmt, init without backend
 	terraform -chdir=terraform fmt -check -recursive
 	terraform -chdir=terraform init -backend=false -input=false
 	terraform -chdir=terraform validate
+
+# The BigQuery warehouse (sql/bigquery/): needs `make setup-cloud`, the GCP
+# settings in .env and credentials. DRY_RUN=1 lets BigQuery validate every
+# statement and estimate its bytes without running anything.
+bq-init:  ## BigQuery: create the external raw table and the tables (DRY_RUN=1 validates only)
+	$(PY) -m deng.pipeline bq-init $(if $(DRY_RUN),--dry-run)
+
+bq-transform:  ## BigQuery: raw -> staging -> curated with MERGE (DATE=..., DRY_RUN=1)
+	$(PY) -m deng.pipeline bq-transform $(if $(DATE),--date $(DATE)) $(if $(DRY_RUN),--dry-run)
+
+bq-verify:  ## BigQuery: verification checks; non-zero exit when one fails (DATE=...)
+	$(PY) -m deng.pipeline bq-verify $(if $(DATE),--date $(DATE))
 
 # --- Consumers of the data product -------------------------------------------
 

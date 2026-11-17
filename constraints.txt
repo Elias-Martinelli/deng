@@ -128,15 +128,21 @@ fsspec==2026.9.0
     # via universal-pathlib
 google-api-core==2.44.0
     # via
+    #   google-cloud-bigquery
     #   google-cloud-core
     #   google-cloud-storage
 google-auth==2.62.2
     # via
     #   google-api-core
+    #   google-cloud-bigquery
     #   google-cloud-core
     #   google-cloud-storage
+google-cloud-bigquery==3.47.0
+    # via deng (pyproject.toml)
 google-cloud-core==2.8.0
-    # via google-cloud-storage
+    # via
+    #   google-cloud-bigquery
+    #   google-cloud-storage
 google-cloud-storage==3.17.1
     # via deng (pyproject.toml)
 google-crc32c==1.9.0
@@ -144,9 +150,13 @@ google-crc32c==1.9.0
     #   google-cloud-storage
     #   google-resumable-media
 google-resumable-media==2.11.0
-    # via google-cloud-storage
+    # via
+    #   google-cloud-bigquery
+    #   google-cloud-storage
 googleapis-common-protos==1.76.0
-    # via google-api-core
+    # via
+    #   google-api-core
+    #   grpcio-status
 gql==4.0.0
     # via dagster-graphql
 graphene==3.4.3
@@ -163,9 +173,13 @@ greenlet==3.5.6 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or 
 grpcio==1.84.0
     # via
     #   dagster
+    #   google-api-core
     #   grpcio-health-checking
+    #   grpcio-status
 grpcio-health-checking==1.81.1
     # via dagster
+grpcio-status==1.84.0
+    # via google-api-core
 h11==0.16.0
     # via
     #   httpcore
@@ -342,6 +356,7 @@ packaging==26.3
     # via
     #   altair
     #   dagster-shared
+    #   google-cloud-bigquery
     #   ipykernel
     #   jupyter-events
     #   jupyter-server
@@ -395,6 +410,7 @@ protobuf==6.33.6
     #   google-api-core
     #   googleapis-common-protos
     #   grpcio-health-checking
+    #   grpcio-status
     #   proto-plus
     #   streamlit
 psutil==7.2.2 ; python_full_version < '3.11' or (sys_platform != 'cygwin' and sys_platform != 'emscripten')
@@ -452,6 +468,7 @@ pytest==9.1.1
 python-dateutil==2.9.0.post0
     # via
     #   arrow
+    #   google-cloud-bigquery
     #   graphene
     #   jupyter-client
     #   matplotlib
@@ -497,6 +514,7 @@ requests==2.34.2
     #   dagster
     #   dagster-graphql
     #   google-api-core
+    #   google-cloud-bigquery
     #   google-cloud-storage
     #   gql
     #   jupyterlab-server

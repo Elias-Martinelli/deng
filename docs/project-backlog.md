@@ -109,13 +109,13 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 | 7.2 | Plausibility: goals in range (temperature with the weather work) | SHOULD | MIDTERM | [x] `goals_are_plausible`, `weather_values_plausible` |
 | 7.3 | Results persisted in `meta.dq_results`; critical failures fail the run | MUST | MIDTERM | [x] persisted per run, CRITICAL exits non-zero |
 | 7.4 | Schema-drift handling: required-field validation with clear error, optional fields tolerant | MUST | MIDTERM | [x] the contracts of 2.8: a missing required field fails with its path (`matches[7] (id 575330).score.fullTime.home missing`), new or missing optional fields pass; The Odds API and OpenStreetMap only type-checked (limitation in `docs/failure-behaviour.md`) |
-| 7.5 | Same checks against BigQuery | MUST | FINAL | [ ] |
+| 7.5 | Same checks against BigQuery | MUST | FINAL | [~] `sql/bigquery/verify/010_football.sql`, `make bq-verify` (non-zero exit on a failure): the football and fact checks; weather, odds and training checks follow with their tables. Not yet run against BigQuery |
 
 ## EPIC 8 – Testing
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 277 tests in total, CI |
+| 8.1 | Unit tests: config, API client | MUST | M1 | [x] 16 tests (`test_config.py`, `test_football_data_client.py`); 301 tests in total, CI |
 | 8.1b | Contract tests against the real samples (schema, keys, referential integrity) | SHOULD | M1 | [x] 13 tests in `tests/test_sample_payloads.py` |
 | 8.2 | Tests for parsing and transformations against Postgres, also in CI | MUST | MIDTERM | [x] 18 transformation tests; CI has a Postgres service |
 | 8.3 | Idempotency test (load twice) | MUST | MIDTERM | [x] `test_second_run_same_day_does_not_duplicate` |
@@ -136,10 +136,10 @@ submission reserved for the clean-environment test, bug fixes and documentation.
 
 | # | Task | Prio | Milestone | Status |
 |---|---|---|---|---|
-| 10.1 | Load/external staging tables from GCS | MUST | FINAL | [ ] |
-| 10.2 | Curated tables via `MERGE`; grain documented | MUST | FINAL | [ ] |
-| 10.3 | Partitioning (match_date / snapshot_date) and clustering (team ids, match_id) with justification | MUST | FINAL | [ ] |
-| 10.4 | Verification queries | MUST | FINAL | [ ] |
+| 10.1 | Load/external staging tables from GCS | MUST | FINAL | [~] `sql/bigquery/schema/010_raw_answers.sql`: one external table over the bucket, hive-partitioned by source, endpoint, day, with an explicit schema and a required partition filter; staging from it by `MERGE` (`make bq-init`, `make bq-transform`). Not yet run against BigQuery |
+| 10.2 | Curated tables via `MERGE`; grain documented | MUST | FINAL | [~] `sql/bigquery/transform/`: staging_matches, staging_teams, dim_team, fact_match, every file a `MERGE` (a test enforces it), grain in each table's description. Weather, odds and training tables open |
+| 10.3 | Partitioning (match_date / snapshot_date) and clustering (team ids, match_id) with justification | MUST | FINAL | [~] `fact_match`: `PARTITION BY DATE_TRUNC(match_date, MONTH)`, `CLUSTER BY home_team_id, away_team_id, match_id`; staging and dim_team clustered only - reasons in each file and the README. `fact_match_snapshot` (snapshot_date) open with 6.5 |
+| 10.4 | Verification queries | MUST | FINAL | [~] `sql/bigquery/verify/`, `make bq-verify`; see 7.5 |
 
 ## EPIC 11 – Terraform
 
