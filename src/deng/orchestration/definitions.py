@@ -111,6 +111,7 @@ TEAM_FEATURES = dg.AssetKey(["curated", "team_match_features"])
 TRAINING_FEATURES = dg.AssetKey(["curated", "match_training_features"])
 
 WORLD_RANKING = dg.AssetKey(["staging", "team_world_ranking"])
+BIGQUERY_WAREHOUSE = dg.AssetKey(["bigquery", "warehouse"])
 
 TRAINING_SPECS = (
     dg.AssetSpec(WORLD_RANKING, deps=[RAW], group_name="staging"),
@@ -553,6 +554,41 @@ def data_quality(context: AssetExecutionContext) -> dg.MaterializeResult:
     return dg.MaterializeResult(metadata=metadata)
 
 
+@dg.asset(
+    key=BIGQUERY_WAREHOUSE,
+    # The raw assets that write the bucket: the warehouse reads what they mirrored.
+    deps=[RAW, RAW_OSM, RAW_WEATHER],
+    partitions_def=daily_partitions,
+    retry_policy=TRANSIENT_RETRY,
+    group_name="bigquery",
+    kinds={"bigquery"},
+    description=(
+        "The cloud path for the partition: external raw table over the bucket, staging and "
+        "curated by MERGE, then the BigQuery checks (sql/bigquery/). Skips itself unless "
+        "RAW_TARGETS includes gcs, so the local stack runs it as a no-op."
+    ),
+)
+def bigquery_warehouse(context: AssetExecutionContext) -> dg.MaterializeResult:
+    """Run bq-init, bq-transform and bq-verify for the partition's logical date."""
+    settings = get_settings()
+    if "gcs" not in settings.raw_target_list:
+        return dg.MaterializeResult(metadata={"skipped": "RAW_TARGETS has no gcs target"})
+    logical_date = _logical_date(context)
+    # Same commands, same order as by hand; a failed check is a non-zero exit,
+    # which run_step turns into a failed run. The schema step is idempotent
+    # (CREATE OR REPLACE for the external table, IF NOT EXISTS for the rest).
+    with _clock(context):
+        for name, stage in (("bq-init", "schema"), ("bq-transform", "transform")):
+            run_step(name, pipeline.command_bigquery, stage, logical_date)
+        run_step("bq-verify", pipeline.command_bigquery, "verify", logical_date)
+    return dg.MaterializeResult(
+        metadata={
+            "logical_date": str(logical_date),
+            "dataset": f"{settings.gcp_project_id}.{settings.bigquery_dataset}",
+        }
+    )
+
+
 daily_pipeline = dg.define_asset_job(
     name="daily_pipeline",
     selection=dg.AssetSelection.assets(
@@ -564,9 +600,13 @@ daily_pipeline = dg.define_asset_job(
         weather_model,
         training_dataset,
         data_quality,
+        bigquery_warehouse,
     ),
     partitions_def=daily_partitions,
-    description="ingest -> transform -> crests -> weather -> data quality for one logical date.",
+    description=(
+        "ingest -> transform -> crests -> weather -> data quality for one logical date, "
+        "and the BigQuery warehouse when RAW_TARGETS includes gcs."
+    ),
 )
 
 # 06:00 Zurich: late enough that the previous evening's matches are final in
@@ -620,6 +660,7 @@ defs = dg.Definitions(
         odds_model,
         training_dataset,
         data_quality,
+        bigquery_warehouse,
     ],
     jobs=[daily_pipeline, odds_refresh],
     schedules=[daily_schedule, odds_refresh_schedule],

@@ -50,7 +50,71 @@ def test_definitions_load_with_one_asset_per_table():
         "curated/fact_match_team_context",
         "curated/team_match_features",
         "curated/match_training_features",
+        "bigquery/warehouse",
     }
+
+
+@pytest.fixture
+def bigquery_calls(monkeypatch):
+    """Record the BigQuery commands the warehouse asset runs, instead of running them."""
+    from deng.orchestration import definitions
+
+    calls = []
+    exit_codes = {}
+
+    def command_bigquery(stage, logical_date, dry_run=False):
+        calls.append((stage, logical_date))
+        return exit_codes.get(stage, 0)
+
+    monkeypatch.setattr(definitions.pipeline, "command_bigquery", command_bigquery)
+    return calls, exit_codes
+
+
+def _materialize_warehouse(partition_key):
+    from deng.orchestration.definitions import bigquery_warehouse
+
+    with dg.instance_for_test() as instance:
+        return dg.materialize(
+            [bigquery_warehouse],
+            partition_key=partition_key,
+            instance=instance,
+            raise_on_error=False,
+        )
+
+
+def test_the_warehouse_asset_is_a_no_op_without_the_gcs_target(clean_env, bigquery_calls):
+    calls, _ = bigquery_calls
+    result = _materialize_warehouse("2026-09-23")
+    assert result.success
+    assert calls == []
+
+
+def test_the_warehouse_asset_runs_init_transform_verify_for_its_day(
+    clean_env, monkeypatch, bigquery_calls
+):
+    from datetime import date
+
+    calls, _ = bigquery_calls
+    monkeypatch.setenv("RAW_TARGETS", "postgres,gcs")
+    monkeypatch.setenv("GCS_RAW_BUCKET", "deng-hs26-test-raw")
+
+    assert _materialize_warehouse("2026-09-23").success
+    day = date(2026, 9, 23)
+    assert calls == [("schema", day), ("transform", day), ("verify", day)]
+
+
+def test_a_failed_bigquery_check_fails_the_scheduled_run(clean_env, monkeypatch, bigquery_calls):
+    _, exit_codes = bigquery_calls
+    monkeypatch.setenv("RAW_TARGETS", "postgres,gcs")
+    monkeypatch.setenv("GCS_RAW_BUCKET", "deng-hs26-test-raw")
+    exit_codes["verify"] = 1
+
+    assert not _materialize_warehouse("2026-09-23").success
+
+
+def test_the_daily_job_includes_the_warehouse():
+    job = defs.resolve_job_def("daily_pipeline")
+    assert "bigquery/warehouse" in {"/".join(k.path) for k in job.asset_layer.selected_asset_keys}
 
 
 def test_odds_refresh_runs_on_its_own_unpartitioned_job():

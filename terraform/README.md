@@ -151,7 +151,7 @@ pipeline and both Dagster containers. Only the credentials are opt-in:
 login above wrote, read-only.
 
 ```bash
-make orchestrator GCP=1   # scheduled runs mirror to the bucket
+make orchestrator GCP=1   # scheduled runs mirror to the bucket and build BigQuery
 make docker-ingest GCP=1  # one sample run in the pipeline container
 ```
 

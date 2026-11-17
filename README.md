@@ -291,7 +291,7 @@ cd deng
 
 ./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 301 tests (286 without the orchestrator, ml and cloud extras); DB tests skip without PostgreSQL
+make test                  # 305 tests (286 without the orchestrator, ml and cloud extras); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, offline, no API key needed
@@ -563,6 +563,9 @@ transform — SQL only                                        data quality
   raw/*  ──► staging/{matches, teams, standings, venues, weather_forecast, bookmaker_odds}
          ──► curated/{dim_team, dim_venue, fact_match, fact_team_match_form,
                       fact_match_prediction, fact_match_weather, fact_bookmaker_odds}  ──► meta/dq_results
+
+cloud — only with RAW_TARGETS=postgres,gcs, a no-op otherwise
+  raw/{football_data, osm_venues, open_meteo} ──► bigquery/warehouse   (bq-init → bq-transform → bq-verify)
 ```
 
 ```bash
@@ -572,6 +575,11 @@ make dagster-backfill FROM=2026-09-15 TO=2026-09-17   # one run per day, one at 
 
 * **Schedule:** `daily_pipeline_schedule`, 06:00 Europe/Zurich, active as soon
   as the daemon runs. The 06:00 run ingests under *today's* date.
+* **Cloud path in the same job:** with `RAW_TARGETS=postgres,gcs` the raw
+  assets also write the bucket, and `bigquery/warehouse` builds the partition's
+  day in BigQuery with the `bq-*` commands. A failed BigQuery check fails the
+  run. Without the gcs target the asset returns at once, so the local stack
+  needs no GCP at all (`make orchestrator GCP=1` mounts the credentials).
 * **Second job:** `odds_refresh`, unpartitioned, every `ODDS_REFRESH_MINUTES`
   (default 15). Most ticks decide *not* to fetch: the asset applies the budget
   rules (daily baseline, watch window before kick-off, quota reserve) and
@@ -785,7 +793,7 @@ Treated as a feature in its own right:
   install with `-c constraints.txt`, so a clone next month gets the versions
   tested today. After changing `pyproject.toml`, `make lock` re-resolves it
   (needs [uv](https://docs.astral.sh/uv/), installing does not).
-* CI runs lint, 301 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 305 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -799,7 +807,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 301 tests: config, API client, source schemas, payload contracts, loader, the GCS raw zone, the BigQuery SQL and runner, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `301 passed` with PostgreSQL up, `make setup-orchestrator`, `make setup-cloud` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `280 passed, 6 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each, four BigQuery runner tests without the cloud extra); without a database `195 passed, 91 skipped` |
+| `make test` | 305 tests: config, API client, source schemas, payload contracts, loader, the GCS raw zone, the BigQuery SQL and runner, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `305 passed` with PostgreSQL up, `make setup-orchestrator`, `make setup-cloud` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `280 passed, 6 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each, four BigQuery runner tests without the cloud extra); without a database `195 passed, 91 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast, the training dataset | `4/4 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | After `make run-samples` always `29/31`: the two open WARNINGs are the form window and the crests (a sample run downloads none). With an API key the form window passes once past seasons are ingested - early in a season most clubs have fewer than three matches - and the crests once `fetch_crests` has run. Exit 0 in every case |
@@ -1073,7 +1081,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── notebooks/                # exploration
 ├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
 ├── .github/workflows/        # CI: lint, tests, idempotency smoke test
-├── tests/                    # 301 tests: unit, contract, integration, layering rule
+├── tests/                    # 305 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/
