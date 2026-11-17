@@ -1,0 +1,17 @@
+# Remote state in GCS. Optional: without this file the state is local
+# (terraform.tfstate, git-ignored), which is enough for one person.
+#
+# The state bucket cannot hold the state that creates it, so this is a two-step
+# bootstrap (README.md "Remote state"):
+#   1. apply once with create_state_bucket = true and local state
+#   2. copy this file to backend.tf, set the bucket, then
+#      terraform init -migrate-state
+#
+# A backend block cannot read variables, so the bucket name is written here.
+
+terraform {
+  backend "gcs" {
+    bucket = "your-gcp-project-id-deng-tfstate"
+    prefix = "deng/terraform"
+  }
+}

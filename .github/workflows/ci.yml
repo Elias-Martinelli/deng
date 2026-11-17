@@ -10,6 +10,22 @@ on:
   pull_request:   # any PR, whatever its target branch (stacked PRs included)
 
 jobs:
+  # Terraform is checked offline: no credentials, no state, no GCP project.
+  # `init -backend=false` only downloads the provider pinned in versions.tf.
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -59,7 +75,9 @@ jobs:
         # tested in CI instead of being skipped; ml for the baseline evaluation.
         # constraints.txt: the pinned versions a reviewer's `make setup`
         # installs, so CI tests exactly those.
-        run: pip install -c constraints.txt -e ".[dev,orchestrator,ml]"
+        # cloud: the GCS client is imported only with RAW_TARGETS=postgres,gcs,
+        # but installing it here proves the pinned versions resolve with the rest.
+        run: pip install -c constraints.txt -e ".[dev,orchestrator,ml,cloud]"
 
       - name: Lint
         # `format --check` fails on unformatted code instead of fixing it: CI

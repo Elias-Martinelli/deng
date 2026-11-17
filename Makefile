@@ -35,7 +35,8 @@ PY := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 .PHONY: help setup setup-app lock test test-integration lint format explore doctor clean \
         up down logs ps psql init ingest ingest-samples transform dq run run-samples odds \
         backfill verify docker-ingest docker-app reset app notebook \
-        setup-orchestrator orchestrator dagster-dev dagster-backfill venues docker-ready
+        setup-orchestrator orchestrator dagster-dev dagster-backfill venues docker-ready \
+        setup-cloud terraform-check
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-19s %s\n", $$1, $$2}'
@@ -197,6 +198,18 @@ dagster-dev:  ## Run Dagster locally without Docker (needs setup-orchestrator an
 dagster-backfill: docker-ready  ## Backfill through Dagster: make dagster-backfill FROM=2026-09-15 TO=2026-09-17
 	docker compose exec dagster-webserver dagster job backfill -j daily_pipeline \
 		--from $(FROM) --to $(TO) -w /opt/dagster/dagster_home/workspace.yaml --noprompt
+
+# --- Cloud (final milestone: terraform/, src/deng/raw_zone/) -------------------
+
+setup-cloud:  ## Install the GCS client into .venv (needed for RAW_TARGETS=postgres,gcs)
+	$(VENV)/bin/pip install -c constraints.txt -e ".[dev,cloud]"
+
+# Offline: `init -backend=false` downloads the provider but reads no state and
+# needs no GCP credentials, so this runs on any machine and in CI.
+terraform-check:  ## Check the Terraform code offline: fmt, init without backend, validate
+	terraform -chdir=terraform fmt -check -recursive
+	terraform -chdir=terraform init -backend=false -input=false
+	terraform -chdir=terraform validate
 
 # --- Consumers of the data product -------------------------------------------
 
