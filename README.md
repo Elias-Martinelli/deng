@@ -291,7 +291,7 @@ cd deng
 
 ./setup.sh                 # venv + pinned install + .env + self-check   (or: make setup)
 make doctor                # interpreter, dependencies, .env, API key
-make test                  # 276 tests (261 without the orchestrator and ml extras); DB tests skip without PostgreSQL
+make test                  # 277 tests (262 without the orchestrator and ml extras); DB tests skip without PostgreSQL
 make up                    # PostgreSQL in Docker, waits until healthy
 make init                  # create schemas and tables (idempotent)
 make run-samples           # ingest + transform + data quality, offline, no API key needed
@@ -785,7 +785,7 @@ Treated as a feature in its own right:
   install with `-c constraints.txt`, so a clone next month gets the versions
   tested today. After changing `pyproject.toml`, `make lock` re-resolves it
   (needs [uv](https://docs.astral.sh/uv/), installing does not).
-* CI runs lint, 276 tests and a two-run idempotency smoke test against a real
+* CI runs lint, 277 tests and a two-run idempotency smoke test against a real
   PostgreSQL, on Python 3.10 and 3.12.
 * Every number in [`docs/evidence/`](docs/evidence/) is console output from a
   command in this README, not a description of one.
@@ -799,7 +799,7 @@ accepting a `python3.12` whose `ensurepip` is missing.
 | Command | Verifies | Expected |
 |---|---|---|
 | `make doctor` | interpreter, dependencies, `.env`, no tracked secrets | `Ready.` |
-| `make test` | 276 tests: config, API client, source schemas, payload contracts, loader, the GCS raw zone, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `276 passed` with PostgreSQL up, `make setup-orchestrator` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `259 passed, 2 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each); without a database `174 passed, 87 skipped` |
+| `make test` | 277 tests: config, API client, source schemas, payload contracts, loader, the GCS raw zone, transformations, weather, crests, odds, DQ, orchestration, the sample replay, the training product and its export, app components, and the architecture rule (`test_layering.py`); the database ones in `<POSTGRES_DB>_test` | `277 passed` with PostgreSQL up, `make setup-orchestrator` and the ml extra (`pip install -e ".[ml]"`). After `make setup` alone `260 passed, 2 skipped` (`test_orchestration.py` and `test_model_baseline.py` skip as one each); without a database `175 passed, 87 skipped` |
 | `make lint` | formatting and static checks | `All checks passed!` |
 | `make verify` | raw zone, business keys, run log, odds and forecast, the training dataset | `4/4 queries passed`, exit 0 |
 | `make dq` | curated-layer data quality | After `make run-samples` always `29/31`: the two open WARNINGs are the form window and the crests (a sample run downloads none). With an API key the form window passes once past seasons are ingested - early in a season most clubs have fewer than three matches - and the crests once `fetch_crests` has run. Exit 0 in every case |
@@ -1044,7 +1044,7 @@ Backlog: [`docs/project-backlog.md`](docs/project-backlog.md).
 ├── notebooks/                # exploration
 ├── scripts/                  # doctor.py (`make doctor`), explore_football_api.py (`make explore`)
 ├── .github/workflows/        # CI: lint, tests, idempotency smoke test
-├── tests/                    # 276 tests: unit, contract, integration, layering rule
+├── tests/                    # 277 tests: unit, contract, integration, layering rule
 ├── data/sample/              # committed API answers — the offline path
 ├── data/reference/           # bookmaker_team_aliases.csv
 └── docs/

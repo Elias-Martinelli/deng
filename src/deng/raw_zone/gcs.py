@@ -20,8 +20,20 @@ BigQuery external table or load job with hive partitioning reads, so a query
 for one day or one endpoint only touches that prefix.
 
 The body is one line of JSON - newline-delimited JSON, the format BigQuery
-loads - holding the same envelope as a raw.football_data row: provenance, the
-payload hash, the record count and the payload itself, unchanged.
+reads - holding the same envelope as a raw.football_data row: provenance, the
+payload hash, the record count and the payload itself, unchanged. Its shape
+is fixed by the external table over the bucket (sql/bigquery/schema/):
+
+    {"request": {"source", "endpoint", "url", "key", "params"},
+     "run_id", "ingested_at", "payload_hash", "record_count",
+     "attributes", "payload"}
+
+* source, endpoint and the day sit under `request` or only in the path,
+  never at the top level: the path's `key=value` levels become partition
+  columns of the same names, and a file must not repeat them.
+* payload, key, params and attributes are JSON *text*. Every source's payload
+  has another shape, so one table over all of them needs one column type for
+  it; SQL reads the text with JSON_VALUE / JSON_QUERY_ARRAY.
 
 No local intermediate: the bytes go from the parsed HTTP answer in memory into
 one upload request. Nothing is written to disk on the way.
@@ -116,6 +128,11 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _json_text(value: Any) -> str:
+    """Compact JSON text; key order kept, so the payload stays as it arrived."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
 class GcsRawZone:
     """The raw-zone bucket: writes any source's answers as objects.
 
@@ -179,20 +196,21 @@ class GcsRawZone:
         previous_hash = (existing.metadata or {}).get("payload_hash") if existing else None
 
         envelope = {
-            "source": source,
-            "endpoint": endpoint,
-            "key": key,
-            "request_params": key if request_params is None else request_params,
-            "request_url": request_url,
-            "ingestion_date": ingestion_date.isoformat(),
-            "ingested_at": self._now().isoformat(),
+            "request": {
+                "source": source,
+                "endpoint": endpoint,
+                "url": request_url,
+                "key": _json_text(key),
+                "params": _json_text(key if request_params is None else request_params),
+            },
             "run_id": str(run_id),
+            "ingested_at": self._now().isoformat(),
             "payload_hash": payload_hash,
             "record_count": record_count,
-            "attributes": attributes or {},
-            "payload": payload,
+            "attributes": _json_text(attributes or {}),
+            "payload": _json_text(payload),
         }
-        body = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"), default=str)
+        body = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
 
         blob = self.bucket.blob(name)
         # Object metadata: what the next run compares against (and what

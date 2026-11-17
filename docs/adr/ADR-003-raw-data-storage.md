@@ -21,7 +21,11 @@ run id moves into the object body and its metadata. The partition values are
 made path-safe (`competitions/CL/matches` → `competitions.CL.matches`). The
 exact values stay in the object, and the hash is taken over them, so two keys
 never share an object. The bucket is versioned (Terraform), so an overwritten
-answer survives for 30 days as a noncurrent version.
+answer survives for 30 days as a noncurrent version. The body nests source and endpoint under
+`request` and keeps the payload as JSON text: the path's `key=value` levels
+become BigQuery partition columns, which the file must not repeat, and one
+external table over every source needs one column type for payloads of
+different shapes.
 
 ## Context
 

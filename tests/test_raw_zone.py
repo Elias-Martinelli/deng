@@ -147,17 +147,28 @@ def test_the_first_write_inserts_one_object_holding_the_full_envelope():
     assert result.record_count == 2
     (name,) = bucket.objects
     body = bucket.body(name)
-    assert body["payload"] == payload  # stored unchanged, non-ASCII included
+    assert json.loads(body["payload"]) == payload  # stored unchanged, non-ASCII included
+    assert "Bodø/Glimt" in body["payload"]  # not escaped to \u00f8
     assert body["payload_hash"] == hash_payload(payload) == result.payload_hash
-    assert body["source"] == "football-data.org"
-    assert body["endpoint"] == "competitions/CL/matches"
-    assert body["request_params"] == {"season": "2024"}
-    assert body["ingestion_date"] == "2026-11-17"
+    assert body["request"]["source"] == "football-data.org"
+    assert body["request"]["endpoint"] == "competitions/CL/matches"
+    assert body["request"]["url"].endswith("/competitions/CL/matches")
+    assert json.loads(body["request"]["params"]) == {"season": "2024"}
+    assert json.loads(body["request"]["key"]) == {"season": "2024"}
     assert body["ingested_at"] == FIXED_NOW.isoformat()
     assert body["record_count"] == 2
     uuid.UUID(body["run_id"])
     assert bucket.objects[name]["metadata"]["payload_hash"] == result.payload_hash
     assert bucket.objects[name]["content_type"] == "application/json"
+
+
+def test_the_body_never_repeats_a_partition_column_at_its_top_level():
+    bucket = FakeBucket()
+    write(GcsRawWriter(bucket), {"matches": []})
+    (name,) = bucket.objects
+    partition_columns = {part.split("=")[0] for part in name.split("/") if "=" in part}
+    assert partition_columns == {"source", "endpoint", "ingestion_date"}
+    assert partition_columns.isdisjoint(bucket.body(name))
 
 
 def test_a_rerun_with_the_same_answer_is_unchanged_and_overwrites_in_place():
@@ -181,7 +192,7 @@ def test_a_changed_answer_on_the_same_day_is_updated_in_place():
 
     assert changed.action == "UPDATED"
     (name,) = bucket.objects
-    assert bucket.body(name)["payload"]["matches"][0]["status"] == "FINISHED"
+    assert json.loads(bucket.body(name)["payload"])["matches"][0]["status"] == "FINISHED"
 
 
 def test_a_new_day_is_a_new_object():
@@ -385,8 +396,8 @@ def test_a_weather_object_has_the_rows_key_hash_and_parameters_and_a_rerun_overw
         object_name(open_meteo.SOURCE, open_meteo.ENDPOINT, {"venue_team_id": venue}, day)
     )
     assert body["payload_hash"] == payload_hash
-    assert body["key"] == {"venue_team_id": venue}
-    assert body["request_params"] == params
+    assert json.loads(body["request"]["key"]) == {"venue_team_id": venue}
+    assert json.loads(body["request"]["params"]) == params
 
 
 @pytest.mark.postgres
@@ -408,5 +419,6 @@ def test_every_odds_fetch_is_its_own_object_and_a_replayed_one_overwrites_itself
     rows = connection.execute("SELECT count(*) FROM raw.odds_api").fetchone()[0]
     assert rows == len(zone.bucket.objects) == 2
     body = zone.bucket.body(next(iter(zone.bucket.objects)))
-    assert set(body["attributes"]) == {"requests_remaining", "requests_used", "requests_last"}
-    assert body["payload"] == [] and body["record_count"] == 0
+    attributes = json.loads(body["attributes"])
+    assert set(attributes) == {"requests_remaining", "requests_used", "requests_last"}
+    assert json.loads(body["payload"]) == [] and body["record_count"] == 0
