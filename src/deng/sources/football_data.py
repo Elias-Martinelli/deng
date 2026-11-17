@@ -22,7 +22,7 @@ import psycopg
 import requests
 
 from deng.config import Settings
-from deng.database.raw_loader import RawLoader
+from deng.raw_zone import open_raw_writer
 from deng.sources import contracts
 from deng.sources.http import ApiError, RetryableApiError
 
@@ -477,7 +477,8 @@ def ingest(
             "FOOTBALL_DATA_COMPETITIONS=CL for an offline replay."
         )
     result = IngestResult()
-    loader = RawLoader(connection, source=source_name)
+    # PostgreSQL, plus the GCS bucket when RAW_TARGETS says so (src/deng/raw_zone/).
+    loader = open_raw_writer(connection, settings, source=source_name)
     try:
         if from_samples:
             responses = (

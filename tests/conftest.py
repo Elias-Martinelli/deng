@@ -107,6 +107,9 @@ def connection(monkeypatch):
     monkeypatch.setenv("FOOTBALL_DATA_COMPETITIONS", "CL")
     monkeypatch.setenv("TEAM_CONTEXT_CSV_PATH", "")
     monkeypatch.setenv("FOOTBALL_DATA_TEAM_DETAILS", "false")
+    # A .env that mirrors the raw zone to GCS must not send test payloads to a
+    # real bucket; the GCS tests inject an in-memory one (tests/test_raw_zone.py).
+    monkeypatch.setenv("RAW_TARGETS", "postgres")
     conn = psycopg.connect(get_settings().postgres_dsn)
     apply_sql_files(conn)
     # Each test starts from empty pipeline tables; the DDL itself stays. Every
@@ -188,6 +191,7 @@ SETTINGS_ENV_PREFIXES = (
     "BIGQUERY_",
     "LOCAL_RAW_",
     "ODDS_",
+    "RAW_",
 )
 
 
